@@ -25,6 +25,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/linxGnu/grocksdb"
 	"go.etcd.io/etcd/client/pkg/v3/fileutil"
 	"go.etcd.io/etcd/client/pkg/v3/types"
 	"go.etcd.io/etcd/server/v3/etcdserver/api/rafthttp"
@@ -64,7 +65,7 @@ type raftNode struct {
 
 	// raft backing for the commit/error channel
 	node        raft.Node
-	raftStorage *raft.MemoryStorage
+	raftStorage *RocksDBStorage
 	wal         *wal.WAL
 
 	snapshotter      *snap.Snapshotter
@@ -266,7 +267,28 @@ func (rc *raftNode) replayWAL() *wal.WAL {
 	if err != nil {
 		log.Fatalf("store: failed to read WAL (%v)", err)
 	}
-	rc.raftStorage = raft.NewMemoryStorage()
+
+	// 1. Open RocksDB
+	// It's crucial to configure RocksDB appropriately for WAL and performance.
+	// See RocksDB documentation for production settings.
+	bbto := grocksdb.NewDefaultBlockBasedTableOptions()
+	bbto.SetBlockCache(grocksdb.NewLRUCache(1 << 20)) // 1M block cache
+
+	opts := grocksdb.NewDefaultOptions()
+	opts.SetBlockBasedTableFactory(bbto)
+	opts.SetCreateIfMissing(true)
+
+	db, err := grocksdb.OpenDb(opts, "/tmp/raft_rocksdb_example")
+	if err != nil {
+		panic(err)
+	}
+	defer db.Close()
+
+	// 2. Create Storage
+	// nodeID := fmt.Sprintf("node-%d", rc.id)
+	storage := NewRocksDBStorage(db)
+	rc.raftStorage = storage
+	// rc.raftStorage = raft.NewMemoryStorage()
 	if snapshot != nil {
 		rc.raftStorage.ApplySnapshot(*snapshot)
 	}
