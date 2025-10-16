@@ -25,7 +25,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/linxGnu/grocksdb"
 	"go.etcd.io/etcd/client/pkg/v3/fileutil"
 	"go.etcd.io/etcd/client/pkg/v3/types"
 	"go.etcd.io/etcd/server/v3/etcdserver/api/rafthttp"
@@ -65,7 +64,8 @@ type raftNode struct {
 
 	// raft backing for the commit/error channel
 	node        raft.Node
-	storage     *RocksDBStorage
+	raftStorage *raft.MemoryStorage
+	wal         *wal.WAL
 
 	snapshotter      *snap.Snapshotter
 	snapshotterReady chan *snap.Snapshotter // signals when snapshotter is ready
@@ -87,16 +87,10 @@ var defaultSnapshotCount uint64 = 10000
 // commit channel, followed by a nil message (to indicate the channel is
 // current), then new log entries. To shutdown, close proposeC and read errorC.
 func newRaftNode(id int, peers []string, join bool, getSnapshot func() ([]byte, error), proposeC <-chan string,
-	confChangeC <-chan raftpb.ConfChange, db *grocksdb.DB,
+	confChangeC <-chan raftpb.ConfChange,
 ) (<-chan *commit, <-chan error, <-chan *snap.Snapshotter) {
 	commitC := make(chan *commit)
 	errorC := make(chan error)
-
-	logger := newLogger()
-	storage, err := NewRocksDBStorage(db, logger)
-	if err != nil {
-		log.Fatalf("failed to create rocksdb storage: %v", err)
-	}
 
 	rc := &raftNode{
 		proposeC:    proposeC,
@@ -106,16 +100,18 @@ func newRaftNode(id int, peers []string, join bool, getSnapshot func() ([]byte, 
 		id:          id,
 		peers:       peers,
 		join:        join,
+		waldir:      fmt.Sprintf("store-%d", id),
 		snapdir:     fmt.Sprintf("store-%d-snap", id),
 		getSnapshot: getSnapshot,
 		snapCount:   defaultSnapshotCount,
 		stopc:       make(chan struct{}),
 		httpstopc:   make(chan struct{}),
 		httpdonec:   make(chan struct{}),
-		logger:      logger,
-		storage:     storage,
+
+		logger: newLogger(),
 
 		snapshotterReady: make(chan *snap.Snapshotter, 1),
+		// rest of structure populated after WAL replay
 	}
 	go rc.startRaft()
 	return commitC, errorC, rc.snapshotterReady
@@ -135,11 +131,21 @@ func newLogger(options ...zap.Option) *zap.Logger {
 }
 
 func (rc *raftNode) saveSnap(snap raftpb.Snapshot) error {
-	// save the snapshot file before writing the snapshot to the storage.
+	walSnap := walpb.Snapshot{
+		Index:     snap.Metadata.Index,
+		Term:      snap.Metadata.Term,
+		ConfState: &snap.Metadata.ConfState,
+	}
+	// save the snapshot file before writing the snapshot to the wal.
+	// This makes it possible for the snapshot file to become orphaned, but prevents
+	// a WAL snapshot entry from having no corresponding snapshot file.
 	if err := rc.snapshotter.SaveSnap(snap); err != nil {
 		return err
 	}
-	return rc.storage.ApplySnapshot(snap)
+	if err := rc.wal.SaveSnapshot(walSnap); err != nil {
+		return err
+	}
+	return rc.wal.ReleaseLockTo(snap.Metadata.Index)
 }
 
 func (rc *raftNode) entriesToApply(ents []raftpb.Entry) (nents []raftpb.Entry) {
@@ -209,6 +215,69 @@ func (rc *raftNode) publishEntries(ents []raftpb.Entry) (<-chan struct{}, bool) 
 	return applyDoneC, true
 }
 
+func (rc *raftNode) loadSnapshot() *raftpb.Snapshot {
+	if wal.Exist(rc.waldir) {
+		walSnaps, err := wal.ValidSnapshotEntries(rc.logger, rc.waldir)
+		if err != nil {
+			log.Fatalf("store: error listing snapshots (%v)", err)
+		}
+		snapshot, err := rc.snapshotter.LoadNewestAvailable(walSnaps)
+		if err != nil && !errors.Is(err, snap.ErrNoSnapshot) {
+			log.Fatalf("store: error loading snapshot (%v)", err)
+		}
+		return snapshot
+	}
+	return &raftpb.Snapshot{}
+}
+
+// openWAL returns a WAL ready for reading.
+func (rc *raftNode) openWAL(snapshot *raftpb.Snapshot) *wal.WAL {
+	if !wal.Exist(rc.waldir) {
+		if err := os.Mkdir(rc.waldir, 0o750); err != nil {
+			log.Fatalf("store: cannot create dir for wal (%v)", err)
+		}
+
+		w, err := wal.Create(newLogger(), rc.waldir, nil)
+		if err != nil {
+			log.Fatalf("store: create wal error (%v)", err)
+		}
+		w.Close()
+	}
+
+	walsnap := walpb.Snapshot{}
+	if snapshot != nil {
+		walsnap.Index, walsnap.Term = snapshot.Metadata.Index, snapshot.Metadata.Term
+	}
+	log.Printf("loading WAL at term %d and index %d", walsnap.Term, walsnap.Index)
+	w, err := wal.Open(newLogger(), rc.waldir, walsnap)
+	if err != nil {
+		log.Fatalf("store: error loading wal (%v)", err)
+	}
+
+	return w
+}
+
+// replayWAL replays WAL entries into the raft instance.
+func (rc *raftNode) replayWAL() *wal.WAL {
+	log.Printf("replaying WAL of member %d", rc.id)
+	snapshot := rc.loadSnapshot()
+	w := rc.openWAL(snapshot)
+	_, st, ents, err := w.ReadAll()
+	if err != nil {
+		log.Fatalf("store: failed to read WAL (%v)", err)
+	}
+	rc.raftStorage = raft.NewMemoryStorage()
+	if snapshot != nil {
+		rc.raftStorage.ApplySnapshot(*snapshot)
+	}
+	rc.raftStorage.SetHardState(st)
+
+	// append to storage so raft starts at the right place in log
+	rc.raftStorage.Append(ents)
+
+	return w
+}
+
 func (rc *raftNode) writeError(err error) {
 	rc.stopHTTP()
 	close(rc.commitC)
@@ -223,7 +292,12 @@ func (rc *raftNode) startRaft() {
 			log.Fatalf("store: cannot create dir for snapshot (%v)", err)
 		}
 	}
-	rc.snapshotter = snap.New(rc.logger, rc.snapdir)
+	rc.snapshotter = snap.New(newLogger(), rc.snapdir)
+
+	oldwal := wal.Exist(rc.waldir)
+	rc.wal = rc.replayWAL()
+
+	// signal replay has finished
 	rc.snapshotterReady <- rc.snapshotter
 
 	rpeers := make([]raft.Peer, len(rc.peers))
@@ -234,13 +308,17 @@ func (rc *raftNode) startRaft() {
 		ID:                        uint64(rc.id),
 		ElectionTick:              10,
 		HeartbeatTick:             1,
-		Storage:                   rc.storage,
+		Storage:                   rc.raftStorage,
 		MaxSizePerMsg:             1024 * 1024,
 		MaxInflightMsgs:           256,
 		MaxUncommittedEntriesSize: 1 << 30,
 	}
 
-	rc.node = raft.RestartNode(c)
+	if oldwal || rc.join {
+		rc.node = raft.RestartNode(c)
+	} else {
+		rc.node = raft.StartNode(c, rpeers)
+	}
 
 	rc.transport = &rafthttp.Transport{
 		Logger:      rc.logger,
@@ -316,7 +394,7 @@ func (rc *raftNode) maybeTriggerSnapshot(applyDoneC <-chan struct{}) {
 	if err != nil {
 		log.Panic(err)
 	}
-	snap, err := rc.storage.CreateSnapshot(rc.appliedIndex, &rc.confState, data)
+	snap, err := rc.raftStorage.CreateSnapshot(rc.appliedIndex, &rc.confState, data)
 	if err != nil {
 		panic(err)
 	}
@@ -328,7 +406,7 @@ func (rc *raftNode) maybeTriggerSnapshot(applyDoneC <-chan struct{}) {
 	if rc.appliedIndex > snapshotCatchUpEntriesN {
 		compactIndex = rc.appliedIndex - snapshotCatchUpEntriesN
 	}
-	if err := rc.storage.Compact(compactIndex); err != nil {
+	if err := rc.raftStorage.Compact(compactIndex); err != nil {
 		if !errors.Is(err, raft.ErrCompacted) {
 			panic(err)
 		}
@@ -340,13 +418,15 @@ func (rc *raftNode) maybeTriggerSnapshot(applyDoneC <-chan struct{}) {
 }
 
 func (rc *raftNode) serveChannels() {
-	snap, err := rc.storage.Snapshot()
+	snap, err := rc.raftStorage.Snapshot()
 	if err != nil {
 		panic(err)
 	}
 	rc.confState = snap.Metadata.ConfState
 	rc.snapshotIndex = snap.Metadata.Index
 	rc.appliedIndex = snap.Metadata.Index
+
+	defer rc.wal.Close()
 
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
@@ -387,23 +467,17 @@ func (rc *raftNode) serveChannels() {
 
 		// store raft entries to wal, then publish over commit channel
 		case rd := <-rc.node.Ready():
-			if !raft.IsEmptyHardState(rd.HardState) {
-				if err := rc.storage.SetHardState(rd.HardState); err != nil {
-					log.Fatalf("failed to save hard state: %v", err)
-				}
-			}
-
 			// Must save the snapshot file and WAL snapshot entry before saving any other entries
 			// or hardstate to ensure that recovery after a snapshot restore is possible.
 			if !raft.IsEmptySnap(rd.Snapshot) {
-				if err := rc.storage.ApplySnapshot(rd.Snapshot); err != nil {
-					log.Fatalf("failed to apply snapshot: %v", err)
-				}
+				rc.saveSnap(rd.Snapshot)
+			}
+			rc.wal.Save(rd.HardState, rd.Entries)
+			if !raft.IsEmptySnap(rd.Snapshot) {
+				rc.raftStorage.ApplySnapshot(rd.Snapshot)
 				rc.publishSnapshot(rd.Snapshot)
 			}
-			if err := rc.storage.AppendEntries(rd.Entries); err != nil {
-				log.Fatalf("failed to append entries: %v", err)
-			}
+			rc.raftStorage.Append(rd.Entries)
 			rc.transport.Send(rc.processMessages(rd.Messages))
 			applyDoneC, ok := rc.publishEntries(rc.entriesToApply(rd.CommittedEntries))
 			if !ok {

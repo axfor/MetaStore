@@ -1,0 +1,548 @@
+package main
+
+import (
+	"bytes"
+	"encoding/binary"
+	"fmt"
+	"sync"
+
+	"github.com/linxGnu/grocksdb"
+	"go.etcd.io/raft/v3"
+	"go.etcd.io/raft/v3/raftpb"
+)
+
+const (
+	raftLogPrefix    = "raft_log_"
+	hardStateKey     = "hard_state"
+	snapshotKey      = "snapshot_meta"
+	firstIndexKey    = "first_index" // Key to store the first index in WAL
+)
+
+// RocksDBStorage implements raft.Storage interface backed by RocksDB.
+type RocksDBStorage struct {
+	db      *grocksdb.DB
+	wo      *grocksdb.WriteOptions
+	ro      *grocksdb.ReadOptions
+	nodeID  string // Unique identifier for this node's data within the DB
+	mu      sync.RWMutex
+}
+
+// NewRocksDBStorage creates a new Storage implementation using RocksDB.
+// It requires an already opened, writable grocksdb.DB instance and a unique nodeID.
+func NewRocksDBStorage(db *grocksdb.DB, nodeID string) *RocksDBStorage {
+	wo := grocksdb.NewDefaultWriteOptions()
+	ro := grocksdb.NewDefaultReadOptions()
+
+	// Ensure firstIndex is initialized if not present
+	storage := &RocksDBStorage{
+		db:     db,
+		wo:     wo,
+		ro:     ro,
+		nodeID: nodeID,
+	}
+
+	// Check if firstIndex exists, if not, initialize it
+	// This is crucial for determining the start of the log.
+	firstIndex, err := storage.getFirstIndex()
+	if err != nil || firstIndex == 0 {
+		// Initialize firstIndex to 1 if not found or is zero.
+		// Raft logs typically start at index 1.
+		storage.setFirstIndex(1)
+	}
+
+	return storage
+}
+
+// prefixedKey generates a key for a given key type and nodeID.
+func (s *RocksDBStorage) prefixedKey(key string) []byte {
+	return []byte(fmt.Sprintf("%s_%s", s.nodeID, key))
+}
+
+// logKey generates a key for storing a raft log entry.
+func (s *RocksDBStorage) logKey(index uint64) []byte {
+	buf := make([]byte, 8)
+	binary.BigEndian.PutUint64(buf, index)
+	return bytes.Join([][]byte{s.prefixedKey(raftLogPrefix), buf}, []byte("_"))
+}
+
+// InitialState implements the raft.Storage interface.
+func (s *RocksDBStorage) InitialState() (raftpb.HardState, raftpb.ConfState, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var hardState raftpb.HardState
+	var confState raftpb.ConfState
+
+	hsData, err := s.db.Get(s.ro, s.prefixedKey(hardStateKey))
+	if err != nil {
+		return hardState, confState, err
+	}
+	defer hsData.Free()
+
+	if hsData.Size() > 0 {
+		if err := hardState.Unmarshal(hsData.Data()); err != nil {
+			return hardState, confState, err
+		}
+	}
+
+	// ConfState is typically derived from the latest configuration in the log
+	// or from the last applied snapshot. For simplicity here, we assume it's managed
+	// externally or derived when needed. Raft node usually handles ConfState updates.
+	// If you store ConfState in RocksDB, you would retrieve it similarly to HardState.
+	// For this basic implementation, we return an empty ConfState.
+	// A production implementation should correctly manage and retrieve ConfState.
+
+	return hardState, confState, nil
+}
+
+// Entries implements the raft.Storage interface.
+func (s *RocksDBStorage) Entries(lo, hi, maxSize uint64) ([]raftpb.Entry, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if lo > hi {
+		return nil, raft.ErrUnavailable
+	}
+
+	// Check if requested range is available
+	firstIndex, err := s.FirstIndex()
+	if err != nil {
+		return nil, err
+	}
+	lastIndex, err := s.LastIndex()
+	if err != nil {
+		return nil, err
+	}
+
+	if lo < firstIndex {
+		return nil, raft.ErrCompacted
+	}
+	if hi > lastIndex+1 {
+		return nil, raft.ErrUnavailable
+	}
+
+	var ents []raftpb.Entry
+	size := uint64(0)
+
+	for i := lo; i < hi; i++ {
+		key := s.logKey(i)
+		data, err := s.db.Get(s.ro, key)
+		if err != nil {
+			return nil, err
+		}
+
+		if data.Size() == 0 {
+			data.Free()
+			return nil, raft.ErrUnavailable // Should not happen if lo/hi are correct
+		}
+
+		var ent raftpb.Entry
+		if err := ent.Unmarshal(data.Data()); err != nil {
+			data.Free()
+			return nil, err
+		}
+		data.Free()
+
+		size += uint64(ent.Size())
+		if size > maxSize && len(ents) > 0 {
+			// If maxSize is exceeded and we have at least one entry, return what we have.
+			// This adheres to the contract of limiting by maxSize.
+			// The caller (Raft) handles this scenario.
+			break
+		}
+
+		ents = append(ents, ent)
+	}
+
+	return ents, nil
+}
+
+// Term implements the raft.Storage interface.
+func (s *RocksDBStorage) Term(index uint64) (uint64, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	firstIndex, err := s.FirstIndex()
+	if err != nil {
+		return 0, err
+	}
+	lastIndex, err := s.LastIndex()
+	if err != nil {
+		return 0, err
+	}
+
+	if index < firstIndex {
+		return 0, raft.ErrCompacted
+	}
+	if index > lastIndex {
+		return 0, raft.ErrUnavailable
+	}
+
+	key := s.logKey(index)
+	data, err := s.db.Get(s.ro, key)
+	if err != nil {
+		return 0, err
+	}
+	defer data.Free()
+
+	if data.Size() == 0 {
+		return 0, raft.ErrUnavailable
+	}
+
+	var ent raftpb.Entry
+	if err := ent.Unmarshal(data.Data()); err != nil {
+		return 0, err
+	}
+
+	return ent.Term, nil
+}
+
+// LastIndex implements the raft.Storage interface.
+func (s *RocksDBStorage) LastIndex() (uint64, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Iterate backwards from a high number to find the last entry.
+	// A more efficient approach in a real implementation would be to store the last index.
+	// For simplicity, we iterate. Consider storing last index separately for performance.
+	// Or use RocksDB's iterator to seek to the last key in the log prefix range.
+	// Let's use an iterator for better performance.
+
+	opts := grocksdb.NewDefaultReadOptions()
+	iter := s.db.NewIterator(opts)
+	defer iter.Close()
+
+	prefix := s.prefixedKey(raftLogPrefix)
+	iter.SeekForPrev(prefix) // Seek to the last key <= prefix, which might overshoot
+
+	// Correct approach: Seek to the end of the prefix range
+	// We can seek to the prefix and then iterate to the last key with that prefix.
+	iter.Seek(prefix)
+	if !iter.Valid() {
+		// No log entries found, return firstIndex - 1
+		firstIndex, err := s.getFirstIndex()
+		if err != nil {
+			return 0, err
+		}
+		// If firstIndex is 1, lastIndex before any entries is 0.
+		// But Raft typically starts at 1. Let's return firstIndex - 1 or 0.
+		// Consistent with FirstIndex implementation.
+		if firstIndex > 0 {
+			return firstIndex - 1, nil
+		}
+		return 0, nil
+	}
+
+	// Iterate to the last key that matches the prefix
+	var lastKey []byte
+	for iter.Valid() && bytes.HasPrefix(iter.Key().Data(), prefix) {
+		lastKey = cloneBytes(iter.Key().Data()) // Clone because iter.Key() is only valid until next call
+		iter.Next()
+	}
+
+	if lastKey == nil {
+		// Fallback if iterator logic is flawed
+		firstIndex, err := s.getFirstIndex()
+		if err != nil {
+			return 0, err
+		}
+		if firstIndex > 0 {
+			return firstIndex - 1, nil
+		}
+		return 0, nil
+	}
+
+	// Parse index from key: <nodeID>_raft_log_<index>
+	parts := bytes.Split(lastKey, []byte("_"))
+	if len(parts) < 4 {
+		return 0, fmt.Errorf("invalid log key format")
+	}
+	indexStr := parts[3]
+	index, err := binaryReadUint64BigEndian(indexStr)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse index from key: %v", err)
+	}
+
+	return index, nil
+}
+
+
+// FirstIndex implements the raft.Storage interface.
+func (s *RocksDBStorage) FirstIndex() (uint64, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.getFirstIndex()
+}
+
+// getFirstIndex retrieves the first index without acquiring the lock.
+func (s *RocksDBStorage) getFirstIndex() (uint64, error) {
+	fiData, err := s.db.Get(s.ro, s.prefixedKey(firstIndexKey))
+	if err != nil {
+		return 0, err
+	}
+	defer fiData.Free()
+
+	if fiData.Size() == 0 {
+		// If not initialized, it should have been in NewRocksDBStorage.
+		// Return 1 as default raft start index.
+		return 1, nil
+	}
+
+	return binaryReadUint64BigEndian(fiData.Data())
+}
+
+// setFirstIndex sets the first index. Assumes lock is held or not needed.
+func (s *RocksDBStorage) setFirstIndex(index uint64) error {
+	buf := make([]byte, 8)
+	binary.BigEndian.PutUint64(buf, index)
+	return s.db.Put(s.wo, s.prefixedKey(firstIndexKey), buf)
+}
+
+
+// Snapshot implements the raft.Storage interface.
+func (s *RocksDBStorage) Snapshot() (raftpb.Snapshot, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var snapshot raftpb.Snapshot
+
+	snapData, err := s.db.Get(s.ro, s.prefixedKey(snapshotKey))
+	if err != nil {
+		return snapshot, err
+	}
+	defer snapData.Free()
+
+	if snapData.Size() > 0 {
+		if err := snapshot.Unmarshal(snapData.Data()); err != nil {
+			return snapshot, err
+		}
+	} else {
+		// Return an empty snapshot with index 0 if none exists.
+		// Raft handles this appropriately.
+		snapshot.Metadata.Index = 0
+		snapshot.Metadata.Term = 0
+		// Data would be application-specific and likely empty initially.
+	}
+
+	return snapshot, nil
+}
+
+// --- Additional Methods for Raft Log Management (Not part of raft.Storage but useful) ---
+
+// StoreEntries stores a batch of entries. This is typically called by the application
+// or raft node when new entries are appended.
+func (s *RocksDBStorage) StoreEntries(entries []raftpb.Entry) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if len(entries) == 0 {
+		return nil
+	}
+
+	wb := grocksdb.NewWriteBatch()
+	defer wb.Destroy()
+
+	for _, ent := range entries {
+		key := s.logKey(ent.Index)
+		data, err := ent.Marshal()
+		if err != nil {
+			return err
+		}
+		wb.Put(key, data)
+	}
+
+	return s.db.Write(s.wo, wb)
+}
+
+// SetHardState saves the current HardState.
+func (s *RocksDBStorage) SetHardState(st raftpb.HardState) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	data, err := st.Marshal()
+	if err != nil {
+		return err
+	}
+	return s.db.Put(s.wo, s.prefixedKey(hardStateKey), data)
+}
+
+// ApplySnapshot overwrites the contents of this Storage object with
+// those of the given snapshot. It also updates the first index.
+func (s *RocksDBStorage) ApplySnapshot(snap raftpb.Snapshot) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// This is a simplified version. A full implementation would need to:
+	// 1. Delete all existing log entries.
+	// 2. Store the snapshot metadata.
+	// 3. Update the first index to be snap.Metadata.Index + 1.
+	// 4. Update HardState to at least the snapshot's term and vote.
+
+	wb := grocksdb.NewWriteBatch()
+	defer wb.Destroy()
+
+	// 1. Delete log entries (simplified: would ideally delete range)
+	// For simplicity, we just update firstIndex. A real impl should clean up old logs.
+	// Marking old logs as compacted implicitly by changing firstIndex is common.
+
+	// 2. Store snapshot metadata
+	snapData, err := snap.Marshal()
+	if err != nil {
+		return err
+	}
+	wb.Put(s.prefixedKey(snapshotKey), snapData)
+
+	// 3. Update first index
+	if err := s.setFirstIndexWithWB(wb, snap.Metadata.Index+1); err != nil {
+		return err
+	}
+
+	// 4. Update HardState if necessary (example logic)
+	hsData, err := s.db.Get(s.ro, s.prefixedKey(hardStateKey))
+	if err != nil {
+		// If error getting HardState, proceed with snapshot's term/vote for HardState
+		newHS := raftpb.HardState{
+			Term:   snap.Metadata.Term,
+			Vote:   0, // Vote is reset, Raft will handle re-election
+			Commit: snap.Metadata.Index,
+		}
+		hsBytes, err := newHS.Marshal()
+		if err != nil {
+			return err
+		}
+		wb.Put(s.prefixedKey(hardStateKey), hsBytes)
+	} else {
+		defer hsData.Free()
+		var currentHS raftpb.HardState
+		if hsData.Size() > 0 {
+			if err := currentHS.Unmarshal(hsData.Data()); err != nil {
+				return err
+			}
+		}
+		// Only update HardState if snapshot's term is greater or equal
+		// and commit is higher.
+		updated := false
+		if snap.Metadata.Term > currentHS.Term {
+			currentHS.Term = snap.Metadata.Term
+			currentHS.Vote = 0 // Reset vote on term change
+			updated = true
+		}
+		if snap.Metadata.Index > currentHS.Commit {
+			currentHS.Commit = snap.Metadata.Index
+			updated = true
+		}
+		if updated {
+			hsBytes, err := currentHS.Marshal()
+			if err != nil {
+				return err
+			}
+			wb.Put(s.prefixedKey(hardStateKey), hsBytes)
+		}
+	}
+
+	return s.db.Write(s.wo, wb)
+}
+
+// setFirstIndexWithWB sets the first index using a provided WriteBatch.
+func (s *RocksDBStorage) setFirstIndexWithWB(wb *grocksdb.WriteBatch, index uint64) error {
+	buf := make([]byte, 8)
+	binary.BigEndian.PutUint64(buf, index)
+	wb.Put(s.prefixedKey(firstIndexKey), buf)
+	return nil
+}
+
+// Compact discards all log entries prior to compactIndex.
+// It is the application's responsibility to ensure compactIndex is not greater than Applied.
+func (s *RocksDBStorage) Compact(compactIndex uint64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	firstIndex, err := s.getFirstIndex()
+	if err != nil {
+		return err
+	}
+	if compactIndex <= firstIndex {
+		return nil // Nothing to compact
+	}
+
+	// In a real implementation, you might delete the actual log entries from RocksDB up to compactIndex.
+	// For simplicity, and to align with some storage strategies, we just update the firstIndex.
+	// The raft library will handle not requesting entries before firstIndex.
+	// A production system should consider actual deletion for space efficiency.
+	// Here, we just update the marker.
+
+	// Update firstIndex
+	if err := s.setFirstIndex(compactIndex); err != nil {
+		return err
+	}
+
+	// Optional: Actually delete old entries (more complex, requires batch delete or iterator)
+	// This is a simplified marker-based approach.
+	/*
+	   wb := grocksdb.NewWriteBatch()
+	   defer wb.Destroy()
+	   for i := firstIndex; i < compactIndex; i++ {
+	       wb.Delete(s.logKey(i))
+	   }
+	   // Also update firstIndex in the same batch
+	   s.setFirstIndexWithWB(wb, compactIndex)
+	   return s.db.Write(s.wo, wb)
+	*/
+
+	return nil
+}
+
+
+// --- Helper Functions ---
+
+func cloneBytes(b []byte) []byte {
+    return append([]byte(nil), b...)
+}
+
+func binaryReadUint64BigEndian(b []byte) (uint64, error) {
+	if len(b) < 8 {
+		return 0, fmt.Errorf("buffer too small to read uint64")
+	}
+	return binary.BigEndian.Uint64(b), nil
+}
+
+
+// Example usage function (not part of the interface)
+func ExampleUsage() {
+	// 1. Open RocksDB
+	// It's crucial to configure RocksDB appropriately for WAL and performance.
+	// See RocksDB documentation for production settings.
+	bbto := grocksdb.NewDefaultBlockBasedTableOptions()
+	bbto.SetBlockCache(grocksdb.NewLRUCache(3 << 30)) // 3GB block cache
+
+	opts := grocksdb.NewDefaultOptions()
+	opts.SetBlockBasedTableFactory(bbto)
+	opts.SetCreateIfMissing(true)
+	// Enable WAL for durability
+	opts.SetWalEnabled(true)
+
+	db, err := grocksdb.OpenDb(opts, "/tmp/raft_rocksdb_example")
+	if err != nil {
+		panic(err)
+	}
+	defer db.Close()
+
+	// 2. Create Storage
+	nodeID := "node1"
+	storage := NewRocksDBStorage(db, nodeID)
+
+	// 3. Use with raft.Config
+	// c := &raft.Config{
+	//     ID:              0x01,
+	//     ElectionTick:    10,
+	//     HeartbeatTick:   1,
+	//     Storage:         storage,
+	//     MaxSizePerMsg:   4096,
+	//     MaxInflightMsgs: 256,
+	// }
+
+	// 4. Interact with storage
+	// ... (e.g., store entries, set hardstate, compact)
+
+	fmt.Println("RocksDBStorage created and ready.")
+}

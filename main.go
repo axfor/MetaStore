@@ -16,11 +16,8 @@ package main
 
 import (
 	"flag"
-	"fmt"
-	"log"
 	"strings"
 
-	"github.com/linxGnu/grocksdb"
 	"go.etcd.io/raft/v3/raftpb"
 )
 
@@ -31,16 +28,6 @@ func main() {
 	join := flag.Bool("join", false, "join an existing cluster")
 	flag.Parse()
 
-	// RocksDB setup
-	dbPath := fmt.Sprintf("store-%d.db", *id)
-	opts := grocksdb.NewDefaultOptions()
-	opts.SetCreateIfMissing(true)
-	db, err := grocksdb.OpenDb(opts, dbPath)
-	if err != nil {
-		log.Fatalf("failed to open rocksdb: %v", err)
-	}
-	defer db.Close()
-
 	proposeC := make(chan string)
 	defer close(proposeC)
 	confChangeC := make(chan raftpb.ConfChange)
@@ -49,13 +36,9 @@ func main() {
 	// raft provides a commit stream for the proposals from the http api
 	var kvs *kvstore
 	getSnapshot := func() ([]byte, error) { return kvs.getSnapshot() }
-	commitC, errorC, snapshotterReady := newRaftNode(*id, strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC, db)
+	commitC, errorC, snapshotterReady := newRaftNode(*id, strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC)
 
-	storage, err := NewRocksDBStorage(db, newLogger())
-	if err != nil {
-		log.Fatalf("failed to create rocksdb storage: %v", err)
-	}
-	kvs = newKVStore(<-snapshotterReady, proposeC, commitC, errorC, storage)
+	kvs = newKVStore(<-snapshotterReady, proposeC, commitC, errorC)
 
 	// the key-value http handler will propose updates to raft
 	serveHTTPKVAPI(kvs, *kvport, confChangeC, errorC)
