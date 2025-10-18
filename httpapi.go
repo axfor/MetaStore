@@ -23,9 +23,15 @@ import (
 	"go.etcd.io/raft/v3/raftpb"
 )
 
+// kvStoreAPI is an interface that both kvstore and kvstoreRocks implement
+type kvStoreAPI interface {
+	Lookup(key string) (string, bool)
+	Propose(k string, v string)
+}
+
 // Handler for a http based key-value store backed by raft
 type httpKVAPI struct {
-	store       *kvstore
+	store       kvStoreAPI
 	confChangeC chan<- raftpb.ConfChange
 }
 
@@ -101,7 +107,7 @@ func (h *httpKVAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // serveHTTPKVAPI starts a key-value server with a GET/PUT API and listens.
-func serveHTTPKVAPI(kv *kvstore, port int, confChangeC chan<- raftpb.ConfChange, errorC <-chan error) {
+func serveHTTPKVAPI(kv kvStoreAPI, port int, confChangeC chan<- raftpb.ConfChange, errorC <-chan error) {
 	srv := http.Server{
 		Addr: ":" + strconv.Itoa(port),
 		Handler: &httpKVAPI{

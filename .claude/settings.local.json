@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go mod tidy:*)",
+      "Bash(go get:*)",
+      "Bash(go build:*)",
+      "Bash(go version:*)",
+      "Bash(del rocksDB.gos)",
+      "Bash(go list:*)",
+      "Bash(go env:*)",
+      "Bash(./store.exe:*)",
+      "Bash(go test:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(cmd.exe //c \"taskkill /F /PID 4216 & taskkill /F /PID 6476 & taskkill /F /PID 4524\")"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
