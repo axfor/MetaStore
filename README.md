@@ -1,31 +1,88 @@
-# store
+# Distributed KV Store with RocksDB Support
 
-store is an example usage of etcd's [raft library](https://github.com/etcd-io/raft). It provides a simple REST API for a key-value store cluster backed by the [Raft][raft] consensus algorithm.
+A lightweight distributed key-value store based on the Raft consensus algorithm, with support for both in-memory and RocksDB persistent storage.
+
+This is an enhanced version of etcd's [raft example](https://github.com/etcd-io/raft) with added RocksDB backend support for full persistence.
 
 [raft]: http://raftconsensus.github.io/
 
-## Getting Started
+## Features
 
-### Building store
+- **Raft Consensus**: Built on etcd's battle-tested raft library
+- **High Availability**: Tolerates up to (N-1)/2 node failures in an N-node cluster
+- **Dual Storage Modes**:
+  - **Memory + WAL**: Default mode with WAL-based persistence (fast, suitable for most use cases)
+  - **RocksDB**: Full persistent storage backend (requires RocksDB C++ library)
+- **HTTP API**: Simple REST API for key-value operations
+- **Dynamic Membership**: Add/remove nodes without downtime
+- **Snapshots**: Automatic log compaction via snapshots
+- **Single Binary**: Lightweight, easy to deploy
 
-Clone `etcd` to `<directory>/src/go.etcd.io/etcd`
+## Building
+
+### Default Build (Memory + WAL)
 
 ```sh
-export GOPATH=<directory>
-cd <directory>/src/go.etcd.io/etcd/contrib/store
 go build -o store
 ```
 
+This builds the store with memory + WAL storage (no external dependencies required).
+
+### RocksDB Build (Optional - Requires RocksDB C++ Library)
+
+**Prerequisites:**
+- Go 1.23 or higher
+- CGO enabled
+- RocksDB C++ library installed
+
+**Linux:**
+```sh
+# Install RocksDB
+sudo apt-get install librocksdb-dev  # Debian/Ubuntu
+# or
+sudo yum install rocksdb-devel       # RHEL/CentOS
+
+# Build with RocksDB support
+CGO_ENABLED=1 go build -tags=rocksdb -o store
+```
+
+**macOS:**
+```sh
+# Install RocksDB
+brew install rocksdb
+
+# Build with RocksDB support
+CGO_ENABLED=1 go build -tags=rocksdb -o store
+```
+
+**Windows:**
+```sh
+# Install RocksDB (use vcpkg or build from source)
+vcpkg install rocksdb:x64-windows
+
+# Build with RocksDB support
+$env:CGO_ENABLED=1
+go build -tags=rocksdb -o store.exe
+```
+
+## Getting Started
+
 ### Running single node store
 
-First start a single-member cluster of store:
+#### Memory + WAL Mode (Default)
 
 ```sh
 store --id 1 --cluster http://127.0.0.1:12379 --port 12380
 ```
 
+#### RocksDB Mode (if built with -tags=rocksdb)
+
+```sh
+store --id 1 --cluster http://127.0.0.1:12379 --port 12380 --rocksdb
+```
+
 Each store process maintains a single raft instance and a key-value server.
-The process's list of comma separated peers (--cluster), its raft ID index into the peer list (--id), and http key-value server port (--port) are passed through the command line.
+The process's list of comma separated peers (--cluster), its raft ID index into the peer list (--id), and HTTP key-value server port (--port) are passed through the command line.
 
 Next, store a value ("hello") to a key ("my-key"):
 
@@ -122,4 +179,93 @@ The raft server participates in consensus with its cluster peers.
 When the REST server submits a proposal, the raft server transmits the proposal to its peers.
 When raft reaches a consensus, the server publishes all committed updates over a commit channel.
 For store, this commit channel is consumed by the key-value store.
+
+## Storage Modes
+
+### Memory + WAL (Default)
+
+- **Persistence**: Write-Ahead Log (WAL) + periodic snapshots
+- **Storage Location**: `./store-{id}/` (WAL), `./store-{id}-snap/` (snapshots)
+- **Use Case**: Fast performance, suitable for most scenarios
+- **Data Loss**: Minimal (only uncommitted entries on crash)
+- **Recovery**: Fast snapshot + WAL replay
+
+### RocksDB Mode (Optional)
+
+- **Persistence**: Full persistent storage with RocksDB backend
+- **Storage Location**: `./store-{id}-rocksdb/` (RocksDB), `./store-{id}-snap/` (snapshots)
+- **Use Case**: When you need guaranteed persistence of all data
+- **Data Loss**: None (all data persisted to disk atomically)
+- **Recovery**: Direct from RocksDB (faster for large datasets)
+- **Requirements**: RocksDB C++ library, CGO enabled, built with `-tags=rocksdb`
+
+## Performance Considerations
+
+### Memory + WAL Mode
+- **Pros**: Faster reads/writes, lower latency, no external dependencies
+- **Cons**: Limited by available RAM for large datasets, slower recovery with large WAL
+
+### RocksDB Mode
+- **Pros**: Handles TB-scale datasets, faster recovery, guaranteed persistence, efficient compaction
+- **Cons**: Slightly higher latency due to disk I/O, requires RocksDB library and CGO
+
+## Command Line Options
+
+```
+--id int            Node ID (default: 1)
+--cluster string    Comma-separated list of cluster peer URLs (default: "http://127.0.0.1:9021")
+--port int          HTTP API port for key-value operations (default: 9121)
+--join              Join an existing cluster (default: false)
+--rocksdb           Use RocksDB storage (only available when built with -tags=rocksdb)
+```
+
+## Testing
+
+### Run All Tests (Default Build)
+
+```sh
+go test -v
+```
+
+### Run RocksDB Tests (Requires RocksDB)
+
+```sh
+CGO_ENABLED=1 go test -v -tags=rocksdb
+```
+
+### Run Specific Tests
+
+```sh
+# Single node test
+go test -v -run TestPutAndGetKeyValue
+
+# Cluster test
+go test -v -run TestProposeOnCommit
+
+# Snapshot test
+go test -v -run TestSnapshot
+
+# RocksDB storage test (requires -tags=rocksdb)
+CGO_ENABLED=1 go test -v -tags=rocksdb -run TestRocksDBStorage
+```
+
+## Fault Tolerance
+
+A cluster of **N** nodes can tolerate up to **(N-1)/2** failures:
+
+- 1 node: 0 failures (no fault tolerance)
+- 3 nodes: 1 failure
+- 5 nodes: 2 failures
+- 7 nodes: 3 failures
+
+## License
+
+Apache License 2.0 (inherited from etcd)
+
+## Credits
+
+- Based on [etcd/raft example](https://github.com/etcd-io/raft/tree/main/contrib/raftexample)
+- Built with [etcd/raft](https://github.com/etcd-io/raft) - Raft consensus library
+- Optional [grocksdb](https://github.com/linxGnu/grocksdb) - Go wrapper for RocksDB
+
 
