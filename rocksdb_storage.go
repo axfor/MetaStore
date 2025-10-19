@@ -42,11 +42,11 @@ const (
 // RocksDBStorage implements raft.Storage interface backed by RocksDB.
 // It provides persistent storage for raft logs, hard state, and snapshots.
 type RocksDBStorage struct {
-	db      *grocksdb.DB
-	wo      *grocksdb.WriteOptions
-	ro      *grocksdb.ReadOptions
-	nodeID  string // Unique identifier for this node's data within the DB
-	mu      sync.RWMutex
+	db     *grocksdb.DB
+	wo     *grocksdb.WriteOptions
+	ro     *grocksdb.ReadOptions
+	nodeID string // Unique identifier for this node's data within the DB
+	mu     sync.RWMutex
 
 	// Cache for performance
 	firstIndex uint64
@@ -240,6 +240,10 @@ func (s *RocksDBStorage) Term(index uint64) (uint64, error) {
 		if !raft.IsEmptySnap(snap) && snap.Metadata.Index == index {
 			return snap.Metadata.Term, nil
 		}
+		// For empty storage (no snapshot, no logs), return term 0
+		if index == 0 {
+			return 0, nil
+		}
 		return 0, raft.ErrCompacted
 	}
 
@@ -395,7 +399,8 @@ func (s *RocksDBStorage) CreateSnapshot(index uint64, cs *raftpb.ConfState, data
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if index <= s.firstIndex-1 {
+	// Allow creating snapshot at firstIndex-1 (for initial snapshot)
+	if index < s.firstIndex-1 {
 		return raftpb.Snapshot{}, raft.ErrSnapOutOfDate
 	}
 
@@ -640,9 +645,8 @@ func OpenRocksDB(path string) (*grocksdb.DB, error) {
 	opts.SetCreateIfMissing(true)
 	opts.SetCreateIfMissingColumnFamilies(true)
 
-	// Write settings for durability
-	opts.SetWalEnabled(true)
-	opts.SetManualWalFlush(false)
+	// Write settings for durability (WAL is enabled by default in RocksDB)
+	opts.SetManualWALFlush(false)
 
 	// Performance settings
 	opts.SetMaxBackgroundJobs(4)

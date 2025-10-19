@@ -13,7 +13,20 @@
       "Bash(netstat:*)",
       "Bash(findstr:*)",
       "Bash(taskkill:*)",
-      "Bash(cmd.exe //c \"taskkill /F /PID 4216 & taskkill /F /PID 6476 & taskkill /F /PID 4524\")"
+      "Bash(cmd.exe //c \"taskkill /F /PID 4216 & taskkill /F /PID 6476 & taskkill /F /PID 4524\")",
+      "Bash(go doc:*)",
+      "Bash(CGO_LDFLAGS=\"-framework Security -framework CoreFoundation\" go build:*)",
+      "Bash(xcrun --show-sdk-path:*)",
+      "Bash(xcrun --show-sdk-version:*)",
+      "Bash(MACOSX_DEPLOYMENT_TARGET=10.15 CGO_CFLAGS=\"-mmacosx-version-min=10.15\" CGO_LDFLAGS=\"-mmacosx-version-min=10.15\" go build:*)",
+      "Bash(CGO_LDFLAGS=\"-Wl,-weak_framework,Security\" go build:*)",
+      "Bash(CGO_LDFLAGS=\"-Wl,-U,_SecTrustCopyCertificateChain\" go build:*)",
+      "Bash(CGO_LDFLAGS=\"-Wl,-U,_SecTrustCopyCertificateChain\" go test:*)",
+      "Bash(./store:*)",
+      "Read(//private/tmp/**)",
+      "Bash(kill:*)",
+      "Bash(md5 store:*)",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []
