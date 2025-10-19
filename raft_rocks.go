@@ -288,6 +288,32 @@ func (rc *raftNodeRocks) startRaft() {
 		}
 	}
 
+	// Create an initial snapshot if none exists (for new clusters)
+	// This prevents "need non-empty snapshot" panic when leader tries to sync followers
+	if !oldNode && !rc.join {
+		go func() {
+			// Wait a bit for the node to be ready
+			time.Sleep(100 * time.Millisecond)
+
+			// Check if we already have a snapshot
+			snap, err := rc.raftStorage.Snapshot()
+			if err == nil && raft.IsEmptySnap(snap) {
+				log.Printf("creating initial snapshot for new cluster")
+				data, err := rc.getSnapshot()
+				if err != nil {
+					log.Printf("failed to get initial snapshot data: %v", err)
+					return
+				}
+
+				// Create initial snapshot at index 0
+				_, err = rc.raftStorage.CreateSnapshot(0, &rc.confState, data)
+				if err != nil {
+					log.Printf("failed to create initial snapshot: %v", err)
+				}
+			}
+		}()
+	}
+
 	go rc.serveRaft()
 	go rc.serveChannels()
 }

@@ -55,6 +55,8 @@ brew install rocksdb
 CGO_ENABLED=1 go build -tags=rocksdb -o store
 ```
 
+> **Note for macOS users**: If you encounter linking errors with Go 1.25+ on older SDK versions, see [ROCKSDB_BUILD_MACOS.md](ROCKSDB_BUILD_MACOS.md) for detailed troubleshooting steps.
+
 **Windows:**
 ```sh
 # Install RocksDB (use vcpkg or build from source)
@@ -233,6 +235,8 @@ go test -v
 CGO_ENABLED=1 go test -v -tags=rocksdb
 ```
 
+> **macOS users**: See [ROCKSDB_BUILD_MACOS.md](ROCKSDB_BUILD_MACOS.md) for SDK compatibility issues.
+
 ### Run Specific Tests
 
 ```sh
@@ -261,6 +265,14 @@ A cluster of **N** nodes can tolerate up to **(N-1)/2** failures:
 ## License
 
 Apache License 2.0 (inherited from etcd)
+
+## Documentation
+
+- [ROCKSDB_BUILD_MACOS.md](ROCKSDB_BUILD_MACOS.md) - macOS RocksDB 编译指南（包含 SDK 兼容性问题解决方案）
+- [ROCKSDB_TEST_GUIDE.md](ROCKSDB_TEST_GUIDE.md) - RocksDB 测试指南
+- [ROCKSDB_TEST_REPORT.md](ROCKSDB_TEST_REPORT.md) - RocksDB 测试报告
+- [QUICKSTART.md](QUICKSTART.md) - 快速开始指南
+- [IMPLEMENTATION.md](IMPLEMENTATION.md) - 实现细节
 
 ## Credits
 
