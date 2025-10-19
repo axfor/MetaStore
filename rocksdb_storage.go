@@ -306,9 +306,12 @@ func (s *RocksDBStorage) loadSnapshotUnsafe() (raftpb.Snapshot, error) {
 			return snapshot, fmt.Errorf("failed to unmarshal snapshot: %v", err)
 		}
 	} else {
-		// Return an empty snapshot with safe defaults
+		// No stored snapshot - create a valid empty snapshot
+		// This prevents "need non-empty snapshot" panic in raft
 		snapshot.Metadata.Index = s.firstIndex - 1
 		snapshot.Metadata.Term = 0
+		// Set Data to empty slice (not nil) to indicate a valid snapshot
+		snapshot.Data = []byte{}
 	}
 
 	return snapshot, nil

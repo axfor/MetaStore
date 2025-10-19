@@ -26,7 +26,10 @@
       "Read(//private/tmp/**)",
       "Bash(kill:*)",
       "Bash(md5 store:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(pkill -f \"store --id\")",
+      "Bash(__NEW_LINE__ sleep 2)",
+      "Bash(__NEW_LINE__ echo \"\")"
     ],
     "deny": [],
     "ask": []
