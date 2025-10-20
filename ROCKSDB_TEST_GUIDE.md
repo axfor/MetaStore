@@ -201,12 +201,12 @@ CGO_ENABLED=1 go test -v -tags=rocksdb -run Persistence
 CGO_ENABLED=1 go build -tags=rocksdb -o store-rocksdb
 
 # 6. 手动测试
-./store-rocksdb --id 1 --cluster http://127.0.0.1:12379 --port 12380 --rocksdb
+./metaStore-rocksdb --id 1 --cluster http://127.0.0.1:12379 --port 12380 --rocksdb
 curl -L http://127.0.0.1:12380/test -XPUT -d "rocks"
 curl -L http://127.0.0.1:12380/test
 
 # 7. 验证RocksDB数据目录
-ls -lh store-1-rocksdb/
+ls -lh data/1/
 # 应该看到RocksDB的SST文件和元数据
 ```
 

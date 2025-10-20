@@ -129,8 +129,10 @@ func TestRocksDBStorage_Term(t *testing.T) {
 	require.Equal(t, uint64(3), term)
 
 	// Test error cases
-	_, err = storage.Term(0)
-	require.Error(t, err)
+	// Term(0) should return 0 for empty storage (not an error)
+	term, err = storage.Term(0)
+	require.NoError(t, err)
+	require.Equal(t, uint64(0), term)
 
 	_, err = storage.Term(5)
 	require.Error(t, err)

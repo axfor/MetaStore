@@ -42,7 +42,7 @@ func main() {
 	if *useRocksDB {
 		// RocksDB mode
 		log.Println("Starting with RocksDB persistent storage")
-		dbPath := fmt.Sprintf("store-%d-rocksdb", *id)
+		dbPath := fmt.Sprintf("data/%d", *id)
 		db, err := OpenRocksDB(dbPath)
 		if err != nil {
 			log.Fatalf("Failed to open RocksDB: %v", err)

@@ -74,13 +74,17 @@ go build -tags=rocksdb -o store.exe
 #### Memory + WAL Mode (Default)
 
 ```sh
-store --id 1 --cluster http://127.0.0.1:12379 --port 12380
+metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380
 ```
 
 #### RocksDB Mode (if built with -tags=rocksdb)
 
 ```sh
-store --id 1 --cluster http://127.0.0.1:12379 --port 12380 --rocksdb
+# Create data directory first
+mkdir -p data
+
+# Start the node
+metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380 --rocksdb
 ```
 
 Each store process maintains a single raft instance and a key-value server.
@@ -140,9 +144,9 @@ Nodes can be added to or removed from a running cluster using requests to the RE
 
 For example, suppose we have a 3-node cluster that was started with the commands:
 ```sh
-store --id 1 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 12380
-store --id 2 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 22380
-store --id 3 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 32380
+metaStore --id 1 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 12380
+metaStore --id 2 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 22380
+metaStore --id 3 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 32380
 ```
 
 A fourth node with ID 4 can be added by issuing a POST:
@@ -152,7 +156,7 @@ curl -L http://127.0.0.1:12380/4 -XPOST -d http://127.0.0.1:42379
 
 Then the new node can be started as the others were, using the --join option:
 ```sh
-store --id 4 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379,http://127.0.0.1:42379 --port 42380 --join
+metaStore --id 4 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379,http://127.0.0.1:42379 --port 42380 --join
 ```
 
 The new node should join the cluster and be able to service key/value requests.
@@ -187,7 +191,7 @@ For store, this commit channel is consumed by the key-value store.
 ### Memory + WAL (Default)
 
 - **Persistence**: Write-Ahead Log (WAL) + periodic snapshots
-- **Storage Location**: `./store-{id}/` (WAL), `./store-{id}-snap/` (snapshots)
+- **Storage Location**: `./metaStore-{id}/` (WAL), `./metaStore-{id}-snap/` (snapshots)
 - **Use Case**: Fast performance, suitable for most scenarios
 - **Data Loss**: Minimal (only uncommitted entries on crash)
 - **Recovery**: Fast snapshot + WAL replay
@@ -195,11 +199,12 @@ For store, this commit channel is consumed by the key-value store.
 ### RocksDB Mode (Optional)
 
 - **Persistence**: Full persistent storage with RocksDB backend
-- **Storage Location**: `./store-{id}-rocksdb/` (RocksDB), `./store-{id}-snap/` (snapshots)
+- **Storage Location**: `./data/{id}/` (RocksDB + snapshots in `./data/{id}/snap/`)
 - **Use Case**: When you need guaranteed persistence of all data
 - **Data Loss**: None (all data persisted to disk atomically)
 - **Recovery**: Direct from RocksDB (faster for large datasets)
 - **Requirements**: RocksDB C++ library, CGO enabled, built with `-tags=rocksdb`
+- **Note**: The `data/` parent directory must exist before starting the node
 
 ## Performance Considerations
 
