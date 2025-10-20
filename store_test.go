@@ -64,8 +64,7 @@ func newCluster(n int) *cluster {
 	}
 
 	for i := range clus.peers {
-		os.RemoveAll(fmt.Sprintf("store-%d", i+1))
-		os.RemoveAll(fmt.Sprintf("store-%d-snap", i+1))
+		os.RemoveAll(fmt.Sprintf("data/%d", i+1))
 		clus.proposeC[i] = make(chan string, 1)
 		clus.confChangeC[i] = make(chan raftpb.ConfChange, 1)
 		fn, snapshotTriggeredC := getSnapshotFn()
@@ -90,8 +89,7 @@ func (clus *cluster) Close() (err error) {
 			err = erri
 		}
 		// clean intermediates
-		os.RemoveAll(fmt.Sprintf("store-%d", i+1))
-		os.RemoveAll(fmt.Sprintf("store-%d-snap", i+1))
+		os.RemoveAll(fmt.Sprintf("data/%d", i+1))
 	}
 	return err
 }
@@ -226,11 +224,9 @@ func TestAddNewNode(t *testing.T) {
 	clus := newCluster(3)
 	defer clus.closeNoErrors(t)
 
-	os.RemoveAll("store-4")
-	os.RemoveAll("store-4-snap")
+	os.RemoveAll("data/4")
 	defer func() {
-		os.RemoveAll("store-4")
-		os.RemoveAll("store-4-snap")
+		os.RemoveAll("data/4")
 	}()
 
 	newNodeURL := "http://127.0.0.1:10004"

@@ -12,7 +12,7 @@ go build -o store.exe
 ## 2. 启动单节点集群
 
 ```bash
-./store.exe --id 1 --cluster http://127.0.0.1:12379 --port 12380
+./metaStore.exe --id 1 --cluster http://127.0.0.1:12379 --port 12380
 ```
 
 你会看到类似的输出：
@@ -58,21 +58,21 @@ curl -L http://127.0.0.1:12380/nonexistent
 
 **终端 1:**
 ```bash
-./store.exe --id 1 \
+./metaStore.exe --id 1 \
   --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 \
   --port 12380
 ```
 
 **终端 2:**
 ```bash
-./store.exe --id 2 \
+./metaStore.exe --id 2 \
   --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 \
   --port 22380
 ```
 
 **终端 3:**
 ```bash
-./store.exe --id 3 \
+./metaStore.exe --id 3 \
   --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 \
   --port 32380
 ```
@@ -122,7 +122,7 @@ curl -L http://127.0.0.1:32380/fault-test
 
 重新启动节点2：
 ```bash
-./store.exe --id 2 \
+./metaStore.exe --id 2 \
   --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 \
   --port 22380
 ```
@@ -145,7 +145,7 @@ curl -L http://127.0.0.1:12380/4 -XPOST -d http://127.0.0.1:42379
 ### 启动新节点（使用--join标志）
 
 ```bash
-./store.exe --id 4 \
+./metaStore.exe --id 4 \
   --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379,http://127.0.0.1:42379 \
   --port 42380 \
   --join
@@ -175,15 +175,15 @@ ls -lh store-*
 ```
 
 你会看到：
-- `store-1/` - 节点1的WAL日志
-- `store-1-snap/` - 节点1的快照
-- `store-2/`, `store-3/`, `store-4/` - 其他节点的数据
+- `metaStore-1/` - 节点1的WAL日志
+- `data/1/snap/` - 节点1的快照
+- `metaStore-2/`, `metaStore-3/`, `metaStore-4/` - 其他节点的数据
 
 ## 10. 清理
 
 ```bash
 rm -rf store-*
-./store.exe
+./metaStore.exe
 ```
 
 ## 故障排查

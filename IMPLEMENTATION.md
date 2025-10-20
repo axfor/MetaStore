@@ -129,7 +129,7 @@ opts.SetMaxBackgroundJobs(4)                          // 后台任务
 ```bash
 go build -o store.exe         # 编译成功 ✓
 go test -v                    # 测试通过 ✓
-./store.exe --help            # 运行正常 ✓
+./metaStore.exe --help            # 运行正常 ✓
 ```
 
 ### RocksDB构建（需要RocksDB库）

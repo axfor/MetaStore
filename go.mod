@@ -1,4 +1,4 @@
-module store
+module metaStore
 
 go 1.23.0
 

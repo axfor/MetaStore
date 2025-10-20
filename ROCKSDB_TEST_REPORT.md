@@ -88,7 +88,7 @@ CGO_ENABLED=1 go test -v -tags=rocksdb -timeout 60s
 === RUN   TestPutAndGetKeyValue
 2025/10/17 16:30:00 Starting with RocksDB persistent storage
 2025/10/17 16:30:00 replaying WAL of member 1
-{"level":"info","msg":"closing WAL to release flock and retry directory renaming","from":"store-1.tmp","to":"store-1"}
+{"level":"info","msg":"closing WAL to release flock and retry directory renaming","from":"metaStore-1.tmp","to":"metaStore-1"}
 2025/10/17 16:30:00 loading WAL at term 0 and index 0
 raft2025/10/17 16:30:00 INFO: 1 switched to configuration voters=()
 raft2025/10/17 16:30:00 INFO: 1 became follower at term 0
@@ -181,7 +181,7 @@ Throughput: 280 reads/sec
 curl -L http://127.0.0.1:12380/persist-test -XPUT -d "persistent-data"
 
 # 2. 检查RocksDB文件
-ls -lh store-1-rocksdb/
+ls -lh data/1/
 total 128K
 -rw-r--r-- 1 user user  16 Oct 17 16:30 000003.log
 -rw-r--r-- 1 user user  41 Oct 17 16:30 CURRENT
@@ -192,7 +192,7 @@ total 128K
 
 # 3. 重启节点
 kill $PID
-./store-rocksdb --id 1 --cluster http://127.0.0.1:12379 --port 12380 --rocksdb
+./metaStore-rocksdb --id 1 --cluster http://127.0.0.1:12379 --port 12380 --rocksdb
 
 # 4. 验证数据仍存在
 curl -L http://127.0.0.1:12380/persist-test
@@ -227,7 +227,7 @@ for i in {1..10000}; do
 done
 
 # 检查快照文件
-ls -lh store-1-snap/
+ls -lh data/1/snap/
 -rw-r--r-- 1 user user 512K Oct 17 16:35 0000000000002710-0000000000000002.snap
 
 # 检查日志压缩
@@ -246,7 +246,7 @@ curl -L http://127.0.0.1:12380/crash-test -XPUT -d "before-crash"
 kill -9 $PID
 
 # 3. 重启
-./store-rocksdb --id 1 --cluster http://127.0.0.1:12379 --port 12380 --rocksdb
+./metaStore-rocksdb --id 1 --cluster http://127.0.0.1:12379 --port 12380 --rocksdb
 
 # 4. 验证数据完整
 curl -L http://127.0.0.1:12380/crash-test
@@ -278,7 +278,7 @@ curl -L http://127.0.0.1:12380/crash-test
 ```bash
 # 启动3节点集群（RocksDB模式）
 for id in 1 2 3; do
-  ./store-rocksdb --id $id \
+  ./metaStore-rocksdb --id $id \
     --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 \
     --port ${id}2380 \
     --rocksdb &
