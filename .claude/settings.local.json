@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "Bash(CGO_LDFLAGS=\"-Wl,-U,_SecTrustCopyCertificateChain\" go build:*)",
+      "Bash(tree:*)",
+      "Bash(grep -E \"(Starting|became leader|elected leader)\" echo \"\" echo \"=== 节点2 ===\" tail -5 /tmp/node2.log)",
+      "Bash(grep -E \"(Starting|became leader|became follower|elected leader)\" echo \"\" echo \"=== 节点3 ===\" tail -5 /tmp/node3.log)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
