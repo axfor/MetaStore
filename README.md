@@ -2,7 +2,7 @@
 
 A lightweight distributed key-value store based on the Raft consensus algorithm, with support for both in-memory and RocksDB persistent storage.
 
-This is an enhanced version of etcd's [raft example](https://github.com/etcd-io/raft) with added RocksDB backend support for full persistence.
+This is an enhanced version of etcd's [raft](https://github.com/etcd-io/raft) with added RocksDB backend support for full persistence.
 
 [raft]: http://raftconsensus.github.io/
 
@@ -273,16 +273,14 @@ Apache License 2.0 (inherited from etcd)
 
 ## Documentation
 
-- [ROCKSDB_BUILD_MACOS.md](ROCKSDB_BUILD_MACOS.md) - macOS RocksDB 编译指南（包含 SDK 兼容性问题解决方案）
-- [ROCKSDB_TEST_GUIDE.md](ROCKSDB_TEST_GUIDE.md) - RocksDB 测试指南
-- [ROCKSDB_TEST_REPORT.md](ROCKSDB_TEST_REPORT.md) - RocksDB 测试报告
-- [QUICKSTART.md](QUICKSTART.md) - 快速开始指南
-- [IMPLEMENTATION.md](IMPLEMENTATION.md) - 实现细节
+- [ROCKSDB_BUILD_MACOS.md](ROCKSDB_BUILD_MACOS.md) - macOS RocksDB Build Guide (includes SDK compatibility solutions)
+- [ROCKSDB_BUILD_MACOS_EN.md](ROCKSDB_BUILD_MACOS_EN.md) - macOS RocksDB Build Guide (English version)
+- [ROCKSDB_TEST_GUIDE.md](ROCKSDB_TEST_GUIDE.md) - RocksDB Testing Guide
+- [ROCKSDB_TEST_REPORT.md](ROCKSDB_TEST_REPORT.md) - RocksDB Test Report
+- [ROCKSDB_3NODE_TEST_REPORT.md](ROCKSDB_3NODE_TEST_REPORT.md) - 3-Node Cluster Test Report
+- [DIRECTORY_STRUCTURE_CHANGE_REPORT.md](DIRECTORY_STRUCTURE_CHANGE_REPORT.md) - Data Directory Structure Change Report
+- [QUICKSTART.md](QUICKSTART.md) - Quick Start Guide
+- [IMPLEMENTATION.md](IMPLEMENTATION.md) - Implementation Details
 
-## Credits
-
-- Based on [etcd/raft example](https://github.com/etcd-io/raft/tree/main/contrib/raftexample)
-- Built with [etcd/raft](https://github.com/etcd-io/raft) - Raft consensus library
-- Optional [grocksdb](https://github.com/linxGnu/grocksdb) - Go wrapper for RocksDB
 
 
