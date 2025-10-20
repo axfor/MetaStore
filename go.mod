@@ -1,8 +1,9 @@
-module store
+module metaStore
 
-go 1.25.0
+go 1.23.0
 
 require (
+	github.com/linxGnu/grocksdb v1.10.2
 	github.com/stretchr/testify v1.11.1
 	go.etcd.io/etcd/client/pkg/v3 v3.6.4
 	go.etcd.io/etcd/server/v3 v3.6.4
