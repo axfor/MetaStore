@@ -1,8 +1,5 @@
-# Distributed KV Store with RocksDB Support
-
-A lightweight distributed key-value store based on the Raft consensus algorithm, with support for both in-memory and RocksDB persistent storage.
-
-This is an enhanced version of etcd's [raft](https://github.com/etcd-io/raft) with added RocksDB backend support for full persistence.
+# MetaStore is a Lightweight Distributed KV Store   
+A Lightweight, distributed, high-performance Metadata management component that can replace heavy-resource systems like Zookeeper and ETCD. Supports integration as a library (so/lib) or as a single-process solution.
 
 [raft]: http://raftconsensus.github.io/
 
@@ -273,14 +270,27 @@ Apache License 2.0 (inherited from etcd)
 
 ## Documentation
 
-- [ROCKSDB_BUILD_MACOS.md](ROCKSDB_BUILD_MACOS.md) - macOS RocksDB Build Guide (includes SDK compatibility solutions)
-- [ROCKSDB_BUILD_MACOS_EN.md](ROCKSDB_BUILD_MACOS_EN.md) - macOS RocksDB Build Guide (English version)
-- [ROCKSDB_TEST_GUIDE.md](ROCKSDB_TEST_GUIDE.md) - RocksDB Testing Guide
-- [ROCKSDB_TEST_REPORT.md](ROCKSDB_TEST_REPORT.md) - RocksDB Test Report
-- [ROCKSDB_3NODE_TEST_REPORT.md](ROCKSDB_3NODE_TEST_REPORT.md) - 3-Node Cluster Test Report
-- [DIRECTORY_STRUCTURE_CHANGE_REPORT.md](DIRECTORY_STRUCTURE_CHANGE_REPORT.md) - Data Directory Structure Change Report
-- [QUICKSTART.md](QUICKSTART.md) - Quick Start Guide
-- [IMPLEMENTATION.md](IMPLEMENTATION.md) - Implementation Details
+### User Guides
+- [Quick Start Guide](docs/QUICKSTART.md) - 10-step tutorial to get started
+- This README - Complete feature overview and API reference
+
+### Technical Documentation
+- [Implementation Details](docs/IMPLEMENTATION.md) - Architecture and design decisions
+- [Project Summary](docs/PROJECT_SUMMARY.md) - Complete project overview
+- [Files Checklist](docs/FILES_CHECKLIST.md) - Complete file inventory
+
+### RocksDB Documentation
+- [RocksDB Test Guide](docs/ROCKSDB_TEST_GUIDE.md) - How to run RocksDB tests in different environments
+- [RocksDB Test Report](docs/ROCKSDB_TEST_REPORT.md) - Expected test results and performance benchmarks
+
+### Development Guides
+- [Git Commit Guide](docs/GIT_COMMIT.md) - How to commit changes to the project
+
+## Credits
+
+- Based on [etcd/raft example](https://github.com/etcd-io/raft/tree/main/contrib/raftexample)
+- Built with [etcd/raft](https://github.com/etcd-io/raft) - Raft consensus library
+- Optional [grocksdb](https://github.com/linxGnu/grocksdb) - Go wrapper for RocksDB
 
 
 
