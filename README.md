@@ -20,7 +20,7 @@ A Lightweight, distributed, high-performance Metadata management component that 
 ### Default Build (Memory + WAL)
 
 ```sh
-go build -o store
+go build -o metaStore
 ```
 
 This builds the store with memory + WAL storage (no external dependencies required).
@@ -49,7 +49,7 @@ CGO_ENABLED=1 go build -tags=rocksdb -o store
 brew install rocksdb
 
 # Build with RocksDB support
-CGO_ENABLED=1 go build -tags=rocksdb -o store
+CGO_ENABLED=1 go build -tags=rocksdb -o metaStore
 ```
 
 > **Note for macOS users**: If you encounter linking errors with Go 1.25+ on older SDK versions, see [ROCKSDB_BUILD_MACOS.md](ROCKSDB_BUILD_MACOS.md) for detailed troubleshooting steps.
@@ -61,7 +61,7 @@ vcpkg install rocksdb:x64-windows
 
 # Build with RocksDB support
 $env:CGO_ENABLED=1
-go build -tags=rocksdb -o store.exe
+go build -tags=rocksdb -o metaStore.exe
 ```
 
 ## Getting Started
@@ -99,39 +99,23 @@ Finally, retrieve the stored key:
 curl -L http://127.0.0.1:12380/my-key
 ```
 
-### Running a local cluster
-
-First install [goreman](https://github.com/mattn/goreman), which manages Procfile-based applications.
-
-The [Procfile script](./Procfile) will set up a local example cluster. Start it with:
-
-```sh
-goreman start
-```
-
-This will bring up three store instances.
-
-Now it's possible to write a key-value pair to any member of the cluster and likewise retrieve it from any member.
 
 ### Fault Tolerance
 
 To test cluster recovery, first start a cluster and write a value "foo":
 ```sh
-goreman start
 curl -L http://127.0.0.1:12380/my-key -XPUT -d foo
 ```
 
 Next, remove a node and replace the value with "bar" to check cluster availability:
 
 ```sh
-goreman run stop store2
 curl -L http://127.0.0.1:12380/my-key -XPUT -d bar
 curl -L http://127.0.0.1:32380/my-key
 ```
 
 Finally, bring the node back up and verify it recovers with the updated value "bar":
 ```sh
-goreman run start store2
 curl -L http://127.0.0.1:22380/my-key
 ```
 
@@ -286,11 +270,6 @@ Apache License 2.0 (inherited from etcd)
 ### Development Guides
 - [Git Commit Guide](docs/GIT_COMMIT.md) - How to commit changes to the project
 
-## Credits
-
-- Based on [etcd/raft example](https://github.com/etcd-io/raft/tree/main/contrib/raftexample)
-- Built with [etcd/raft](https://github.com/etcd-io/raft) - Raft consensus library
-- Optional [grocksdb](https://github.com/linxGnu/grocksdb) - Go wrapper for RocksDB
 
 
 
