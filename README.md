@@ -40,7 +40,7 @@ sudo apt-get install librocksdb-dev  # Debian/Ubuntu
 sudo yum install rocksdb-devel       # RHEL/CentOS
 
 # Build with RocksDB support
-CGO_ENABLED=1 go build -tags=rocksdb -o store
+CGO_ENABLED=1 go build -tags=rocksdb -o metaStore
 ```
 
 **macOS:**
