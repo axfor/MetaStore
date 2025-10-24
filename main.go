@@ -37,8 +37,10 @@ func main() {
 	confChangeC := make(chan raftpb.ConfChange)
 	defer close(confChangeC)
 
-	// Memory + WAL mode (original implementation)
-	log.Println("Starting with memory + WAL storage (use -tags=rocksdb to enable RocksDB)")
+	// Memory + WAL mode (default when built without rocksdb tag)
+	log.Println("Starting with memory + WAL storage")
+	log.Println("To enable RocksDB support, build with: go build -tags=rocksdb")
+
 	var kvs *kvstore
 	getSnapshot := func() ([]byte, error) { return kvs.getSnapshot() }
 	commitC, errorC, snapshotterReady := newRaftNode(*id, strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC)
