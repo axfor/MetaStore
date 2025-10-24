@@ -7,7 +7,11 @@
       "Bash(grep -E \"(Starting|became leader|elected leader)\" echo \"\" echo \"=== 节点2 ===\" tail -5 /tmp/node2.log)",
       "Bash(grep -E \"(Starting|became leader|became follower|elected leader)\" echo \"\" echo \"=== 节点3 ===\" tail -5 /tmp/node3.log)",
       "Bash(mkdir:*)",
-      "Bash(mv:*)"
+      "Bash(mv:*)",
+      "Bash(go version:*)",
+      "Bash(go mod tidy:*)",
+      "Bash(go mod download:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []
