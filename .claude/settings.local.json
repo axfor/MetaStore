@@ -11,7 +11,13 @@
       "Bash(go version:*)",
       "Bash(go mod tidy:*)",
       "Bash(go mod download:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(make help:*)",
+      "Bash(make clean:*)",
+      "Bash(make build:*)",
+      "Bash(make cluster-memory:*)",
+      "Bash(make status:*)",
+      "Bash(make stop-cluster:*)"
     ],
     "deny": [],
     "ask": []

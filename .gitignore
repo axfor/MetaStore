@@ -1,5 +1,6 @@
 .idea
 data/*
+metaStore
 .DS_Store
 *.swp
 *.swo
