@@ -17,7 +17,40 @@ A Lightweight, distributed, high-performance Metadata management component that 
 
 ## Building
 
-### Unified Build (Supports Both Storage Modes)
+### Quick Start with Make (Recommended)
+
+The easiest way to build and run MetaStore is using the provided Makefile:
+
+```sh
+# Build the binary
+make build
+
+# Or simply
+make
+
+# Run with memory storage
+make run-memory
+
+# Run with RocksDB storage
+make run-rocksdb
+
+# Start 3-node cluster with memory storage
+make cluster-memory
+
+# Start 3-node cluster with RocksDB storage
+make cluster-rocksdb
+
+# Stop all nodes
+make stop-cluster
+
+# Clean build artifacts
+make clean
+
+# Show all available commands
+make help
+```
+
+### Manual Build (Supports Both Storage Modes)
 
 **Prerequisites:**
 - Go 1.23 or higher
