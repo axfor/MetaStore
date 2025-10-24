@@ -1,6 +1,3 @@
-//go:build rocksdb
-// +build rocksdb
-
 // Copyright 2025 The axfor Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,7 +28,7 @@ func main() {
 	id := flag.Int("id", 1, "node ID")
 	kvport := flag.Int("port", 9121, "key-value server port")
 	join := flag.Bool("join", false, "join an existing cluster")
-	useRocksDB := flag.Bool("rocksdb", true, "use RocksDB for persistent storage")
+	storageEngine := flag.String("storage", "memory", "storage engine: memory or rocksdb")
 	flag.Parse()
 
 	proposeC := make(chan string)
@@ -39,8 +36,9 @@ func main() {
 	confChangeC := make(chan raftpb.ConfChange)
 	defer close(confChangeC)
 
-	if *useRocksDB {
-		// RocksDB mode
+	switch *storageEngine {
+	case "rocksdb":
+		// RocksDB mode - persistent storage
 		log.Println("Starting with RocksDB persistent storage")
 		dbPath := fmt.Sprintf("data/%d", *id)
 		db, err := OpenRocksDB(dbPath)
@@ -60,7 +58,20 @@ func main() {
 
 		// the key-value http handler will propose updates to raft
 		serveHTTPKVAPI(kvs, *kvport, confChangeC, errorC)
-	} else {
-		log.Fatal("RocksDB support is compiled in but --rocksdb=false was specified. This build requires RocksDB.")
+
+	case "memory":
+		// Memory + WAL mode
+		log.Println("Starting with memory + WAL storage")
+		var kvs *kvstore
+		getSnapshot := func() ([]byte, error) { return kvs.getSnapshot() }
+		commitC, errorC, snapshotterReady := newRaftNode(*id, strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC)
+
+		kvs = newKVStore(<-snapshotterReady, proposeC, commitC, errorC)
+
+		// the key-value http handler will propose updates to raft
+		serveHTTPKVAPI(kvs, *kvport, confChangeC, errorC)
+
+	default:
+		log.Fatalf("Unknown storage engine: %s. Supported engines: memory, rocksdb", *storageEngine)
 	}
 }
