@@ -71,6 +71,7 @@ go build -tags=rocksdb -o metaStore.exe
 #### Memory + WAL Mode (Default)
 
 ```sh
+# Default build automatically uses Memory + WAL storage
 metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380
 ```
 
@@ -80,8 +81,11 @@ metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380
 # Create data directory first
 mkdir -p data
 
-# Start the node
-metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380 --rocksdb
+# Start with RocksDB storage (default when built with rocksdb tag)
+metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380 --storage rocksdb
+
+# Or explicitly use memory mode even when built with rocksdb support
+metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380 --storage memory
 ```
 
 Each store process maintains a single raft instance and a key-value server.
@@ -204,8 +208,11 @@ For store, this commit channel is consumed by the key-value store.
 --cluster string    Comma-separated list of cluster peer URLs (default: "http://127.0.0.1:9021")
 --port int          HTTP API port for key-value operations (default: 9121)
 --join              Join an existing cluster (default: false)
---rocksdb           Use RocksDB storage (only available when built with -tags=rocksdb)
+--storage string    Storage engine: "memory" or "rocksdb" (default: "rocksdb" when built with -tags=rocksdb, otherwise "memory")
 ```
+
+> **Note**: The `--storage` option is only available when the binary is built with `-tags=rocksdb`.
+> The default build only supports memory mode and does not have this option.
 
 ## Testing
 
