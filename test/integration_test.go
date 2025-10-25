@@ -26,8 +26,9 @@ import (
 	"time"
 
 	httpapi "metaStore/internal/http"
-	"metaStore/internal/raft"
+	"metaStore/internal/kvstore"
 	"metaStore/internal/memory"
+	"metaStore/internal/raft"
 
 	"github.com/stretchr/testify/require"
 
@@ -44,7 +45,7 @@ func getSnapshotFn() (func() ([]byte, error), <-chan struct{}) {
 
 type cluster struct {
 	peers              []string
-	commitC            []<-chan *store.Commit
+	commitC            []<-chan *kvstore.Commit
 	errorC             []<-chan error
 	proposeC           []chan string
 	confChangeC        []chan raftpb.ConfChange
@@ -60,7 +61,7 @@ func newCluster(n int) *cluster {
 
 	clus := &cluster{
 		peers:              peers,
-		commitC:            make([]<-chan *store.Commit, len(peers)),
+		commitC:            make([]<-chan *kvstore.Commit, len(peers)),
 		errorC:             make([]<-chan error, len(peers)),
 		proposeC:           make([]chan string, len(peers)),
 		confChangeC:        make([]chan raftpb.ConfChange, len(peers)),
@@ -114,7 +115,7 @@ func TestProposeOnCommit(t *testing.T) {
 	donec := make(chan struct{})
 	for i := range clus.peers {
 		// feedback for "n" committed entries, then update donec
-		go func(pC chan<- string, cC <-chan *store.Commit, eC <-chan error) {
+		go func(pC chan<- string, cC <-chan *kvstore.Commit, eC <-chan error) {
 			for n := 0; n < 100; n++ {
 				c, ok := <-cC
 				if !ok {
@@ -183,11 +184,11 @@ func TestPutAndGetKeyValue(t *testing.T) {
 	confChangeC := make(chan raftpb.ConfChange)
 	defer close(confChangeC)
 
-	var kvs *store.Memory
+	var kvs *memory.Memory
 	getSnapshot := func() ([]byte, error) { return kvs.GetSnapshot() }
 	commitC, errorC, snapshotterReady := raft.NewNode(1, clusters, false, getSnapshot, proposeC, confChangeC)
 
-	kvs = store.NewMemory(<-snapshotterReady, proposeC, commitC, errorC)
+	kvs = memory.NewMemory(<-snapshotterReady, proposeC, commitC, errorC)
 
 	srv := httptest.NewServer(httpapi.NewHTTPKVAPI(kvs, confChangeC))
 	defer srv.Close()
