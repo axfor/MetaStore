@@ -422,6 +422,14 @@ For detailed structure information, see [PROJECT_LAYOUT.md](PROJECT_LAYOUT.md).
 - [Quick Start Guide](docs/QUICKSTART.md) - 10-step tutorial to get started
 - This README - Complete feature overview and API reference
 
+### Architecture Documentation
+- ⭐ **[Architecture Design](docs/ARCHITECTURE.md)** - Comprehensive architecture overview
+  - Package structure and responsibilities
+  - Dual storage engine explanation (Memory vs RocksDB)
+  - Raft storage layer deep dive
+  - Data flow and component relationships
+  - **Must-read for understanding the codebase!**
+
 ### Technical Documentation
 - [Implementation Details](docs/IMPLEMENTATION.md) - Architecture and design decisions
 - [Project Summary](docs/PROJECT_SUMMARY.md) - Complete project overview
