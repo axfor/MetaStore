@@ -1,5 +1,6 @@
 .idea
-data/*
+data
+test/data
 metaStore
 .DS_Store
 *.swp
