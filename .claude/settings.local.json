@@ -23,7 +23,16 @@
       "Bash(go test:*)",
       "Bash(CGO_ENABLED=1 CGO_LDFLAGS=\"-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2\" go test:*)",
       "Bash(make test:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nrefactor: migrate to golang-standards/project-layout structure\n\nThis is a major refactoring that reorganizes the codebase from a flat\nstructure in the root directory to a standard Go project layout following\ngolang-standards/project-layout conventions.\n\nKey changes:\n- Move application entry point to cmd/metastore/main.go\n- Reorganize core code into internal/ packages by functional layer:\n  - internal/store: Storage interface and implementations (memory/rocksdb)\n  - internal/raft: Raft consensus layer (node implementations)\n  - internal/http: HTTP API layer\n  - internal/storage: Low-level storage engine (RocksDB wrapper)\n  - internal/kvstore: KV store interface definitions\n  - internal/memory: Memory-based KV store implementation\n  - internal/rocksdb: RocksDB-based implementations\n- Remove flat structure files from root directory\n- Update Makefile to use new cmd/metastore path\n- Add PROJECT_LAYOUT.md documenting the new structure\n- Add comprehensive testing documentation in docs/TESTING.md\n- Migrate all tests to corresponding internal packages\n\nBenefits:\n- Better code organization with clear functional separation\n- Follows Go community best practices\n- Better encapsulation using internal packages\n- Improved modularity with interface-based interactions\n- Easier to test with clear package boundaries\n- Enhanced project professionalism and maintainability\n\nAll functionality and APIs remain unchanged - this is purely a structural\nrefactoring with no behavioral changes.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git commit:*)",
+      "Bash(git restore:*)",
+      "Bash(export CGO_ENABLED=1:*)",
+      "Bash(export CGO_LDFLAGS=\"-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2\":*)",
+      "Bash(timeout 60 go test:*)",
+      "Bash(timeout 120 go test:*)",
+      "Bash(timeout 30 go test:*)",
+      "Bash(git rm:*)"
     ],
     "deny": [],
     "ask": []
