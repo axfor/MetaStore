@@ -15,7 +15,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package rocksdb
 
 import (
 	"os"
@@ -32,7 +32,7 @@ func TestRocksDBStorage_BasicOperations(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	// Open RocksDB
-	db, err := OpenRocksDB(tmpDir)
+	db, err := Open(tmpDir)
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -61,7 +61,7 @@ func TestRocksDBStorage_AppendEntries(t *testing.T) {
 	tmpDir := "test-rocksdb-append"
 	defer os.RemoveAll(tmpDir)
 
-	db, err := OpenRocksDB(tmpDir)
+	db, err := Open(tmpDir)
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -97,7 +97,7 @@ func TestRocksDBStorage_Term(t *testing.T) {
 	tmpDir := "test-rocksdb-term"
 	defer os.RemoveAll(tmpDir)
 
-	db, err := OpenRocksDB(tmpDir)
+	db, err := Open(tmpDir)
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -142,7 +142,7 @@ func TestRocksDBStorage_HardState(t *testing.T) {
 	tmpDir := "test-rocksdb-hardstate"
 	defer os.RemoveAll(tmpDir)
 
-	db, err := OpenRocksDB(tmpDir)
+	db, err := Open(tmpDir)
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -171,7 +171,7 @@ func TestRocksDBStorage_Snapshot(t *testing.T) {
 	tmpDir := "test-rocksdb-snapshot"
 	defer os.RemoveAll(tmpDir)
 
-	db, err := OpenRocksDB(tmpDir)
+	db, err := Open(tmpDir)
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -213,7 +213,7 @@ func TestRocksDBStorage_ApplySnapshot(t *testing.T) {
 	tmpDir := "test-rocksdb-apply-snapshot"
 	defer os.RemoveAll(tmpDir)
 
-	db, err := OpenRocksDB(tmpDir)
+	db, err := Open(tmpDir)
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -266,7 +266,7 @@ func TestRocksDBStorage_Compact(t *testing.T) {
 	tmpDir := "test-rocksdb-compact"
 	defer os.RemoveAll(tmpDir)
 
-	db, err := OpenRocksDB(tmpDir)
+	db, err := Open(tmpDir)
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -310,7 +310,7 @@ func TestRocksDBStorage_Persistence(t *testing.T) {
 
 	// First session: write data
 	{
-		db, err := OpenRocksDB(tmpDir)
+		db, err := Open(tmpDir)
 		require.NoError(t, err)
 
 		storage, err := NewRocksDBStorage(db, "test_node")
@@ -339,7 +339,7 @@ func TestRocksDBStorage_Persistence(t *testing.T) {
 
 	// Second session: read data
 	{
-		db, err := OpenRocksDB(tmpDir)
+		db, err := Open(tmpDir)
 		require.NoError(t, err)
 		defer db.Close()
 

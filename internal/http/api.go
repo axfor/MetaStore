@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package http
 
 import (
 	"io"
@@ -20,19 +20,23 @@ import (
 	"net/http"
 	"strconv"
 
+	"metaStore/internal/kvstore"
+
 	"go.etcd.io/raft/v3/raftpb"
 )
 
-// kvStoreAPI is an interface that both kvstore and kvstoreRocks implement
-type kvStoreAPI interface {
-	Lookup(key string) (string, bool)
-	Propose(k string, v string)
+// httpKVAPI handles HTTP requests for key-value operations
+type httpKVAPI struct {
+	store       kvstore.Store
+	confChangeC chan<- raftpb.ConfChange
 }
 
-// Handler for a http based key-value store backed by raft
-type httpKVAPI struct {
-	store       kvStoreAPI
-	confChangeC chan<- raftpb.ConfChange
+// NewHTTPKVAPI creates a new HTTP KV API handler
+func NewHTTPKVAPI(store kvstore.Store, confChangeC chan<- raftpb.ConfChange) http.Handler {
+	return &httpKVAPI{
+		store:       store,
+		confChangeC: confChangeC,
+	}
 }
 
 func (h *httpKVAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -107,7 +111,7 @@ func (h *httpKVAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // serveHTTPKVAPI starts a key-value server with a GET/PUT API and listens.
-func serveHTTPKVAPI(kv kvStoreAPI, port int, confChangeC chan<- raftpb.ConfChange, errorC <-chan error) {
+func ServeHTTPKVAPI(kv kvstore.Store, port int, confChangeC chan<- raftpb.ConfChange, errorC <-chan error) {
 	srv := http.Server{
 		Addr: ":" + strconv.Itoa(port),
 		Handler: &httpKVAPI{

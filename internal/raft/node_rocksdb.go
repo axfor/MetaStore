@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package raft
 
 import (
 	"context"
@@ -25,7 +25,11 @@ import (
 	"strconv"
 	"time"
 
+	"metaStore/internal/kvstore"
+	"metaStore/internal/rocksdb"
+
 	"github.com/linxGnu/grocksdb"
+
 	"go.etcd.io/etcd/client/pkg/v3/fileutil"
 	"go.etcd.io/etcd/client/pkg/v3/types"
 	"go.etcd.io/etcd/server/v3/etcdserver/api/rafthttp"
@@ -41,7 +45,7 @@ import (
 type raftNodeRocks struct {
 	proposeC    <-chan string            // proposed messages (k,v)
 	confChangeC <-chan raftpb.ConfChange // proposed cluster config changes
-	commitC     chan<- *commit           // entries committed to log (k,v)
+	commitC     chan<- *kvstore.Commit           // entries committed to log (k,v)
 	errorC      chan<- error             // errors from raft session
 
 	id          int      // client ID for raft session
@@ -57,7 +61,7 @@ type raftNodeRocks struct {
 
 	// raft backing for the commit/error channel
 	node        raft.Node
-	raftStorage *RocksDBStorage
+	raftStorage *rocksdb.RocksDBStorage
 	rocksDB     *grocksdb.DB
 
 	snapshotter      *snap.Snapshotter
@@ -73,10 +77,10 @@ type raftNodeRocks struct {
 }
 
 // newRaftNodeRocks initiates a raft instance backed by RocksDB
-func newRaftNodeRocks(id int, peers []string, join bool, getSnapshot func() ([]byte, error),
+func NewNodeRocksDB(id int, peers []string, join bool, getSnapshot func() ([]byte, error),
 	proposeC <-chan string, confChangeC <-chan raftpb.ConfChange, rocksDB *grocksdb.DB,
-) (<-chan *commit, <-chan error, <-chan *snap.Snapshotter) {
-	commitC := make(chan *commit)
+) (<-chan *kvstore.Commit, <-chan error, <-chan *snap.Snapshotter) {
+	commitC := make(chan *kvstore.Commit)
 	errorC := make(chan error)
 
 	rc := &raftNodeRocks{
@@ -167,7 +171,7 @@ func (rc *raftNodeRocks) publishEntries(ents []raftpb.Entry) (<-chan struct{}, b
 	if len(data) > 0 {
 		applyDoneC = make(chan struct{}, 1)
 		select {
-		case rc.commitC <- &commit{data, applyDoneC}:
+		case rc.commitC <- &kvstore.Commit{data, applyDoneC}:
 		case <-rc.stopc:
 			return nil, false
 		}
@@ -193,11 +197,11 @@ func (rc *raftNodeRocks) loadSnapshot() *raftpb.Snapshot {
 // initRocksDBStorage initializes RocksDB storage and recovers state
 func (rc *raftNodeRocks) initRocksDBStorage() error {
 	nodeID := fmt.Sprintf("node_%d", rc.id)
-	storage, err := NewRocksDBStorage(rc.rocksDB, nodeID)
+	rocksdbStorage, err := rocksdb.NewRocksDBStorage(rc.rocksDB, nodeID)
 	if err != nil {
 		return fmt.Errorf("failed to create RocksDB storage: %v", err)
 	}
-	rc.raftStorage = storage
+	rc.raftStorage = rocksdbStorage
 
 	// Load snapshot and apply to RocksDB storage
 	snapshot := rc.loadSnapshot()
@@ -514,7 +518,7 @@ func (rc *raftNodeRocks) serveRaft() {
 		log.Fatalf("store: Failed parsing URL (%v)", err)
 	}
 
-	ln, err := newStoppableListener(url.Host, rc.httpstopc)
+	ln, err := NewStoppableListener(url.Host, rc.httpstopc)
 	if err != nil {
 		log.Fatalf("store: Failed to listen rafthttp (%v)", err)
 	}
