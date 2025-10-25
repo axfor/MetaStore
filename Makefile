@@ -61,9 +61,9 @@ clean:
 test:
 	@echo "$(CYAN)Running all tests...$(NO_COLOR)"
 	@echo "$(YELLOW)Testing memory storage and raft layer...$(NO_COLOR)"
-	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v ./internal/store/ ./internal/raft/ ./test/
+	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v ./internal/memory/ ./internal/raft/ ./test/
 	@echo "$(YELLOW)Testing RocksDB storage layer...$(NO_COLOR)"
-	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -tags=rocksdb -v ./internal/storage/
+	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -tags=rocksdb -v ./internal/storage/ ./internal/rocksdb/
 	@echo "$(GREEN)All tests passed!$(NO_COLOR)"
 
 ## test-unit: Run only unit tests (no integration tests)
