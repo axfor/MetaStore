@@ -32,6 +32,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"go.etcd.io/etcd/server/v3/etcdserver/api/snap"
 	"go.etcd.io/raft/v3/raftpb"
 )
 
@@ -50,6 +51,7 @@ type cluster struct {
 	proposeC           []chan string
 	confChangeC        []chan raftpb.ConfChange
 	snapshotTriggeredC []<-chan struct{}
+	snapshotterReady   []<-chan *snap.Snapshotter
 }
 
 // newCluster creates a cluster of n nodes
@@ -66,6 +68,7 @@ func newCluster(n int) *cluster {
 		proposeC:           make([]chan string, len(peers)),
 		confChangeC:        make([]chan raftpb.ConfChange, len(peers)),
 		snapshotTriggeredC: make([]<-chan struct{}, len(peers)),
+		snapshotterReady:   make([]<-chan *snap.Snapshotter, len(peers)),
 	}
 
 	for i := range clus.peers {
@@ -74,7 +77,7 @@ func newCluster(n int) *cluster {
 		clus.confChangeC[i] = make(chan raftpb.ConfChange, 1)
 		fn, snapshotTriggeredC := getSnapshotFn()
 		clus.snapshotTriggeredC[i] = snapshotTriggeredC
-		clus.commitC[i], clus.errorC[i], _ = raft.NewNode(i+1, clus.peers, false, fn, clus.proposeC[i], clus.confChangeC[i])
+		clus.commitC[i], clus.errorC[i], clus.snapshotterReady[i] = raft.NewNode(i+1, clus.peers, false, fn, clus.proposeC[i], clus.confChangeC[i])
 	}
 
 	return clus
@@ -108,7 +111,7 @@ func (clus *cluster) closeNoErrors(t *testing.T) {
 
 // TestProposeOnCommit starts three nodes and feeds commits back into the proposal
 // channel. The intent is to ensure blocking on a proposal won't block raft progress.
-func TestProposeOnCommit(t *testing.T) {
+func TestHTTPAPIMemoryProposeOnCommit(t *testing.T) {
 	clus := newCluster(3)
 	defer clus.closeNoErrors(t)
 
@@ -145,7 +148,7 @@ func TestProposeOnCommit(t *testing.T) {
 }
 
 // TestCloseProposerBeforeReplay tests closing the producer before raft starts.
-func TestCloseProposerBeforeReplay(t *testing.T) {
+func TestHTTPAPIMemoryCloseProposerBeforeReplay(t *testing.T) {
 	clus := newCluster(1)
 	// close before replay so raft never starts
 	defer clus.closeNoErrors(t)
@@ -153,7 +156,7 @@ func TestCloseProposerBeforeReplay(t *testing.T) {
 
 // TestCloseProposerInflight tests closing the producer while
 // committed messages are being published to the client.
-func TestCloseProposerInflight(t *testing.T) {
+func TestHTTPAPIMemoryCloseProposerInflight(t *testing.T) {
 	clus := newCluster(1)
 	defer clus.closeNoErrors(t)
 
@@ -175,7 +178,7 @@ func TestCloseProposerInflight(t *testing.T) {
 	wg.Wait()
 }
 
-func TestPutAndGetKeyValue(t *testing.T) {
+func TestHTTPAPIMemoryPutAndGetKeyValue(t *testing.T) {
 	clusters := []string{"http://127.0.0.1:9021"}
 
 	proposeC := make(chan string)
@@ -222,7 +225,7 @@ func TestPutAndGetKeyValue(t *testing.T) {
 }
 
 // TestAddNewNode tests adding new node to the existing cluster.
-func TestAddNewNode(t *testing.T) {
+func TestHTTPAPIMemoryAddNewNode(t *testing.T) {
 	clus := newCluster(3)
 	defer clus.closeNoErrors(t)
 
@@ -255,7 +258,7 @@ func TestAddNewNode(t *testing.T) {
 	}
 }
 
-func TestSnapshot(t *testing.T) {
+func TestHTTPAPIMemorySnapshot(t *testing.T) {
 	// Note: We can't directly modify package-level variables in raft package
 	// So this test verifies snapshot triggering behavior with default values
 	clus := newCluster(3)
