@@ -18,8 +18,6 @@ import (
 	"reflect"
 	"testing"
 
-	"metaStore/internal/kvstore"
-
 	"github.com/stretchr/testify/require"
 )
 
