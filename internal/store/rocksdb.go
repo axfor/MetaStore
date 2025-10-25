@@ -1,18 +1,7 @@
 // Copyright 2025 The axfor Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed under the Apache License, Version 2.0
 
-package main
+package store
 
 import (
 	"bytes"
@@ -30,28 +19,27 @@ import (
 )
 
 const (
-	// Key prefix for KV data in RocksDB
 	kvDataPrefix = "kv_data_"
 )
 
-// kvstoreRocks is a key-value store backed by raft and RocksDB
-type kvstoreRocks struct {
-	proposeC chan<- string // channel for proposing updates
-	mu       sync.RWMutex
-	db       *grocksdb.DB // RocksDB instance for persistent KV storage
-	wo       *grocksdb.WriteOptions
-	ro       *grocksdb.ReadOptions
-	nodeID   string
+// RocksDB is a key-value store backed by raft and RocksDB
+type RocksDB struct {
+	proposeC    chan<- string
+	mu          sync.RWMutex
+	db          *grocksdb.DB
+	wo          *grocksdb.WriteOptions
+	ro          *grocksdb.ReadOptions
+	nodeID      string
 	snapshotter *snap.Snapshotter
 }
 
-// newKVStoreRocks creates a new RocksDB-backed KV store
-func newKVStoreRocks(db *grocksdb.DB, nodeID string, snapshotter *snap.Snapshotter, proposeC chan<- string, commitC <-chan *commit, errorC <-chan error) *kvstoreRocks {
+// NewRocksDB creates a new RocksDB-backed KV store
+func NewRocksDB(db *grocksdb.DB, nodeID string, snapshotter *snap.Snapshotter, proposeC chan<- string, commitC <-chan *Commit, errorC <-chan error) *RocksDB {
 	wo := grocksdb.NewDefaultWriteOptions()
-	wo.SetSync(false) // For KV data, we can use async writes for better performance
+	wo.SetSync(false)
 	ro := grocksdb.NewDefaultReadOptions()
 
-	s := &kvstoreRocks{
+	s := &RocksDB{
 		proposeC:    proposeC,
 		db:          db,
 		wo:          wo,
@@ -60,7 +48,6 @@ func newKVStoreRocks(db *grocksdb.DB, nodeID string, snapshotter *snap.Snapshott
 		snapshotter: snapshotter,
 	}
 
-	// Load from snapshot if exists
 	snapshot, err := s.loadSnapshot()
 	if err != nil {
 		log.Panic(err)
@@ -72,14 +59,12 @@ func newKVStoreRocks(db *grocksdb.DB, nodeID string, snapshotter *snap.Snapshott
 		}
 	}
 
-	// Read commits from raft into RocksDB until error
 	go s.readCommits(commitC, errorC)
-
 	return s
 }
 
 // Close closes the RocksDB resources
-func (s *kvstoreRocks) Close() {
+func (s *RocksDB) Close() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -93,13 +78,11 @@ func (s *kvstoreRocks) Close() {
 	}
 }
 
-// kvKey generates the key for storing KV data in RocksDB
-func (s *kvstoreRocks) kvKey(key string) []byte {
+func (s *RocksDB) kvKey(key string) []byte {
 	return []byte(fmt.Sprintf("%s_%s_%s", s.nodeID, kvDataPrefix, key))
 }
 
-// Lookup retrieves a value for a given key
-func (s *kvstoreRocks) Lookup(key string) (string, bool) {
+func (s *RocksDB) Lookup(key string) (string, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -118,20 +101,17 @@ func (s *kvstoreRocks) Lookup(key string) (string, bool) {
 	return string(data.Data()), true
 }
 
-// Propose proposes a key-value update to raft
-func (s *kvstoreRocks) Propose(k string, v string) {
+func (s *RocksDB) Propose(k string, v string) {
 	var buf strings.Builder
-	if err := gob.NewEncoder(&buf).Encode(kv{k, v}); err != nil {
+	if err := gob.NewEncoder(&buf).Encode(KV{k, v}); err != nil {
 		log.Fatal(err)
 	}
 	s.proposeC <- buf.String()
 }
 
-// readCommits reads committed entries from raft and applies them to RocksDB
-func (s *kvstoreRocks) readCommits(commitC <-chan *commit, errorC <-chan error) {
+func (s *RocksDB) readCommits(commitC <-chan *Commit, errorC <-chan error) {
 	for commit := range commitC {
 		if commit == nil {
-			// Signaled to load snapshot
 			snapshot, err := s.loadSnapshot()
 			if err != nil {
 				log.Panic(err)
@@ -145,10 +125,9 @@ func (s *kvstoreRocks) readCommits(commitC <-chan *commit, errorC <-chan error) 
 			continue
 		}
 
-		// Apply all committed KV pairs to RocksDB
 		wb := grocksdb.NewWriteBatch()
-		for _, data := range commit.data {
-			var dataKv kv
+		for _, data := range commit.Data {
+			var dataKv KV
 			dec := gob.NewDecoder(bytes.NewBufferString(data))
 			if err := dec.Decode(&dataKv); err != nil {
 				log.Fatalf("kvstore: could not decode message (%v)", err)
@@ -158,7 +137,6 @@ func (s *kvstoreRocks) readCommits(commitC <-chan *commit, errorC <-chan error) 
 			wb.Put(dbKey, []byte(dataKv.Val))
 		}
 
-		// Write batch to RocksDB
 		s.mu.Lock()
 		if err := s.db.Write(s.wo, wb); err != nil {
 			s.mu.Unlock()
@@ -168,7 +146,7 @@ func (s *kvstoreRocks) readCommits(commitC <-chan *commit, errorC <-chan error) 
 		s.mu.Unlock()
 		wb.Destroy()
 
-		close(commit.applyDoneC)
+		close(commit.ApplyDoneC)
 	}
 
 	if err, ok := <-errorC; ok {
@@ -176,15 +154,11 @@ func (s *kvstoreRocks) readCommits(commitC <-chan *commit, errorC <-chan error) 
 	}
 }
 
-// getSnapshot creates a snapshot of all KV pairs in RocksDB
-func (s *kvstoreRocks) getSnapshot() ([]byte, error) {
+func (s *RocksDB) GetSnapshot() ([]byte, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// Create a map to hold all KV pairs
 	kvStore := make(map[string]string)
-
-	// Iterate through all KV entries in RocksDB
 	prefix := []byte(fmt.Sprintf("%s_%s", s.nodeID, kvDataPrefix))
 
 	ro := grocksdb.NewDefaultReadOptions()
@@ -194,18 +168,13 @@ func (s *kvstoreRocks) getSnapshot() ([]byte, error) {
 	it := s.db.NewIterator(ro)
 	defer it.Close()
 
-	// Seek to the start of our KV data
 	it.Seek(prefix)
 
 	for ; it.Valid() && bytes.HasPrefix(it.Key().Data(), prefix); it.Next() {
-		// Extract the actual key (remove prefix)
 		fullKey := string(it.Key().Data())
 		keyPrefix := fmt.Sprintf("%s_%s_", s.nodeID, kvDataPrefix)
 		actualKey := strings.TrimPrefix(fullKey, keyPrefix)
-
-		// Get the value
 		value := string(it.Value().Data())
-
 		kvStore[actualKey] = value
 	}
 
@@ -213,12 +182,10 @@ func (s *kvstoreRocks) getSnapshot() ([]byte, error) {
 		return nil, fmt.Errorf("iterator error: %v", err)
 	}
 
-	// Marshal to JSON
 	return json.Marshal(kvStore)
 }
 
-// loadSnapshot loads the latest snapshot from disk
-func (s *kvstoreRocks) loadSnapshot() (*raftpb.Snapshot, error) {
+func (s *RocksDB) loadSnapshot() (*raftpb.Snapshot, error) {
 	snapshot, err := s.snapshotter.Load()
 	if errors.Is(err, snap.ErrNoSnapshot) {
 		return nil, nil
@@ -229,8 +196,7 @@ func (s *kvstoreRocks) loadSnapshot() (*raftpb.Snapshot, error) {
 	return snapshot, nil
 }
 
-// recoverFromSnapshot restores the KV store from snapshot data
-func (s *kvstoreRocks) recoverFromSnapshot(snapshot []byte) error {
+func (s *RocksDB) recoverFromSnapshot(snapshot []byte) error {
 	var store map[string]string
 	if err := json.Unmarshal(snapshot, &store); err != nil {
 		return err
@@ -239,12 +205,10 @@ func (s *kvstoreRocks) recoverFromSnapshot(snapshot []byte) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Clear existing KV data for this node
 	if err := s.clearKVData(); err != nil {
 		return fmt.Errorf("failed to clear existing KV data: %v", err)
 	}
 
-	// Restore all KV pairs from snapshot
 	wb := grocksdb.NewWriteBatch()
 	defer wb.Destroy()
 
@@ -258,12 +222,10 @@ func (s *kvstoreRocks) recoverFromSnapshot(snapshot []byte) error {
 	}
 
 	log.Printf("Restored %d KV pairs from snapshot", len(store))
-
 	return nil
 }
 
-// clearKVData removes all KV data for this node (used during snapshot recovery)
-func (s *kvstoreRocks) clearKVData() error {
+func (s *RocksDB) clearKVData() error {
 	prefix := []byte(fmt.Sprintf("%s_%s", s.nodeID, kvDataPrefix))
 
 	ro := grocksdb.NewDefaultReadOptions()
