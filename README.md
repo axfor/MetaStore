@@ -398,6 +398,24 @@ A cluster of **N** nodes can tolerate up to **(N-1)/2** failures:
 
 Apache License 2.0 (inherited from etcd)
 
+## Project Structure
+
+MetaStore follows the [golang-standards/project-layout](https://github.com/golang-standards/project-layout) standard:
+
+```
+MetaStore/
+├── cmd/metastore/       # Application entry point
+├── internal/            # Private packages (按功能分层)
+│   ├── store/          # Storage layer (Memory & RocksDB implementations)
+│   ├── raft/           # Raft consensus layer
+│   ├── http/           # HTTP API layer
+│   └── storage/        # Low-level storage engine
+├── Makefile            # Build automation
+└── README.md
+```
+
+For detailed structure information, see [PROJECT_LAYOUT.md](PROJECT_LAYOUT.md).
+
 ## Documentation
 
 ### User Guides

@@ -3,6 +3,7 @@
 
 # Binary name
 BINARY_NAME=metaStore
+CMD_PATH=./cmd/metastore
 
 # Go parameters
 GOCMD=go
@@ -43,7 +44,7 @@ all: build
 ## build: Build MetaStore binary with both storage engines
 build:
 	@echo "$(CYAN)Building MetaStore...$(NO_COLOR)"
-	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOBUILD) $(LDFLAGS) -o $(BINARY_NAME)
+	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOBUILD) $(LDFLAGS) -o $(BINARY_NAME) $(CMD_PATH)
 	@echo "$(GREEN)Build complete: $(BINARY_NAME)$(NO_COLOR)"
 	@ls -lh $(BINARY_NAME)
 
@@ -56,10 +57,38 @@ clean:
 	@rm -f /tmp/test_*.log
 	@echo "$(GREEN)Clean complete$(NO_COLOR)"
 
-## test: Run all tests
+## test: Run all tests (including RocksDB storage tests)
 test:
-	@echo "$(CYAN)Running tests...$(NO_COLOR)"
-	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v ./...
+	@echo "$(CYAN)Running all tests...$(NO_COLOR)"
+	@echo "$(YELLOW)Testing memory storage and raft layer...$(NO_COLOR)"
+	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v ./internal/store/ ./internal/raft/ ./test/
+	@echo "$(YELLOW)Testing RocksDB storage layer...$(NO_COLOR)"
+	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -tags=rocksdb -v ./internal/storage/
+	@echo "$(GREEN)All tests passed!$(NO_COLOR)"
+
+## test-unit: Run only unit tests (no integration tests)
+test-unit:
+	@echo "$(CYAN)Running unit tests...$(NO_COLOR)"
+	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v ./internal/...
+	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -tags=rocksdb -v ./internal/storage/
+
+## test-integration: Run only integration tests
+test-integration:
+	@echo "$(CYAN)Running integration tests...$(NO_COLOR)"
+	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v ./test/ -timeout=60s
+
+## test-storage: Run only RocksDB storage tests
+test-storage:
+	@echo "$(CYAN)Running RocksDB storage tests...$(NO_COLOR)"
+	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -tags=rocksdb -v ./internal/storage/
+
+## test-coverage: Run tests with coverage report
+test-coverage:
+	@echo "$(CYAN)Running tests with coverage...$(NO_COLOR)"
+	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -coverprofile=coverage.out ./internal/... ./test/
+	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -tags=rocksdb -coverprofile=coverage-rocksdb.out ./internal/storage/
+	@go tool cover -html=coverage.out -o coverage.html
+	@echo "$(GREEN)Coverage report generated: coverage.html$(NO_COLOR)"
 
 ## deps: Download dependencies
 deps:
@@ -133,6 +162,9 @@ help:
 	@echo ""
 	@echo "$(YELLOW)Examples:$(NO_COLOR)"
 	@echo "  make build              # Build the binary"
+	@echo "  make test               # Run all tests"
+	@echo "  make test-unit          # Run unit tests only"
+	@echo "  make test-integration   # Run integration tests only"
 	@echo "  make run-memory         # Run with memory storage"
 	@echo "  make cluster-rocksdb    # Start 3-node RocksDB cluster"
 	@echo "  make stop-cluster       # Stop all nodes"

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package store
 
 import (
 	"reflect"
@@ -21,20 +21,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func Test_kvstore_snapshot(t *testing.T) {
+func TestMemory_Snapshot(t *testing.T) {
 	tm := map[string]string{"foo": "bar"}
-	s := &kvstore{kvStore: tm}
+	s := &Memory{kvStore: tm}
 
-	v, _ := s.Lookup("foo")
+	v, ok := s.Lookup("foo")
+	require.True(t, ok)
 	require.Equalf(t, "bar", v, "foo has unexpected value, got %s", v)
 
-	data, err := s.getSnapshot()
+	data, err := s.GetSnapshot()
 	require.NoError(t, err)
 	s.kvStore = nil
 
 	err = s.recoverFromSnapshot(data)
 	require.NoError(t, err)
-	v, _ = s.Lookup("foo")
+	v, ok = s.Lookup("foo")
+	require.True(t, ok)
 	require.Equalf(t, "bar", v, "foo has unexpected value, got %s", v)
 	require.Truef(t, reflect.DeepEqual(s.kvStore, tm), "store expected %+v, got %+v", tm, s.kvStore)
 }

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package storage
 
 import (
 	"bytes"
@@ -634,7 +634,7 @@ func binaryReadUint64BigEndian(b []byte) (uint64, error) {
 }
 
 // OpenRocksDB opens a RocksDB database with optimal settings for raft storage
-func OpenRocksDB(path string) (*grocksdb.DB, error) {
+func Open(path string) (*grocksdb.DB, error) {
 	bbto := grocksdb.NewDefaultBlockBasedTableOptions()
 	bbto.SetBlockCache(grocksdb.NewLRUCache(512 << 20)) // 512MB block cache
 	bbto.SetFilterPolicy(grocksdb.NewBloomFilter(10))

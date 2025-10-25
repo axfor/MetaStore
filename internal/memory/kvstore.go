@@ -1,18 +1,7 @@
 // Copyright 2025 The axfor Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed under the Apache License, Version 2.0
 
-package main
+package memory
 
 import (
 	"bytes"
@@ -23,25 +12,23 @@ import (
 	"strings"
 	"sync"
 
+	"metaStore/internal/kvstore"
+
 	"go.etcd.io/etcd/server/v3/etcdserver/api/snap"
 	"go.etcd.io/raft/v3/raftpb"
 )
 
-// a key-value store backed by raft
-type kvstore struct {
-	proposeC    chan<- string // channel for proposing updates
+// Memory is a key-value store backed by raft with in-memory storage
+type Memory struct {
+	proposeC    chan<- string
 	mu          sync.RWMutex
-	kvStore     map[string]string // current committed key-value pairs
+	kvStore     map[string]string
 	snapshotter *snap.Snapshotter
 }
 
-type kv struct {
-	Key string
-	Val string
-}
-
-func newKVStore(snapshotter *snap.Snapshotter, proposeC chan<- string, commitC <-chan *commit, errorC <-chan error) *kvstore {
-	s := &kvstore{proposeC: proposeC, kvStore: make(map[string]string), snapshotter: snapshotter}
+// NewMemory creates a new memory-backed kvstore.KV store
+func NewMemory(snapshotter *snap.Snapshotter, proposeC chan<- string, commitC <-chan *kvstore.Commit, errorC <-chan error) *Memory {
+	s := &Memory{proposeC: proposeC, kvStore: make(map[string]string), snapshotter: snapshotter}
 	snapshot, err := s.loadSnapshot()
 	if err != nil {
 		log.Panic(err)
@@ -52,30 +39,28 @@ func newKVStore(snapshotter *snap.Snapshotter, proposeC chan<- string, commitC <
 			log.Panic(err)
 		}
 	}
-	// read commits from raft into kvStore map until error
 	go s.readCommits(commitC, errorC)
 	return s
 }
 
-func (s *kvstore) Lookup(key string) (string, bool) {
+func (s *Memory) Lookup(key string) (string, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	v, ok := s.kvStore[key]
 	return v, ok
 }
 
-func (s *kvstore) Propose(k string, v string) {
+func (s *Memory) Propose(k string, v string) {
 	var buf strings.Builder
-	if err := gob.NewEncoder(&buf).Encode(kv{k, v}); err != nil {
+	if err := gob.NewEncoder(&buf).Encode(kvstore.KV{k, v}); err != nil {
 		log.Fatal(err)
 	}
 	s.proposeC <- buf.String()
 }
 
-func (s *kvstore) readCommits(commitC <-chan *commit, errorC <-chan error) {
+func (s *Memory) readCommits(commitC <-chan *kvstore.Commit, errorC <-chan error) {
 	for commit := range commitC {
 		if commit == nil {
-			// signaled to load snapshot
 			snapshot, err := s.loadSnapshot()
 			if err != nil {
 				log.Panic(err)
@@ -89,8 +74,8 @@ func (s *kvstore) readCommits(commitC <-chan *commit, errorC <-chan error) {
 			continue
 		}
 
-		for _, data := range commit.data {
-			var dataKv kv
+		for _, data := range commit.Data {
+			var dataKv kvstore.KV
 			dec := gob.NewDecoder(bytes.NewBufferString(data))
 			if err := dec.Decode(&dataKv); err != nil {
 				log.Fatalf("store: could not decode message (%v)", err)
@@ -99,20 +84,20 @@ func (s *kvstore) readCommits(commitC <-chan *commit, errorC <-chan error) {
 			s.kvStore[dataKv.Key] = dataKv.Val
 			s.mu.Unlock()
 		}
-		close(commit.applyDoneC)
+		close(commit.ApplyDoneC)
 	}
 	if err, ok := <-errorC; ok {
 		log.Fatal(err)
 	}
 }
 
-func (s *kvstore) getSnapshot() ([]byte, error) {
+func (s *Memory) GetSnapshot() ([]byte, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return json.Marshal(s.kvStore)
 }
 
-func (s *kvstore) loadSnapshot() (*raftpb.Snapshot, error) {
+func (s *Memory) loadSnapshot() (*raftpb.Snapshot, error) {
 	snapshot, err := s.snapshotter.Load()
 	if errors.Is(err, snap.ErrNoSnapshot) {
 		return nil, nil
@@ -123,7 +108,7 @@ func (s *kvstore) loadSnapshot() (*raftpb.Snapshot, error) {
 	return snapshot, nil
 }
 
-func (s *kvstore) recoverFromSnapshot(snapshot []byte) error {
+func (s *Memory) recoverFromSnapshot(snapshot []byte) error {
 	var store map[string]string
 	if err := json.Unmarshal(snapshot, &store); err != nil {
 		return err

@@ -17,7 +17,13 @@
       "Bash(make build:*)",
       "Bash(make cluster-memory:*)",
       "Bash(make status:*)",
-      "Bash(make stop-cluster:*)"
+      "Bash(make stop-cluster:*)",
+      "Bash(CGO_ENABLED=1 CGO_LDFLAGS=\"-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2\" go build:*)",
+      "Bash(./metaStore --help)",
+      "Bash(go test:*)",
+      "Bash(CGO_ENABLED=1 CGO_LDFLAGS=\"-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2\" go test:*)",
+      "Bash(make test:*)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []

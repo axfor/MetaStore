@@ -12,5 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// store is a simple KV store using the raft and rafthttp libraries.
-package main
+package kvstore
+
+// Store is the interface that all KV stores must implement
+type Store interface {
+	Lookup(key string) (string, bool)
+	Propose(k string, v string)
+	GetSnapshot() ([]byte, error)
+}
+
+// Commit represents a commit event from raft
+type Commit struct {
+	Data       []string
+	ApplyDoneC chan<- struct{}
+}
+
+// KV represents a key-value pair
+type KV struct {
+	Key string
+	Val string
+}
