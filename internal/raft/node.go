@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package raft
 
 import (
 	"context"
@@ -24,6 +24,8 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"metaStore/internal/kvstore"
 
 	"go.etcd.io/etcd/client/pkg/v3/fileutil"
 	"go.etcd.io/etcd/client/pkg/v3/types"
@@ -39,7 +41,10 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-type commit struct {
+type commit = kvstore.Commit
+
+// Legacy struct (using kvstore.Commit now)
+type _commit struct {
 	data       []string
 	applyDoneC chan<- struct{}
 }
@@ -48,7 +53,7 @@ type commit struct {
 type raftNode struct {
 	proposeC    <-chan string            // proposed messages (k,v)
 	confChangeC <-chan raftpb.ConfChange // proposed cluster config changes
-	commitC     chan<- *commit           // entries committed to log (k,v)
+	commitC     chan<- *kvstore.Commit           // entries committed to log (k,v)
 	errorC      chan<- error             // errors from raft session
 
 	id          int      // client ID for raft session
@@ -86,10 +91,10 @@ var defaultSnapshotCount uint64 = 10000
 // provided the proposal channel. All log entries are replayed over the
 // commit channel, followed by a nil message (to indicate the channel is
 // current), then new log entries. To shutdown, close proposeC and read errorC.
-func newRaftNode(id int, peers []string, join bool, getSnapshot func() ([]byte, error), proposeC <-chan string,
+func NewNode(id int, peers []string, join bool, getSnapshot func() ([]byte, error), proposeC <-chan string,
 	confChangeC <-chan raftpb.ConfChange,
-) (<-chan *commit, <-chan error, <-chan *snap.Snapshotter) {
-	commitC := make(chan *commit)
+) (<-chan *kvstore.Commit, <-chan error, <-chan *snap.Snapshotter) {
+	commitC := make(chan *kvstore.Commit)
 	errorC := make(chan error)
 
 	rc := &raftNode{
@@ -203,7 +208,7 @@ func (rc *raftNode) publishEntries(ents []raftpb.Entry) (<-chan struct{}, bool) 
 	if len(data) > 0 {
 		applyDoneC = make(chan struct{}, 1)
 		select {
-		case rc.commitC <- &commit{data, applyDoneC}:
+		case rc.commitC <- &kvstore.Commit{data, applyDoneC}:
 		case <-rc.stopc:
 			return nil, false
 		}
@@ -516,7 +521,7 @@ func (rc *raftNode) serveRaft() {
 		log.Fatalf("store: Failed parsing URL (%v)", err)
 	}
 
-	ln, err := newStoppableListener(url.Host, rc.httpstopc)
+	ln, err := NewStoppableListener(url.Host, rc.httpstopc)
 	if err != nil {
 		log.Fatalf("store: Failed to listen rafthttp (%v)", err)
 	}

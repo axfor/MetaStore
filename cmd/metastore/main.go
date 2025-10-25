@@ -20,6 +20,11 @@ import (
 	"log"
 	"strings"
 
+	"metaStore/internal/http"
+	"metaStore/internal/memory"
+	"metaStore/internal/raft"
+	"metaStore/internal/rocksdb"
+
 	"go.etcd.io/raft/v3/raftpb"
 )
 
@@ -41,35 +46,35 @@ func main() {
 		// RocksDB mode - persistent storage
 		log.Println("Starting with RocksDB persistent storage")
 		dbPath := fmt.Sprintf("data/%d", *id)
-		db, err := OpenRocksDB(dbPath)
+		db, err := rocksdb.Open(dbPath)
 		if err != nil {
 			log.Fatalf("Failed to open RocksDB: %v", err)
 		}
 		defer db.Close()
 
 		// Create RocksDB-backed KV store
-		var kvs *kvstoreRocks
+		var kvs *rocksdb.RocksDB
 		nodeID := fmt.Sprintf("node_%d", *id)
-		getSnapshot := func() ([]byte, error) { return kvs.getSnapshot() }
-		commitC, errorC, snapshotterReady := newRaftNodeRocks(*id, strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC, db)
+		getSnapshot := func() ([]byte, error) { return kvs.GetSnapshot() }
+		commitC, errorC, snapshotterReady := raft.NewNodeRocksDB(*id, strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC, db)
 
-		kvs = newKVStoreRocks(db, nodeID, <-snapshotterReady, proposeC, commitC, errorC)
+		kvs = rocksdb.NewRocksDB(db, nodeID, <-snapshotterReady, proposeC, commitC, errorC)
 		defer kvs.Close()
 
 		// the key-value http handler will propose updates to raft
-		serveHTTPKVAPI(kvs, *kvport, confChangeC, errorC)
+		http.ServeHTTPKVAPI(kvs, *kvport, confChangeC, errorC)
 
 	case "memory":
 		// Memory + WAL mode
 		log.Println("Starting with memory + WAL storage")
-		var kvs *kvstore
-		getSnapshot := func() ([]byte, error) { return kvs.getSnapshot() }
-		commitC, errorC, snapshotterReady := newRaftNode(*id, strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC)
+		var kvs *memory.Memory
+		getSnapshot := func() ([]byte, error) { return kvs.GetSnapshot() }
+		commitC, errorC, snapshotterReady := raft.NewNode(*id, strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC)
 
-		kvs = newKVStore(<-snapshotterReady, proposeC, commitC, errorC)
+		kvs = memory.NewMemory(<-snapshotterReady, proposeC, commitC, errorC)
 
 		// the key-value http handler will propose updates to raft
-		serveHTTPKVAPI(kvs, *kvport, confChangeC, errorC)
+		http.ServeHTTPKVAPI(kvs, *kvport, confChangeC, errorC)
 
 	default:
 		log.Fatalf("Unknown storage engine: %s. Supported engines: memory, rocksdb", *storageEngine)
