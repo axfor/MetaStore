@@ -336,7 +336,7 @@ func TestHTTPAPIMemorySingleNodeWriteRead(t *testing.T) {
 
 	var kvs *memory.Memory
 	getSnapshot := func() ([]byte, error) { return kvs.GetSnapshot() }
-	commitC, errorC, snapshotterReady := raft.NewNode(1, clusters, false, getSnapshot, proposeC, confChangeC)
+	commitC, errorC, snapshotterReady := raft.NewNode(1, clusters, false, getSnapshot, proposeC, confChangeC, "memory")
 
 	kvs = memory.NewMemory(<-snapshotterReady, proposeC, commitC, errorC)
 
@@ -393,11 +393,13 @@ func TestHTTPAPIMemorySingleNodeWriteRead(t *testing.T) {
 
 // TestMemorySingleNodeSequentialWrites tests sequential write operations on Memory storage via HTTP API
 func TestHTTPAPIMemorySingleNodeSequentialWrites(t *testing.T) {
+	// Use a different data directory to avoid WAL lock conflicts with previous test
+	// storageType "memory-seq" creates separate dir: data/memory-seq/1/...
 	// Clean up previous test data
-	os.RemoveAll("data/1")
-	defer os.RemoveAll("data/1")
+	os.RemoveAll("data/memory-seq")
+	defer os.RemoveAll("data/memory-seq")
 
-	clusters := []string{"http://127.0.0.1:9021"}
+	clusters := []string{"http://127.0.0.1:9121"}
 
 	proposeC := make(chan string)
 	defer close(proposeC)
@@ -407,7 +409,8 @@ func TestHTTPAPIMemorySingleNodeSequentialWrites(t *testing.T) {
 
 	var kvs *memory.Memory
 	getSnapshot := func() ([]byte, error) { return kvs.GetSnapshot() }
-	commitC, errorC, snapshotterReady := raft.NewNode(1, clusters, false, getSnapshot, proposeC, confChangeC)
+
+	commitC, errorC, snapshotterReady := raft.NewNode(1, clusters, false, getSnapshot, proposeC, confChangeC, "memory-seq")
 
 	kvs = memory.NewMemory(<-snapshotterReady, proposeC, commitC, errorC)
 

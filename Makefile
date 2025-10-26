@@ -20,7 +20,8 @@ CGO_LDFLAGS=-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz
 # Detect OS
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Darwin)
-    # macOS specific settings
+    # macOS specific settings - add Wl,-U for missing Security framework symbols
+    CGO_LDFLAGS += -Wl,-U,_SecTrustCopyCertificateChain
     ROCKSDB_PATH ?= /usr/local
 else ifeq ($(UNAME_S),Linux)
     # Linux specific settings
@@ -63,14 +64,13 @@ test:
 	@echo "$(YELLOW)Testing memory storage and raft layer...$(NO_COLOR)"
 	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v ./internal/memory/ ./internal/raft/ ./test/
 	@echo "$(YELLOW)Testing RocksDB storage layer...$(NO_COLOR)"
-	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -tags=rocksdb -v ./internal/rocksdb/
+	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v ./internal/rocksdb/ ./internal/raft/ ./test/
 	@echo "$(GREEN)All tests passed!$(NO_COLOR)"
 
 ## test-unit: Run only unit tests (no integration tests)
 test-unit:
 	@echo "$(CYAN)Running unit tests...$(NO_COLOR)"
 	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v ./internal/...
-	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -tags=rocksdb -v ./internal/storage/
 
 ## test-integration: Run only integration tests
 test-integration:
@@ -80,13 +80,12 @@ test-integration:
 ## test-storage: Run only RocksDB storage tests
 test-storage:
 	@echo "$(CYAN)Running RocksDB storage tests...$(NO_COLOR)"
-	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -tags=rocksdb -v ./internal/storage/
+	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v ./internal/rocksdb/
 
 ## test-coverage: Run tests with coverage report
 test-coverage:
 	@echo "$(CYAN)Running tests with coverage...$(NO_COLOR)"
 	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -coverprofile=coverage.out ./internal/... ./test/
-	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -tags=rocksdb -coverprofile=coverage-rocksdb.out ./internal/storage/
 	@go tool cover -html=coverage.out -o coverage.html
 	@echo "$(GREEN)Coverage report generated: coverage.html$(NO_COLOR)"
 

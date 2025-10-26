@@ -91,11 +91,17 @@ var defaultSnapshotCount uint64 = 10000
 // provided the proposal channel. All log entries are replayed over the
 // commit channel, followed by a nil message (to indicate the channel is
 // current), then new log entries. To shutdown, close proposeC and read errorC.
+// storageType: "memory" or "rocksdb" to separate data directories
 func NewNode(id int, peers []string, join bool, getSnapshot func() ([]byte, error), proposeC <-chan string,
-	confChangeC <-chan raftpb.ConfChange,
+	confChangeC <-chan raftpb.ConfChange, storageType string,
 ) (<-chan *kvstore.Commit, <-chan error, <-chan *snap.Snapshotter) {
 	commitC := make(chan *kvstore.Commit)
 	errorC := make(chan error)
+
+	// Default to "memory" if not specified
+	if storageType == "" {
+		storageType = "memory"
+	}
 
 	rc := &raftNode{
 		proposeC:    proposeC,
@@ -105,8 +111,8 @@ func NewNode(id int, peers []string, join bool, getSnapshot func() ([]byte, erro
 		id:          id,
 		peers:       peers,
 		join:        join,
-		waldir:      fmt.Sprintf("data/%d/wal", id),
-		snapdir:     fmt.Sprintf("data/%d/snap", id),
+		waldir:      fmt.Sprintf("data/%s/%d/wal", storageType, id),
+		snapdir:     fmt.Sprintf("data/%s/%d/snap", storageType, id),
 		getSnapshot: getSnapshot,
 		snapCount:   defaultSnapshotCount,
 		stopc:       make(chan struct{}),

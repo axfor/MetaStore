@@ -59,10 +59,11 @@ func newRocksDBCluster(n int) *rocksDBCluster {
 
 	for i := range clus.peers {
 		// Clean up old data
-		dataDir := fmt.Sprintf("data/%d", i+1)
+		// RocksDB Raft nodes expect data/rocksdb/{id} directory structure
+		dataDir := fmt.Sprintf("data/rocksdb/%d", i+1)
 		os.RemoveAll(dataDir)
 
-		// Open RocksDB - use the standard data/{id} directory to match raft's expectations
+		// Open RocksDB - use the standard data/rocksdb/{id} directory to match raft's expectations
 		db, err := rocksdbstore.Open(dataDir)
 		if err != nil {
 			panic(fmt.Sprintf("failed to open RocksDB for node %d: %v", i+1, err))

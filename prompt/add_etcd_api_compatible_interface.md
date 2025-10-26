@@ -23,8 +23,15 @@
 3. **项目布局**：整个仓库必须遵守 `golang-standards/project-layout` 的目录规范（cmd/, pkg/, internal/, api/, configs/, docs/ 等）。
 4. **质量优先**：实现需采用最佳实践（清晰接口/文档、完善单元与集成测试、CI、可观测性、错误处理、一致性文档），不能偷工减料。
 5. **兼容性声明**：任何无法在当前架构下保证的 etcd 行为/语义须在设计文档中逐条列出并给出替代方案或实现路线（不得模糊带过）。
+6. **git提交约束**：整个过程中严格遵守，使用git commit 提交是不能出现claude任何签名与字眼描述
+7. **编译**：不能添加如//go:build cgo编译标志，需要保障内存引擎与rocksdb引擎2种存储引擎所有测试案例都通过
+8. **集成测试案例**：需要为 etcd 协议创建完整的集成测试，参考 HTTP API 的测试模式，覆盖内存和 RocksDB 两种引擎的单节点和集群测试。 让先查看现有的 HTTP API 测试文件结构，（etcd访问协议接口的兼容集成测试（测试文件夹：test），需要参考http api协议的集成测试方式（参考文件http_api_*.go），同时覆盖内存与rocksdb的2种存储引擎的单节点与集群多节点读写与一致性检查全访问测试）
+9. **存储目录**：内存引擎的存储目录可以放在data/memory下，rocksdb引擎的存储目录可以放在data/rocksdb下
+10. **多引擎实现要求**：由于同时支持内存与rocksdb的2种存储引擎，在实现所有功能时都需要严格实现2种引擎的功能，不能偷懒
+11. **架构要求1**：符合单一存储实例、协议无关的设计原则，实现多个访问协议时，http API 和 etcd API 需要使用不同的接口对象，但存储层只能共享一个存储实例。所有数据仅有一份，通过不同的访问协议来源进行访问。通过 http API 接口写入的数据，可以通过 etcd API 协议（etcd v3 的 gRPC API 或 client SDK）进行访问。不同的访问协议来源与存储层无关，访问层仅负责接收客户请求，并通过存储接口进行查询返回。同一个存储引擎只有一个实例，raft 层也应当是通用的。
 
----
+12. 
+--
 
 ## 功能需求（按优先级）
 
@@ -36,7 +43,7 @@
 * Watch：支持创建、取消、事件类型（PUT, DELETE）、历史事件、复用流式 watch 语义
 * Lease：grant、revoke、keepalive（单次/流式）、租约绑定到 key、租约过期行为
 * Authentication/Authorization（如启用）：用户/角色管理、Token 验证（如果产品需求包含）
-* Maintenance/Cluster 管理 API（至少提供与客户端期望的 API 路由/错误码）：snapshot、status/health、defragment 等（可先实现代理/透传或 NO-OP + 明确错误语义）
+* Maintenance/Cluster 管理 API（至少提供与客户端期望的 API 路由/错误码）：snapshot、status/health、defragment 等
 * Lock/Concurrency 高层接口（通过 Lease + txn 实现，兼容 etcd 的 concurrency 包行为，至少保证常用锁/会话语义）
 * 服务器端错误语义、错误码（例如 gRPC codes）需要与 etcd 客户端的预期一致
 
@@ -142,4 +149,3 @@
 ## 最终交付说明（写给验收方）
 
 交付时请提供：源代码、构建/部署脚本、设计文档（含语义差异清单）、自动化测试结果（CI 报告）、示例代码（可直接运行）。若任何 etcd 行为无法复现，应在 `docs/limitations.md` 中明确说明并给出替代方案或后续实现计划。
-

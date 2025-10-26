@@ -14,6 +14,7 @@ A Lightweight, distributed, high-performance Metadata management component that 
 - **Dynamic Membership**: Add/remove nodes without downtime
 - **Snapshots**: Automatic log compaction via snapshots
 - **Single Binary**: Lightweight, easy to deploy
+- **🆕 etcd v3 Compatibility**: gRPC API compatible with etcd v3 (see [etcd Compatibility](#etcd-compatibility))
 
 ## Building
 
@@ -295,7 +296,7 @@ For store, this commit channel is consumed by the key-value store.
 ### Memory + WAL (Default)
 
 - **Persistence**: Write-Ahead Log (WAL) + periodic snapshots
-- **Storage Location**: `./metaStore-{id}/` (WAL), `./metaStore-{id}-snap/` (snapshots)
+- **Storage Location**: `./data/{id}/wal` (WAL), `./data/{id}/snap/` (snapshots)
 - **Use Case**: Fast performance, suitable for most scenarios
 - **Data Loss**: Minimal (only uncommitted entries on crash)
 - **Recovery**: Fast snapshot + WAL replay
@@ -442,6 +443,111 @@ For detailed structure information, see [PROJECT_LAYOUT.md](PROJECT_LAYOUT.md).
 ### Development Guides
 - [Git Commit Guide](docs/GIT_COMMIT.md) - How to commit changes to the project
 
+## etcd Compatibility
+
+MetaStore now provides an **etcd v3 compatible gRPC API layer**, allowing you to use official etcd client SDKs (like `go.etcd.io/etcd/client/v3`) to interact with MetaStore.
+
+### Quick Start with etcd Compatibility
+
+#### 1. Start the etcd-compatible server (Demo mode)
+
+```bash
+# Build the demo server
+go build ./cmd/etcd-demo
+
+# Start server (listens on :2379 by default)
+./etcd-demo
+```
+
+#### 2. Use etcd clientv3 to connect
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "log"
+    "time"
+
+    clientv3 "go.etcd.io/etcd/client/v3"
+)
+
+func main() {
+    cli, err := clientv3.New(clientv3.Config{
+        Endpoints:   []string{"localhost:2379"},
+        DialTimeout: 5 * time.Second,
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer cli.Close()
+
+    // Put
+    cli.Put(context.Background(), "foo", "bar")
+
+    // Get
+    resp, _ := cli.Get(context.Background(), "foo")
+    for _, kv := range resp.Kvs {
+        fmt.Printf("%s: %s\n", kv.Key, kv.Value)
+    }
+}
+```
+
+#### 3. Run the complete example
+
+```bash
+# Terminal 1: Start server
+./etcd-demo
+
+# Terminal 2: Run example
+go run examples/etcd-client/main.go
+```
+
+### Supported etcd v3 Features
+
+✅ **Fully Supported**:
+- KV operations (Range, Put, DeleteRange, Txn)
+- Watch (event streaming)
+- Lease (grant, revoke, keepalive, TTL)
+- Maintenance (Status, Snapshot)
+- gRPC API compatibility
+
+⚠️ **Partially Supported**:
+- Compact (simplified implementation)
+- MVCC (current version only, no historical queries)
+
+❌ **Not Implemented**:
+- Auth/RBAC
+- Cluster management APIs
+- Historical revision queries
+
+### Documentation
+
+- **[etcd Usage Guide](docs/etcd-usage-guide.md)** - How to use the etcd-compatible API
+- **[etcd Compatibility Design](docs/etcd-compatibility-design.md)** - Architecture and implementation details
+- **[Limitations](docs/limitations.md)** - Current limitations and differences from official etcd
+
+### Current Status
+
+**Version**: v0.1.0-demo (Phase 1)
+
+This is a **demonstration version** that:
+- ✅ Provides etcd v3 gRPC API compatibility
+- ✅ Supports all core KV/Watch/Lease operations
+- ⚠️ Runs in single-node mode without Raft (demo only)
+- ⚠️ Uses in-memory storage (no persistence)
+
+**Not recommended for production use yet.**
+
+### Roadmap
+
+- **Phase 1 (Current)**: etcd API compatibility layer + demo mode
+- **Phase 2 (Planned)**: Raft integration + RocksDB persistence
+- **Phase 3 (Future)**: Auth/RBAC + performance optimization
 
 
+### TODO
+
+- [Cmd cross protocol](todo/cmd_cross_protocol.md)
 
