@@ -28,7 +28,7 @@ import (
 	"metaStore/internal/memory"
 	"metaStore/internal/raft"
 	"metaStore/internal/rocksdb"
-	"metaStore/pkg/etcdcompat"
+	"metaStore/pkg/etcdapi"
 	"metaStore/pkg/httpapi"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -124,7 +124,7 @@ func TestCrossProtocolMemoryDataInteroperability(t *testing.T) {
 	proposeC := make(chan string, 1)
 	confChangeC := make(chan raftpb.ConfChange, 1)
 
-	var kvs *memory.MemoryEtcdRaft
+	var kvs *memory.Memory
 	getSnapshot := func() ([]byte, error) {
 		if kvs == nil {
 			return nil, nil
@@ -134,7 +134,7 @@ func TestCrossProtocolMemoryDataInteroperability(t *testing.T) {
 
 	commitC, errorC, snapshotterReady := raft.NewNode(1, peers, false, getSnapshot, proposeC, confChangeC, "memory")
 
-	kvs = memory.NewMemoryEtcdRaft(<-snapshotterReady, proposeC, commitC, errorC)
+	kvs = memory.NewMemory(<-snapshotterReady, proposeC, commitC, errorC)
 
 	// Start HTTP API server
 	httpListener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -155,7 +155,7 @@ func TestCrossProtocolMemoryDataInteroperability(t *testing.T) {
 	etcdAddr := etcdListener.Addr().String()
 	etcdListener.Close()
 
-	etcdServer, err := etcdcompat.NewServer(etcdcompat.ServerConfig{
+	etcdServer, err := etcdapi.NewServer(etcdapi.ServerConfig{
 		Store:     kvs,
 		Address:   etcdAddr,
 		ClusterID: 1000,
@@ -523,7 +523,7 @@ func TestCrossProtocolRocksDBDataInteroperability(t *testing.T) {
 	db, err := rocksdb.Open(dbPath)
 	require.NoError(t, err)
 
-	var kvs *rocksdb.RocksDBEtcdRaft
+	var kvs *rocksdb.RocksDB
 	getSnapshot := func() ([]byte, error) {
 		if kvs == nil {
 			return nil, nil
@@ -533,7 +533,7 @@ func TestCrossProtocolRocksDBDataInteroperability(t *testing.T) {
 
 	commitC, errorC, snapshotterReady := raft.NewNodeRocksDB(1, peers, false, getSnapshot, proposeC, confChangeC, db)
 
-	kvs = rocksdb.NewRocksDBEtcdRaft(db, <-snapshotterReady, proposeC, commitC, errorC)
+	kvs = rocksdb.NewRocksDB(db, <-snapshotterReady, proposeC, commitC, errorC)
 
 	// Start HTTP API server
 	httpListener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -554,7 +554,7 @@ func TestCrossProtocolRocksDBDataInteroperability(t *testing.T) {
 	etcdAddr := etcdListener.Addr().String()
 	etcdListener.Close()
 
-	etcdServer, err := etcdcompat.NewServer(etcdcompat.ServerConfig{
+	etcdServer, err := etcdapi.NewServer(etcdapi.ServerConfig{
 		Store:     kvs,
 		Address:   etcdAddr,
 		ClusterID: 2000,

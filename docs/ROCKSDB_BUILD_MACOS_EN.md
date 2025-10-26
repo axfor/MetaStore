@@ -25,19 +25,19 @@ CGO_LDFLAGS="-Wl,-U,_SecTrustCopyCertificateChain" go test -v -tags=rocksdb ./..
 
 **Single Node Start**:
 ```bash
-./metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380
+./metaStore --member-id 1 --cluster http://127.0.0.1:12379 --port 12380
 ```
 
 **3-Node Cluster**:
 ```bash
 # Terminal 1
-./metaStore --id 1 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 12380
+./metaStore --member-id 1 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 12380
 
 # Terminal 2
-./metaStore --id 2 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 22380
+./metaStore --member-id 2 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 22380
 
 # Terminal 3
-./metaStore --id 3 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 32380
+./metaStore --member-id 3 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 32380
 ```
 
 ### Fixed Key Issues
@@ -237,7 +237,7 @@ CGO_LDFLAGS="-Wl,-U,_SecTrustCopyCertificateChain" go test -v -tags=rocksdb -run
 ### Start RocksDB Version Service
 ```bash
 # Single node mode
-./metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380
+./metaStore --member-id 1 --cluster http://127.0.0.1:12379 --port 12380
 
 # Verify RocksDB logs
 # Should see: "Starting with RocksDB persistent storage"
@@ -579,9 +579,9 @@ CGO_LDFLAGS="-Wl,-U,_SecTrustCopyCertificateChain" go build -tags=rocksdb
 mkdir -p data
 
 # Start 3-node cluster
-./metaStore --id 1 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 12380 &
-./metaStore --id 2 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 22380 &
-./metaStore --id 3 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 32380 &
+./metaStore --member-id 1 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 12380 &
+./metaStore --member-id 2 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 22380 &
+./metaStore --member-id 3 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 32380 &
 
 # Wait for cluster to start
 sleep 5
@@ -610,7 +610,7 @@ After comprehensive testing, the answer is: **No!** Below is the detailed verifi
 **Test Steps**:
 ```bash
 # 1. Start node 1 (single-node cluster)
-./metaStore --id 1 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 12380 &
+./metaStore --member-id 1 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 12380 &
 sleep 3
 
 # 2. Write data to node 1 (other nodes haven't joined yet)
@@ -619,8 +619,8 @@ curl -L http://127.0.0.1:12380/test1 -XPUT -d "value1"
 curl -L http://127.0.0.1:12380/test2 -XPUT -d "value2"
 
 # 3. Start nodes 2 and 3 (new nodes joining)
-./metaStore --id 2 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 22380 &
-./metaStore --id 3 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 32380 &
+./metaStore --member-id 2 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 22380 &
+./metaStore --member-id 3 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 32380 &
 sleep 5
 
 # 4. Read data from all nodes
@@ -665,9 +665,9 @@ Node 3: after-cluster = data-after-all-nodes-joined  ✅ Real-time sync
 pkill -f "metaStore --id"
 
 # 2. Restart all nodes
-./metaStore --id 1 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 12380 &
-./metaStore --id 2 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 22380 &
-./metaStore --id 3 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 32380 &
+./metaStore --member-id 1 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 12380 &
+./metaStore --member-id 2 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 22380 &
+./metaStore --member-id 3 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 32380 &
 sleep 5
 
 # 3. Verify all previously written data (5 key-value pairs)
@@ -822,7 +822,7 @@ Or specify parameters explicitly:
 mkdir -p data
 
 # Start node
-./metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380
+./metaStore --member-id 1 --cluster http://127.0.0.1:12379 --port 12380
 ```
 
 #### Normal Startup Logs
@@ -884,7 +884,7 @@ A major advantage of the RocksDB version is data persistence. Here's the complet
 
 ```bash
 # Start service
-./metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380
+./metaStore --member-id 1 --cluster http://127.0.0.1:12379 --port 12380
 
 # Write test data
 curl -L http://127.0.0.1:12380/test-key -XPUT -d "Hello RocksDB!"
@@ -913,7 +913,7 @@ pkill -f "metaStore --id"
 
 ```bash
 # Restart (note: don't clean data directory)
-./metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380
+./metaStore --member-id 1 --cluster http://127.0.0.1:12379 --port 12380
 ```
 
 Startup logs will show state recovered from persistent storage:
@@ -983,17 +983,17 @@ goreman start
 mkdir -p data
 
 # Terminal 1 - Node 1
-./metaStore --id 1 \
+./metaStore --member-id 1 \
   --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 \
   --port 12380
 
 # Terminal 2 - Node 2
-./metaStore --id 2 \
+./metaStore --member-id 2 \
   --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 \
   --port 22380
 
 # Terminal 3 - Node 3
-./metaStore --id 3 \
+./metaStore --member-id 3 \
   --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 \
   --port 32380
 ```
@@ -1021,7 +1021,7 @@ rm -rf data/
 
 # Start in background (remember to create data directory first)
 mkdir -p data
-./metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380 > store.log 2>&1 &
+./metaStore --member-id 1 --cluster http://127.0.0.1:12379 --port 12380 > store.log 2>&1 &
 
 # View logs
 tail -f store.log
@@ -1127,13 +1127,13 @@ curl -L http://127.0.0.1:22380/test
 3. **Data Backup**:
    ```bash
    # Stop service
-   pkill -f "metaStore --id 1"
+   pkill -f "metaStore --member-id 1"
 
    # Backup data
    tar -czf store-backup-$(date +%Y%m%d).tar.gz data/1/
 
    # Restart service
-   ./metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380
+   ./metaStore --member-id 1 --cluster http://127.0.0.1:12379 --port 12380
    ```
 
 ## 📚 Complete Summary
@@ -1213,7 +1213,7 @@ CGO_LDFLAGS="-Wl,-U,_SecTrustCopyCertificateChain" go build -tags=rocksdb
 CGO_LDFLAGS="-Wl,-U,_SecTrustCopyCertificateChain" go test -v -tags=rocksdb ./...
 
 # 3️⃣ Start Single Node Service
-./metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380
+./metaStore --member-id 1 --cluster http://127.0.0.1:12379 --port 12380
 
 # 4️⃣ Use HTTP API
 curl -L http://127.0.0.1:12380/mykey -XPUT -d "myvalue"  # Write
@@ -1221,13 +1221,13 @@ curl -L http://127.0.0.1:12380/mykey                      # Read
 
 # 5️⃣ Start 3-Node Cluster (Optional)
 # Terminal 1
-./metaStore --id 1 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 12380
+./metaStore --member-id 1 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 12380
 
 # Terminal 2
-./metaStore --id 2 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 22380
+./metaStore --member-id 2 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 22380
 
 # Terminal 3
-./metaStore --id 3 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 32380
+./metaStore --member-id 3 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 32380
 ```
 
 ### 🚀 Production-Ready Status

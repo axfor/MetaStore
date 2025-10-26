@@ -193,7 +193,7 @@ The unified build produces a single binary that supports **both** memory and Roc
 
 ```sh
 # Start with memory + WAL storage (default)
-metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380 --storage memory
+metaStore --member-id 1 --cluster http://127.0.0.1:12379 --port 12380 --storage memory
 ```
 
 #### RocksDB Mode
@@ -203,13 +203,13 @@ metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380 --storage memory
 mkdir -p data
 
 # Start with RocksDB storage
-metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380 --storage rocksdb
+metaStore --member-id1 --cluster http://127.0.0.1:12379 --port 12380 --storage rocksdb
 ```
 
 The unified binary allows you to choose the storage engine at runtime using the `--storage` flag.
 
 Each store process maintains a single raft instance and a key-value server.
-The process's list of comma separated peers (--cluster), its raft ID index into the peer list (--id), and HTTP key-value server port (--port) are passed through the command line.
+The process's list of comma separated peers (--cluster), its raft ID index into the peer list (--member-id), and HTTP key-value server port (--port) are passed through the command line.
 
 Next, store a value ("hello") to a key ("my-key"):
 
@@ -249,9 +249,9 @@ Nodes can be added to or removed from a running cluster using requests to the RE
 
 For example, suppose we have a 3-node cluster that was started with the commands:
 ```sh
-metaStore --id 1 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 12380
-metaStore --id 2 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 22380
-metaStore --id 3 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 32380
+metaStore --member-id1 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 12380
+metaStore --member-id2 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 22380
+metaStore --member-id3 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 32380
 ```
 
 A fourth node with ID 4 can be added by issuing a POST:
@@ -261,7 +261,7 @@ curl -L http://127.0.0.1:12380/4 -XPOST -d http://127.0.0.1:42379
 
 Then the new node can be started as the others were, using the --join option:
 ```sh
-metaStore --id 4 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379,http://127.0.0.1:42379 --port 42380 --join
+metaStore --member-id4 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379,http://127.0.0.1:42379 --port 42380 --join
 ```
 
 The new node should join the cluster and be able to service key/value requests.
@@ -324,7 +324,7 @@ For store, this commit channel is consumed by the key-value store.
 ## Command Line Options
 
 ```
---id int            Node ID (default: 1)
+--member-id int     Node ID (default: 1)
 --cluster string    Comma-separated list of cluster peer URLs (default: "http://127.0.0.1:9021")
 --port int          HTTP API port for key-value operations (default: 9121)
 --join              Join an existing cluster (default: false)

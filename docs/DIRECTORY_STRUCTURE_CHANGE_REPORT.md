@@ -105,7 +105,7 @@ snapdir: fmt.Sprintf("data/%d/snap", id),
 mkdir -p data
 
 # 2. 启动节点
-./metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380
+./metaStore --member-id 1 --cluster http://127.0.0.1:12379 --port 12380
 
 # 3. 写入测试数据
 curl -s http://127.0.0.1:12380/test-key -XPUT -d "hello-new-structure"
@@ -151,10 +151,10 @@ $ du -sh data/1
 
 ```bash
 # 1. 停止节点
-pkill -f "metaStore --id 1"
+pkill -f "metaStore --member-id 1"
 
 # 2. 重新启动节点
-./metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380
+./metaStore --member-id 1 --cluster http://127.0.0.1:12379 --port 12380
 
 # 3. 验证数据恢复
 curl -s http://127.0.0.1:12380/test-key  # ✅ hello-new-structure
@@ -189,9 +189,9 @@ raft2025/10/21 01:10:31 INFO: 1 became leader at term 3
 ```bash
 # 1. 清理旧数据并启动集群
 rm -rf data/*
-./metaStore --id 1 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 12380 &
-./metaStore --id 2 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 22380 &
-./metaStore --id 3 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 32380 &
+./metaStore --member-id 1 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 12380 &
+./metaStore --member-id 2 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 22380 &
+./metaStore --member-id 3 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 32380 &
 
 # 2. 写入数据到节点 1
 curl -s http://127.0.0.1:12380/cluster-test -XPUT -d "test-3-node-cluster"
@@ -274,7 +274,7 @@ IO error: No such file or directory: While mkdir if missing: data/1: No such fil
 # 启动节点前必须先创建 data 目录
 # Must create data directory before starting nodes
 mkdir -p data
-./metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380
+./metaStore --member-id 1 --cluster http://127.0.0.1:12379 --port 12380
 ```
 
 ### 2. 文档更新 / Documentation Updates
@@ -339,7 +339,7 @@ rm -rf data/
 3. **数据恢复** / Data Recovery:
    ```bash
    tar -xzf backup-20251021.tar.gz
-   ./metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380
+   ./metaStore --member-id 1 --cluster http://127.0.0.1:12379 --port 12380
    ```
 
 4. **清理数据** / Cleanup:

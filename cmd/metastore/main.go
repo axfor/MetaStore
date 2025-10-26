@@ -24,7 +24,7 @@ import (
 	"metaStore/internal/memory"
 	"metaStore/internal/raft"
 	"metaStore/internal/rocksdb"
-	"metaStore/pkg/etcdcompat"
+	"metaStore/pkg/etcdapi"
 	"metaStore/pkg/httpapi"
 
 	"go.etcd.io/raft/v3/raftpb"
@@ -33,7 +33,7 @@ import (
 func main() {
 	cluster := flag.String("cluster", "http://127.0.0.1:9021", "comma separated cluster peers")
 	clusterID := flag.Uint64("cluster-id", 1, "cluster ID")
-	id := flag.Int("id", 1, "node ID") // memberID
+	memberID := flag.Int("member-id", 1, "node ID")
 	kvport := flag.Int("port", 9121, "http server port")
 	grpcAddr := flag.String("grpc-addr", ":2379", "gRPC server address for etcd compatibility")
 	join := flag.Bool("join", false, "join an existing cluster")
@@ -50,7 +50,7 @@ func main() {
 	case "rocksdb":
 		// RocksDB mode - persistent storage
 		log.Println("Starting with RocksDB persistent storage")
-		dbPath := fmt.Sprintf("data/rocksdb/%d", *id)
+		dbPath := fmt.Sprintf("data/rocksdb/%d", *memberID)
 		db, err := rocksdb.Open(dbPath)
 		if err != nil {
 			log.Fatalf("Failed to open RocksDB: %v", err)
@@ -61,12 +61,12 @@ func main() {
 
 		// Create RocksDB-backed KV store
 
-		// nodeID := fmt.Sprintf("node_%d", *id)
-		var kvs *rocksdb.RocksDBEtcdRaft
+		// nodeID := fmt.Sprintf("node_%d", *memberID)
+		var kvs *rocksdb.RocksDB
 		getSnapshot := func() ([]byte, error) { return kvs.GetSnapshot() }
-		commitC, errorC, snapshotterReady := raft.NewNodeRocksDB(*id, strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC, db)
+		commitC, errorC, snapshotterReady := raft.NewNodeRocksDB(*memberID, strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC, db)
 
-		kvs = rocksdb.NewRocksDBEtcdRaft(db, <-snapshotterReady, proposeC, commitC, errorC)
+		kvs = rocksdb.NewRocksDB(db, <-snapshotterReady, proposeC, commitC, errorC)
 		defer kvs.Close()
 
 		// Start HTTP API server
@@ -77,11 +77,11 @@ func main() {
 
 		// Start etcd gRPC server
 		log.Printf("Starting etcd gRPC server on %s", *grpcAddr)
-		etcdServer, err := etcdcompat.NewServer(etcdcompat.ServerConfig{
+		etcdServer, err := etcdapi.NewServer(etcdapi.ServerConfig{
 			Store:     kvs,
 			Address:   *grpcAddr,
 			ClusterID: uint64(*clusterID),
-			MemberID:  uint64(*id),
+			MemberID:  uint64(*memberID),
 		})
 		if err != nil {
 			log.Fatalf("Failed to create etcd server: %v", err)
@@ -98,11 +98,11 @@ func main() {
 	case "memory":
 		// Memory + WAL mode with etcd compatibility
 		log.Println("Starting with memory + WAL storage and etcd gRPC support")
-		var kvs *memory.MemoryEtcdRaft
+		var kvs *memory.Memory
 		getSnapshot := func() ([]byte, error) { return kvs.GetSnapshot() }
-		commitC, errorC, snapshotterReady := raft.NewNode(*id, strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC, "memory")
+		commitC, errorC, snapshotterReady := raft.NewNode(*memberID, strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC, "memory")
 
-		kvs = memory.NewMemoryEtcdRaft(<-snapshotterReady, proposeC, commitC, errorC)
+		kvs = memory.NewMemory(<-snapshotterReady, proposeC, commitC, errorC)
 
 		// Start HTTP API server
 		go func() {
@@ -112,11 +112,11 @@ func main() {
 
 		// Start etcd gRPC server
 		log.Printf("Starting etcd gRPC server on %s", *grpcAddr)
-		etcdServer, err := etcdcompat.NewServer(etcdcompat.ServerConfig{
+		etcdServer, err := etcdapi.NewServer(etcdapi.ServerConfig{
 			Store:     kvs,
 			Address:   *grpcAddr,
 			ClusterID: uint64(*clusterID),
-			MemberID:  uint64(*id),
+			MemberID:  uint64(*memberID),
 		})
 		if err != nil {
 			log.Fatalf("Failed to create etcd server: %v", err)
