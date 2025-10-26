@@ -435,6 +435,8 @@ For detailed structure information, see [PROJECT_LAYOUT.md](PROJECT_LAYOUT.md).
 - [Implementation Details](docs/IMPLEMENTATION.md) - Architecture and design decisions
 - [Project Summary](docs/PROJECT_SUMMARY.md) - Complete project overview
 - [Files Checklist](docs/FILES_CHECKLIST.md) - Complete file inventory
+- ⭐ **[etcd Interface Status Report](docs/ETCD_INTERFACE_STATUS.md)** - Complete list of implemented etcd v3 interfaces and known defects ([English](docs/ETCD_INTERFACE_STATUS_EN.md))
+- [Transaction Implementation Report](docs/TRANSACTION_IMPLEMENTATION.md) - etcd Transaction feature implementation details ([English](docs/TRANSACTION_IMPLEMENTATION_EN.md))
 
 ### RocksDB Documentation
 - [RocksDB Test Guide](docs/ROCKSDB_TEST_GUIDE.md) - How to run RocksDB tests in different environments
