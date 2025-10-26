@@ -72,12 +72,12 @@ func newCluster(n int) *cluster {
 	}
 
 	for i := range clus.peers {
-		os.RemoveAll(fmt.Sprintf("data/%d", i+1))
+		os.RemoveAll(fmt.Sprintf("data/memory/%d", i+1))
 		clus.proposeC[i] = make(chan string, 1)
 		clus.confChangeC[i] = make(chan raftpb.ConfChange, 1)
 		fn, snapshotTriggeredC := getSnapshotFn()
 		clus.snapshotTriggeredC[i] = snapshotTriggeredC
-		clus.commitC[i], clus.errorC[i], clus.snapshotterReady[i] = raft.NewNode(i+1, clus.peers, false, fn, clus.proposeC[i], clus.confChangeC[i])
+		clus.commitC[i], clus.errorC[i], clus.snapshotterReady[i] = raft.NewNode(i+1, clus.peers, false, fn, clus.proposeC[i], clus.confChangeC[i], "memory")
 	}
 
 	return clus
@@ -97,7 +97,7 @@ func (clus *cluster) Close() (err error) {
 			err = erri
 		}
 		// clean intermediates
-		os.RemoveAll(fmt.Sprintf("data/%d", i+1))
+		os.RemoveAll(fmt.Sprintf("data/memory/%d", i+1))
 	}
 	return err
 }
@@ -189,7 +189,7 @@ func TestHTTPAPIMemoryPutAndGetKeyValue(t *testing.T) {
 
 	var kvs *memory.Memory
 	getSnapshot := func() ([]byte, error) { return kvs.GetSnapshot() }
-	commitC, errorC, snapshotterReady := raft.NewNode(1, clusters, false, getSnapshot, proposeC, confChangeC)
+	commitC, errorC, snapshotterReady := raft.NewNode(1, clusters, false, getSnapshot, proposeC, confChangeC, "memory")
 
 	kvs = memory.NewMemory(<-snapshotterReady, proposeC, commitC, errorC)
 
@@ -247,7 +247,7 @@ func TestHTTPAPIMemoryAddNewNode(t *testing.T) {
 	confChangeC := make(chan raftpb.ConfChange)
 	defer close(confChangeC)
 
-	raft.NewNode(4, append(clus.peers, newNodeURL), true, nil, proposeC, confChangeC)
+	raft.NewNode(4, append(clus.peers, newNodeURL), true, nil, proposeC, confChangeC, "memory")
 
 	go func() {
 		proposeC <- "foo"
