@@ -47,10 +47,11 @@ type RocksDB struct {
 	wo *grocksdb.WriteOptions
 	ro *grocksdb.ReadOptions
 
-	mu         sync.Mutex
-	pendingMu  sync.RWMutex
-	pendingOps map[string]chan struct{} // for sync wait
-	seqNum     int64
+	mu                sync.Mutex
+	pendingMu         sync.RWMutex
+	pendingOps        map[string]chan struct{}          // for sync wait
+	pendingTxnResults map[string]*kvstore.TxnResponse   // seqNum -> txn result
+	seqNum            int64
 
 	// Watch support
 	watchMu sync.RWMutex
@@ -77,7 +78,7 @@ type watchSubscription struct {
 
 // RaftOperation represents an operation to be committed through Raft
 type RaftOperation struct {
-	Type     string `json:"type"` // "PUT", "DELETE", "LEASE_GRANT", "LEASE_REVOKE"
+	Type     string `json:"type"` // "PUT", "DELETE", "LEASE_GRANT", "LEASE_REVOKE", "TXN"
 	Key      string `json:"key"`
 	Value    string `json:"value"`
 	LeaseID  int64  `json:"lease_id"`
@@ -86,6 +87,11 @@ type RaftOperation struct {
 
 	// Lease operations
 	TTL int64 `json:"ttl"`
+
+	// Transaction operations
+	Compares []kvstore.Compare `json:"compares,omitempty"`
+	ThenOps  []kvstore.Op      `json:"then_ops,omitempty"`
+	ElseOps  []kvstore.Op      `json:"else_ops,omitempty"`
 }
 
 // NewRocksDB creates a new RocksDB + Raft + etcd semantic storage
@@ -101,13 +107,14 @@ func NewRocksDB(
 	ro := grocksdb.NewDefaultReadOptions()
 
 	r := &RocksDB{
-		db:          db,
-		proposeC:    proposeC,
-		snapshotter: snapshotter,
-		wo:          wo,
-		ro:          ro,
-		pendingOps:  make(map[string]chan struct{}),
-		watches:     make(map[int64]*watchSubscription),
+		db:                db,
+		proposeC:          proposeC,
+		snapshotter:       snapshotter,
+		wo:                wo,
+		ro:                ro,
+		pendingOps:        make(map[string]chan struct{}),
+		pendingTxnResults: make(map[string]*kvstore.TxnResponse),
+		watches:           make(map[int64]*watchSubscription),
 	}
 
 	// Recover from snapshot if exists
@@ -199,6 +206,19 @@ func (r *RocksDB) applyOperation(op RaftOperation) {
 		// Apply Lease Revoke
 		if err := r.leaseRevokeUnlocked(op.LeaseID); err != nil {
 			log.Printf("Failed to apply LEASE_REVOKE: %v", err)
+		}
+
+	case "TXN":
+		// Apply Transaction
+		txnResp, err := r.txnUnlocked(op.Compares, op.ThenOps, op.ElseOps)
+		if err != nil {
+			log.Printf("Failed to apply TXN: %v", err)
+		}
+		// Save transaction result for client to read
+		if op.SeqNum != "" && txnResp != nil {
+			r.pendingMu.Lock()
+			r.pendingTxnResults[op.SeqNum] = txnResp
+			r.pendingMu.Unlock()
 		}
 
 	default:
@@ -887,13 +907,53 @@ func (r *RocksDB) Lookup(key string) (string, bool) {
 	return string(kv.Value), true
 }
 
-// Txn executes a transaction (simplified implementation)
-func (r *RocksDB) Txn(compare []kvstore.Compare, onSuccess []kvstore.Op, onFailure []kvstore.Op) (*kvstore.TxnResponse, error) {
-	// TODO: Implement transaction support
-	return &kvstore.TxnResponse{
-		Succeeded: false,
-		Responses: nil,
-	}, fmt.Errorf("transaction not yet implemented for RocksDB")
+// Txn executes a transaction (through Raft)
+func (r *RocksDB) Txn(cmps []kvstore.Compare, thenOps []kvstore.Op, elseOps []kvstore.Op) (*kvstore.TxnResponse, error) {
+	// Generate sequence number
+	r.mu.Lock()
+	r.seqNum++
+	seqNum := fmt.Sprintf("seq-%d", r.seqNum)
+	r.mu.Unlock()
+
+	// Create wait channel
+	waitCh := make(chan struct{})
+	r.pendingMu.Lock()
+	r.pendingOps[seqNum] = waitCh
+	r.pendingMu.Unlock()
+
+	op := RaftOperation{
+		Type:     "TXN",
+		Compares: cmps,
+		ThenOps:  thenOps,
+		ElseOps:  elseOps,
+		SeqNum:   seqNum,
+	}
+
+	// Serialize and propose
+	data, err := json.Marshal(op)
+	if err != nil {
+		r.pendingMu.Lock()
+		delete(r.pendingOps, seqNum)
+		r.pendingMu.Unlock()
+		return nil, err
+	}
+
+	r.proposeC <- string(data)
+
+	// Wait for Raft commit
+	<-waitCh
+
+	// Read transaction result
+	r.pendingMu.Lock()
+	txnResp := r.pendingTxnResults[seqNum]
+	delete(r.pendingTxnResults, seqNum) // Clean up result
+	r.pendingMu.Unlock()
+
+	if txnResp == nil {
+		return nil, fmt.Errorf("transaction result not found")
+	}
+
+	return txnResp, nil
 }
 
 // Helper functions
@@ -1096,5 +1156,189 @@ func (r *RocksDB) matchWatch(key, watchKey, rangeEnd string) bool {
 	}
 	// Range match
 	return key >= watchKey && (rangeEnd == "\x00" || key < rangeEnd)
+}
+
+// txnUnlocked executes a transaction (called after Raft commit, must be called without external locks)
+func (r *RocksDB) txnUnlocked(cmps []kvstore.Compare, thenOps []kvstore.Op, elseOps []kvstore.Op) (*kvstore.TxnResponse, error) {
+	// Evaluate all compare conditions
+	succeeded := true
+	for _, cmp := range cmps {
+		if !r.evaluateCompare(cmp) {
+			succeeded = false
+			break
+		}
+	}
+
+	// Choose operations to execute
+	var ops []kvstore.Op
+	if succeeded {
+		ops = thenOps
+	} else {
+		ops = elseOps
+	}
+
+	// Execute operations
+	responses := make([]kvstore.OpResponse, len(ops))
+	for i, op := range ops {
+		switch op.Type {
+		case kvstore.OpRange:
+			resp, err := r.Range(string(op.Key), string(op.RangeEnd), op.Limit, 0)
+			if err != nil {
+				return nil, err
+			}
+			responses[i] = kvstore.OpResponse{
+				Type:      kvstore.OpRange,
+				RangeResp: resp,
+			}
+		case kvstore.OpPut:
+			// For txn operations, we need to call the unlocked version
+			// Get previous value first
+			prevKv, _ := r.getKeyValue(string(op.Key))
+
+			// Apply put
+			if err := r.putUnlocked(string(op.Key), string(op.Value), op.LeaseID); err != nil {
+				return nil, err
+			}
+
+			responses[i] = kvstore.OpResponse{
+				Type: kvstore.OpPut,
+				PutResp: &kvstore.PutResponse{
+					PrevKv:   prevKv,
+					Revision: r.CurrentRevision(),
+				},
+			}
+		case kvstore.OpDelete:
+			// Get previous values first
+			var deleted int64
+			var prevKvs []*kvstore.KeyValue
+
+			key := string(op.Key)
+			rangeEnd := string(op.RangeEnd)
+
+			if rangeEnd == "" {
+				if kv, err := r.getKeyValue(key); err == nil && kv != nil {
+					deleted = 1
+					prevKvs = append(prevKvs, kv)
+				}
+			} else {
+				// Range delete - scan first
+				it := r.db.NewIterator(r.ro)
+				defer it.Close()
+
+				startKey := []byte(kvPrefix + key)
+				it.Seek(startKey)
+
+				for it.ValidForPrefix([]byte(kvPrefix)) {
+					k := string(it.Key().Data())
+					k = k[len(kvPrefix):]
+
+					if k >= key && (rangeEnd == "\x00" || k < rangeEnd) {
+						var kv kvstore.KeyValue
+						if err := gob.NewDecoder(bytes.NewBuffer(it.Value().Data())).Decode(&kv); err == nil {
+							deleted++
+							prevKvs = append(prevKvs, &kv)
+						}
+					}
+
+					if rangeEnd != "\x00" && k >= rangeEnd {
+						break
+					}
+
+					it.Next()
+				}
+			}
+
+			// Apply delete
+			if err := r.deleteUnlocked(key, rangeEnd); err != nil {
+				return nil, err
+			}
+
+			responses[i] = kvstore.OpResponse{
+				Type: kvstore.OpDelete,
+				DeleteResp: &kvstore.DeleteResponse{
+					Deleted:  deleted,
+					PrevKvs:  prevKvs,
+					Revision: r.CurrentRevision(),
+				},
+			}
+		}
+	}
+
+	return &kvstore.TxnResponse{
+		Succeeded: succeeded,
+		Responses: responses,
+		Revision:  r.CurrentRevision(),
+	}, nil
+}
+
+// evaluateCompare evaluates a compare condition
+func (r *RocksDB) evaluateCompare(cmp kvstore.Compare) bool {
+	kv, _ := r.getKeyValue(string(cmp.Key))
+	exists := (kv != nil)
+
+	switch cmp.Target {
+	case kvstore.CompareVersion:
+		v := int64(0)
+		if exists {
+			v = kv.Version
+		}
+		return r.compareInt(v, cmp.TargetUnion.Version, cmp.Result)
+	case kvstore.CompareCreate:
+		v := int64(0)
+		if exists {
+			v = kv.CreateRevision
+		}
+		return r.compareInt(v, cmp.TargetUnion.CreateRevision, cmp.Result)
+	case kvstore.CompareMod:
+		v := int64(0)
+		if exists {
+			v = kv.ModRevision
+		}
+		return r.compareInt(v, cmp.TargetUnion.ModRevision, cmp.Result)
+	case kvstore.CompareValue:
+		v := []byte{}
+		if exists {
+			v = kv.Value
+		}
+		return r.compareBytes(v, cmp.TargetUnion.Value, cmp.Result)
+	case kvstore.CompareLease:
+		v := int64(0)
+		if exists {
+			v = kv.Lease
+		}
+		return r.compareInt(v, cmp.TargetUnion.Lease, cmp.Result)
+	}
+	return false
+}
+
+// compareInt compares integers
+func (r *RocksDB) compareInt(a, b int64, result kvstore.CompareResult) bool {
+	switch result {
+	case kvstore.CompareEqual:
+		return a == b
+	case kvstore.CompareGreater:
+		return a > b
+	case kvstore.CompareLess:
+		return a < b
+	case kvstore.CompareNotEqual:
+		return a != b
+	}
+	return false
+}
+
+// compareBytes compares byte arrays
+func (r *RocksDB) compareBytes(a, b []byte, result kvstore.CompareResult) bool {
+	cmp := bytes.Compare(a, b)
+	switch result {
+	case kvstore.CompareEqual:
+		return cmp == 0
+	case kvstore.CompareGreater:
+		return cmp > 0
+	case kvstore.CompareLess:
+		return cmp < 0
+	case kvstore.CompareNotEqual:
+		return cmp != 0
+	}
+	return false
 }
 

@@ -261,6 +261,11 @@ func (m *MemoryEtcd) Txn(cmps []kvstore.Compare, thenOps []kvstore.Op, elseOps [
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	return m.txnUnlocked(cmps, thenOps, elseOps)
+}
+
+// txnUnlocked 执行事务（需要持有锁）
+func (m *MemoryEtcd) txnUnlocked(cmps []kvstore.Compare, thenOps []kvstore.Op, elseOps []kvstore.Op) (*kvstore.TxnResponse, error) {
 	// 评估所有 compare 条件
 	succeeded := true
 	for _, cmp := range cmps {

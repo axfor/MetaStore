@@ -335,3 +335,41 @@ func TestEtcdRocksDBClusterRevisionConsistency(t *testing.T) {
 	assert.LessOrEqual(t, maxRev-minRev, int64(2),
 		"Revision difference between nodes should be <= 2")
 }
+
+// TestEtcdRocksDBClusterTransactionConsistency tests transaction consistency across cluster
+func TestEtcdRocksDBClusterTransactionConsistency(t *testing.T) {
+	const numNodes = 3
+	clus := newEtcdRocksDBCluster(t, numNodes)
+	defer clus.Close(t)
+
+	ctx := context.Background()
+
+	// Setup initial data
+	_, err := clus.clients[0].Put(ctx, "txn-key", "initial-value")
+	require.NoError(t, err)
+
+	// Wait for replication
+	time.Sleep(2 * time.Second)
+
+	// Execute transaction on node 1
+	txn := clus.clients[1].Txn(ctx).
+		If(clientv3.Compare(clientv3.Value("txn-key"), "=", "initial-value")).
+		Then(clientv3.OpPut("txn-key", "updated-value")).
+		Else(clientv3.OpPut("txn-key", "failed-value"))
+
+	txnResp, err := txn.Commit()
+	require.NoError(t, err)
+	assert.True(t, txnResp.Succeeded, "Transaction should succeed")
+
+	// Wait for replication
+	time.Sleep(2 * time.Second)
+
+	// Verify all nodes see the updated value
+	for nodeIdx := 0; nodeIdx < numNodes; nodeIdx++ {
+		resp, err := clus.clients[nodeIdx].Get(ctx, "txn-key")
+		require.NoError(t, err)
+		require.Len(t, resp.Kvs, 1)
+		assert.Equal(t, "updated-value", string(resp.Kvs[0].Value),
+			"Node %d should have transaction result", nodeIdx)
+	}
+}

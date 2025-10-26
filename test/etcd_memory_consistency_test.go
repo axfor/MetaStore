@@ -209,9 +209,6 @@ func TestEtcdMemoryClusterDeleteConsistency(t *testing.T) {
 }
 
 // TestEtcdMemoryClusterTransactionConsistency tests transaction consistency
-// TODO: etcd Transaction 功能未完全实现，暂时注释掉此测试
-// Issue: Transaction (Compare-Then-Else) 语义需要完整实现
-/*
 func TestEtcdMemoryClusterTransactionConsistency(t *testing.T) {
 	const numNodes = 3
 	clus := newEtcdCluster(t, numNodes)
@@ -247,7 +244,6 @@ func TestEtcdMemoryClusterTransactionConsistency(t *testing.T) {
 			"Node %d should have transaction result", nodeIdx)
 	}
 }
-*/
 
 
 // TestEtcdMemoryClusterConcurrentMixedOperations tests mixed concurrent operations
