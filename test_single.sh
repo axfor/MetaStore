@@ -7,32 +7,38 @@ set -e
 echo "===== Phase 2 测试：Raft + etcd 兼容层 ====="
 echo""
 
+l=$(pkill metastore >/dev/null 2>&1 || true)
+
 # 清理
-rm -rf raft-cluster-test
+rm -rf raft-single-test 
 mkdir -p raft-cluster-test/node1
-
-cd /Users/bast/code/MetaStore
-
-# 编译（只编译 memory 版本）
+# 编译
 echo "1. 编译程序..."
-CGO_ENABLED=0 go build -o raft-cluster-test/metastore ./cmd/metastore
+
+make build
+
 echo "✅ 编译成功"
 echo""
 
+
+cp metaStore raft-cluster-test/
+cd raft-cluster-test
+mkdir -p data/rocksdb/1
+
+
 # 启动单节点
 echo "2. 启动单节点集群（后台）..."
-cd raft-cluster-test
 ./metastore \
-  --id=1 \
+  --member-id=1 \
   --cluster=http://127.0.0.1:9021 \
   --port=9121 \
   --grpc-addr=:12379 \
-  --storage=memory \
+  --storage=rocksdb \
   > node1/log.txt 2>&1 &
 
 PID=$!
 echo "节点 1 已启动 (PID: $PID)"
-sleep 2
+sleep 10
 
 # 检查进程是否还在运行
 if ! ps -p $PID > /dev/null; then
@@ -42,14 +48,15 @@ if ! ps -p $PID > /dev/null; then
 fi
 
 echo "✅ 节点运行中"
-echo""
+echo "============================================"
+echo "============================================"
 
 # 测试 etcd 兼容性
 echo "3. 测试 etcd clientv3..."
-cd /Users/bast/code/MetaStore
+
 
 # 创建简单测试程序
-cat > raft-cluster-test/test_client.go << 'GOEOF'
+cat > test_client.go << 'GOEOF'
 package main
 
 import (
@@ -80,6 +87,7 @@ func main() {
         log.Fatalf("Put failed: %v", err)
     }
     fmt.Println("✅ Put OK")
+    time.Sleep(2 * time.Second) // 等待集群稳定
 
     // Test Get
     fmt.Println("Testing Get...")
@@ -96,7 +104,7 @@ func main() {
 }
 GOEOF
 
-go run raft-cluster-test/test_client.go
+go run test_client.go
 echo ""
 
 # 清理
@@ -106,4 +114,7 @@ wait $PID 2>/dev/null || true
 
 echo ""
 echo "===== Phase 2 测试完成 ====="
+
+cd - 
+rm -rf raft-cluster-test
 

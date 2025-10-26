@@ -39,13 +39,14 @@ type Memory struct {
 
 	// 用于同步等待 Raft commit 的简单机制
 	pendingMu    sync.RWMutex
-	pendingOps   map[string]chan struct{} // key -> wait channel
+	pendingOps   map[string]chan struct{}          // key -> wait channel
+	pendingTxnResults map[string]*kvstore.TxnResponse // seqNum -> txn result
 	seqNum       int64
 }
 
 // RaftOperation 表示通过 Raft 提交的操作
 type RaftOperation struct {
-	Type     string `json:"type"`      // "PUT", "DELETE", "LEASE_GRANT", "LEASE_REVOKE"
+	Type     string `json:"type"`      // "PUT", "DELETE", "LEASE_GRANT", "LEASE_REVOKE", "TXN"
 	Key      string `json:"key"`
 	Value    string `json:"value"`
 	LeaseID  int64  `json:"lease_id"`
@@ -54,15 +55,21 @@ type RaftOperation struct {
 
 	// Lease 操作
 	TTL int64 `json:"ttl"`
+
+	// Transaction 操作
+	Compares   []kvstore.Compare `json:"compares,omitempty"`
+	ThenOps    []kvstore.Op      `json:"then_ops,omitempty"`
+	ElseOps    []kvstore.Op      `json:"else_ops,omitempty"`
 }
 
 // NewMemory 创建集成 Raft 的 etcd 兼容存储
 func NewMemory(snapshotter *snap.Snapshotter, proposeC chan<- string, commitC <-chan *kvstore.Commit, errorC <-chan error) *Memory {
 	m := &Memory{
-		MemoryEtcd:  NewMemoryEtcd(),
-		proposeC:    proposeC,
-		snapshotter: snapshotter,
-		pendingOps:  make(map[string]chan struct{}),
+		MemoryEtcd:        NewMemoryEtcd(),
+		proposeC:          proposeC,
+		snapshotter:       snapshotter,
+		pendingOps:        make(map[string]chan struct{}),
+		pendingTxnResults: make(map[string]*kvstore.TxnResponse),
 	}
 
 	// 从快照恢复
@@ -169,6 +176,19 @@ func (m *Memory) applyOperation(op RaftOperation) {
 		}
 
 		delete(m.MemoryEtcd.leases, op.LeaseID)
+
+	case "TXN":
+		// 应用 Transaction（使用未加锁版本，因为 MemoryEtcd.mu 已经在外部持有）
+		txnResp, err := m.MemoryEtcd.txnUnlocked(op.Compares, op.ThenOps, op.ElseOps)
+		if err != nil {
+			log.Printf("Failed to apply TXN: %v", err)
+		}
+		// 保存事务结果供客户端读取
+		if op.SeqNum != "" && txnResp != nil {
+			m.pendingMu.Lock()
+			m.pendingTxnResults[op.SeqNum] = txnResp
+			m.pendingMu.Unlock()
+		}
 
 	default:
 		log.Printf("Unknown operation type: %s", op.Type)
@@ -386,6 +406,55 @@ func (m *Memory) LeaseRevoke(id int64) error {
 	<-waitCh
 
 	return nil
+}
+
+// Txn 执行事务（通过 Raft）
+func (m *Memory) Txn(cmps []kvstore.Compare, thenOps []kvstore.Op, elseOps []kvstore.Op) (*kvstore.TxnResponse, error) {
+	// 生成唯一序列号
+	m.mu.Lock()
+	m.seqNum++
+	seqNum := fmt.Sprintf("seq-%d", m.seqNum)
+	m.mu.Unlock()
+
+	// 创建等待通道
+	waitCh := make(chan struct{})
+	m.pendingMu.Lock()
+	m.pendingOps[seqNum] = waitCh
+	m.pendingMu.Unlock()
+
+	op := RaftOperation{
+		Type:     "TXN",
+		Compares: cmps,
+		ThenOps:  thenOps,
+		ElseOps:  elseOps,
+		SeqNum:   seqNum,
+	}
+
+	// 序列化并 propose
+	data, err := json.Marshal(op)
+	if err != nil {
+		m.pendingMu.Lock()
+		delete(m.pendingOps, seqNum)
+		m.pendingMu.Unlock()
+		return nil, err
+	}
+
+	m.proposeC <- string(data)
+
+	// 等待 Raft 提交完成
+	<-waitCh
+
+	// 读取事务结果
+	m.pendingMu.Lock()
+	txnResp := m.pendingTxnResults[seqNum]
+	delete(m.pendingTxnResults, seqNum) // 清理结果
+	m.pendingMu.Unlock()
+
+	if txnResp == nil {
+		return nil, fmt.Errorf("transaction result not found")
+	}
+
+	return txnResp, nil
 }
 
 // Propose 提交操作（向后兼容旧的 HTTP API）

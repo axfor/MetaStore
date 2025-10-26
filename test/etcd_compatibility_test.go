@@ -482,8 +482,6 @@ func TestDelete_RocksDB(t *testing.T) {
 
 // TestTransaction_RocksDB 测试事务 (RocksDB)
 func TestTransaction_RocksDB(t *testing.T) {
-	t.Skip("Transaction not yet implemented for RocksDB")
-
 	_, cli, _ := startTestServerRocksDB(t)
 
 	ctx := context.Background()
