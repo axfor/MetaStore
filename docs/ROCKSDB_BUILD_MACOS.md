@@ -25,19 +25,19 @@ CGO_LDFLAGS="-Wl,-U,_SecTrustCopyCertificateChain" go test -v -tags=rocksdb ./..
 
 **单节点启动**:
 ```bash
-./metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380
+./metaStore --member-id 1 --cluster http://127.0.0.1:12379 --port 12380
 ```
 
 **3 节点集群**:
 ```bash
 # 终端 1
-./metaStore --id 1 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 12380
+./metaStore --member-id 1 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 12380
 
 # 终端 2
-./metaStore --id 2 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 22380
+./metaStore --member-id 2 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 22380
 
 # 终端 3
-./metaStore --id 3 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 32380
+./metaStore --member-id 3 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 32380
 ```
 
 ### 修复的关键问题
@@ -237,7 +237,7 @@ CGO_LDFLAGS="-Wl,-U,_SecTrustCopyCertificateChain" go test -v -tags=rocksdb -run
 ### 启动 RocksDB 版本服务
 ```bash
 # 单节点模式
-./metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380
+./metaStore --member-id 1 --cluster http://127.0.0.1:12379 --port 12380
 
 # 验证 RocksDB 日志
 # 启动时应该看到: "Starting with RocksDB persistent storage"
@@ -598,9 +598,9 @@ CGO_LDFLAGS="-Wl,-U,_SecTrustCopyCertificateChain" go build -tags=rocksdb
 rm -rf store-*
 
 # 启动 3 节点集群
-./metaStore --id 1 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 12380 &
-./metaStore --id 2 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 22380 &
-./metaStore --id 3 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 32380 &
+./metaStore --member-id 1 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 12380 &
+./metaStore --member-id 2 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 22380 &
+./metaStore --member-id 3 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 32380 &
 
 # 等待集群启动
 sleep 5
@@ -629,7 +629,7 @@ curl -L http://127.0.0.1:32380/cluster-test  # 输出: distributed-rocksdb
 **测试步骤**：
 ```bash
 # 1. 启动节点 1（单节点集群）
-./metaStore --id 1 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 12380 &
+./metaStore --member-id 1 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 12380 &
 sleep 3
 
 # 2. 在节点 1 写入数据（其他节点还未加入）
@@ -638,8 +638,8 @@ curl -L http://127.0.0.1:12380/test1 -XPUT -d "value1"
 curl -L http://127.0.0.1:12380/test2 -XPUT -d "value2"
 
 # 3. 启动节点 2 和节点 3（新节点加入）
-./metaStore --id 2 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 22380 &
-./metaStore --id 3 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 32380 &
+./metaStore --member-id 2 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 22380 &
+./metaStore --member-id 3 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 32380 &
 sleep 5
 
 # 4. 从所有节点读取数据
@@ -684,9 +684,9 @@ Node 3: after-cluster = data-after-all-nodes-joined  ✅ 实时同步
 pkill -f "metaStore --id"
 
 # 2. 重新启动所有节点
-./metaStore --id 1 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 12380 &
-./metaStore --id 2 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 22380 &
-./metaStore --id 3 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 32380 &
+./metaStore --member-id 1 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 12380 &
+./metaStore --member-id 2 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 22380 &
+./metaStore --member-id 3 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 32380 &
 sleep 5
 
 # 3. 验证所有之前写入的数据（5 个键值对）
@@ -841,7 +841,7 @@ mkdir -p data
 mkdir -p data
 
 # 启动节点
-./metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380
+./metaStore --member-id 1 --cluster http://127.0.0.1:12379 --port 12380
 ```
 
 #### 正常启动日志
@@ -903,7 +903,7 @@ RocksDB 版本的一大优势是数据持久化。以下是完整的验证流程
 
 ```bash
 # 启动服务
-./metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380
+./metaStore --member-id 1 --cluster http://127.0.0.1:12379 --port 12380
 
 # 写入测试数据
 curl -L http://127.0.0.1:12380/test-key -XPUT -d "Hello RocksDB!"
@@ -932,7 +932,7 @@ pkill -f "metaStore --id"
 
 ```bash
 # 重新启动（注意：不清理数据目录）
-./metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380
+./metaStore --member-id 1 --cluster http://127.0.0.1:12379 --port 12380
 ```
 
 启动日志会显示从持久化存储恢复的状态：
@@ -1002,17 +1002,17 @@ goreman start
 mkdir -p data
 
 # 终端 1 - 节点 1
-./metaStore --id 1 \
+./metaStore --member-id 1 \
   --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 \
   --port 12380
 
 # 终端 2 - 节点 2
-./metaStore --id 2 \
+./metaStore --member-id 2 \
   --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 \
   --port 22380
 
 # 终端 3 - 节点 3
-./metaStore --id 3 \
+./metaStore --member-id 3 \
   --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 \
   --port 32380
 ```
@@ -1040,7 +1040,7 @@ rm -rf data/
 
 # 后台启动（记得先创建 data 目录）
 mkdir -p data
-./metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380 > store.log 2>&1 &
+./metaStore --member-id 1 --cluster http://127.0.0.1:12379 --port 12380 > store.log 2>&1 &
 
 # 查看日志
 tail -f store.log
@@ -1146,13 +1146,13 @@ curl -L http://127.0.0.1:22380/test
 3. **数据备份**:
    ```bash
    # 停止服务
-   pkill -f "metaStore --id 1"
+   pkill -f "metaStore --member-id 1"
 
    # 备份数据
    tar -czf store-backup-$(date +%Y%m%d).tar.gz data/1/
 
    # 重启服务
-   ./metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380
+   ./metaStore --member-id 1 --cluster http://127.0.0.1:12379 --port 12380
    ```
 
 ## 📚 完整总结
@@ -1232,7 +1232,7 @@ CGO_LDFLAGS="-Wl,-U,_SecTrustCopyCertificateChain" go build -tags=rocksdb
 CGO_LDFLAGS="-Wl,-U,_SecTrustCopyCertificateChain" go test -v -tags=rocksdb ./...
 
 # 3️⃣ 启动单节点服务
-./metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380
+./metaStore --member-id 1 --cluster http://127.0.0.1:12379 --port 12380
 
 # 4️⃣ 使用 HTTP API
 curl -L http://127.0.0.1:12380/mykey -XPUT -d "myvalue"  # 写入
@@ -1240,13 +1240,13 @@ curl -L http://127.0.0.1:12380/mykey                      # 读取
 
 # 5️⃣ 启动 3 节点集群（可选）
 # 终端 1
-./metaStore --id 1 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 12380
+./metaStore --member-id 1 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 12380
 
 # 终端 2
-./metaStore --id 2 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 22380
+./metaStore --member-id 2 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 22380
 
 # 终端 3
-./metaStore --id 3 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 32380
+./metaStore --member-id 3 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 32380
 ```
 
 ### 🚀 生产就绪状态

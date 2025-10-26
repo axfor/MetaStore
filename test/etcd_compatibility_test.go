@@ -25,7 +25,7 @@ import (
 	"metaStore/internal/memory"
 	"metaStore/internal/raft"
 	"metaStore/internal/rocksdb"
-	"metaStore/pkg/etcdcompat"
+	"metaStore/pkg/etcdapi"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 	mvccpb "go.etcd.io/etcd/api/v3/mvccpb"
@@ -35,12 +35,12 @@ import (
 )
 
 // startTestServer 启动测试服务器
-func startTestServer(t *testing.T) (*etcdcompat.Server, *clientv3.Client) {
+func startTestServer(t *testing.T) (*etcdapi.Server, *clientv3.Client) {
 	// 创建内存存储
 	store := memory.NewMemoryEtcd()
 
 	// 创建 etcd 兼容服务器（随机端口）
-	server, err := etcdcompat.NewServer(etcdcompat.ServerConfig{
+	server, err := etcdapi.NewServer(etcdapi.ServerConfig{
 		Store:     store,
 		Address:   "127.0.0.1:0", // 使用随机端口
 		ClusterID: 1,
@@ -75,7 +75,7 @@ func startTestServer(t *testing.T) (*etcdcompat.Server, *clientv3.Client) {
 }
 
 // startTestServerRocksDB 启动 RocksDB 测试服务器（单节点 Raft）
-func startTestServerRocksDB(t *testing.T) (*etcdcompat.Server, *clientv3.Client, func()) {
+func startTestServerRocksDB(t *testing.T) (*etcdapi.Server, *clientv3.Client, func()) {
 	// 单节点 Raft 集群必须使用 nodeID=1，peers 数组的第一个元素对应 ID 1
 	nodeID := 1
 
@@ -103,7 +103,7 @@ func startTestServerRocksDB(t *testing.T) (*etcdcompat.Server, *clientv3.Client,
 	db, err := rocksdb.Open(dbPath)
 	require.NoError(t, err)
 
-	var kvs *rocksdb.RocksDBEtcdRaft
+	var kvs *rocksdb.RocksDB
 	getSnapshot := func() ([]byte, error) {
 		if kvs == nil {
 			return nil, nil
@@ -112,10 +112,10 @@ func startTestServerRocksDB(t *testing.T) (*etcdcompat.Server, *clientv3.Client,
 	}
 
 	commitC, errorC, snapshotterReady := raft.NewNodeRocksDB(nodeID, peers, false, getSnapshot, proposeC, confChangeC, db)
-	kvs = rocksdb.NewRocksDBEtcdRaft(db, <-snapshotterReady, proposeC, commitC, errorC)
+	kvs = rocksdb.NewRocksDB(db, <-snapshotterReady, proposeC, commitC, errorC)
 
 	// 创建 etcd 兼容服务器（随机端口）
-	server, err := etcdcompat.NewServer(etcdcompat.ServerConfig{
+	server, err := etcdapi.NewServer(etcdapi.ServerConfig{
 		Store:     kvs,
 		Address:   "127.0.0.1:0", // 使用随机端口
 		ClusterID: 1000,

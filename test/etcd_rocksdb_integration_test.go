@@ -25,7 +25,7 @@ import (
 	"metaStore/internal/kvstore"
 	"metaStore/internal/raft"
 	"metaStore/internal/rocksdb"
-	"metaStore/pkg/etcdcompat"
+	"metaStore/pkg/etcdapi"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/server/v3/etcdserver/api/snap"
@@ -45,8 +45,8 @@ type etcdRocksDBCluster struct {
 	confChangeC        []chan raftpb.ConfChange
 	snapshotterReady   []<-chan *snap.Snapshotter
 	dbs                []*grocksdb.DB
-	kvStores           []*rocksdb.RocksDBEtcdRaft
-	servers            []*etcdcompat.Server
+	kvStores           []*rocksdb.RocksDB
+	servers            []*etcdapi.Server
 	clients            []*clientv3.Client
 }
 
@@ -65,8 +65,8 @@ func newEtcdRocksDBCluster(t *testing.T, n int) *etcdRocksDBCluster {
 		confChangeC:      make([]chan raftpb.ConfChange, len(peers)),
 		snapshotterReady: make([]<-chan *snap.Snapshotter, len(peers)),
 		dbs:              make([]*grocksdb.DB, len(peers)),
-		kvStores:         make([]*rocksdb.RocksDBEtcdRaft, len(peers)),
-		servers:          make([]*etcdcompat.Server, len(peers)),
+		kvStores:         make([]*rocksdb.RocksDB, len(peers)),
+		servers:          make([]*etcdapi.Server, len(peers)),
 		clients:          make([]*clientv3.Client, len(peers)),
 	}
 
@@ -87,7 +87,7 @@ func newEtcdRocksDBCluster(t *testing.T, n int) *etcdRocksDBCluster {
 		clus.proposeC[i] = make(chan string, 1)
 		clus.confChangeC[i] = make(chan raftpb.ConfChange, 1)
 
-		var kvs *rocksdb.RocksDBEtcdRaft
+		var kvs *rocksdb.RocksDB
 		getSnapshot := func() ([]byte, error) {
 			if kvs == nil {
 				return nil, nil
@@ -101,7 +101,7 @@ func newEtcdRocksDBCluster(t *testing.T, n int) *etcdRocksDBCluster {
 
 	// Create KV stores and etcd servers
 	for i := range clus.peers {
-		kvs := rocksdb.NewRocksDBEtcdRaft(
+		kvs := rocksdb.NewRocksDB(
 			clus.dbs[i],
 			<-clus.snapshotterReady[i],
 			clus.proposeC[i],
@@ -116,7 +116,7 @@ func newEtcdRocksDBCluster(t *testing.T, n int) *etcdRocksDBCluster {
 		addr := listener.Addr().String()
 		listener.Close()
 
-		server, err := etcdcompat.NewServer(etcdcompat.ServerConfig{
+		server, err := etcdapi.NewServer(etcdapi.ServerConfig{
 			Store:     kvs,
 			Address:   addr,
 			ClusterID: 1000,
@@ -126,7 +126,7 @@ func newEtcdRocksDBCluster(t *testing.T, n int) *etcdRocksDBCluster {
 		clus.servers[i] = server
 
 		// Start server in background
-		go func(srv *etcdcompat.Server) {
+		go func(srv *etcdapi.Server) {
 			if err := srv.Start(); err != nil {
 				t.Logf("Server start error: %v", err)
 			}

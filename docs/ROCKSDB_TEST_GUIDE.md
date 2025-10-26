@@ -201,7 +201,7 @@ CGO_ENABLED=1 go test -v -tags=rocksdb -run Persistence
 CGO_ENABLED=1 go build -tags=rocksdb -o store-rocksdb
 
 # 6. 手动测试
-./metaStore-rocksdb --id 1 --cluster http://127.0.0.1:12379 --port 12380 --rocksdb
+./metaStore-rocksdb --member-id 1 --cluster http://127.0.0.1:12379 --port 12380 --rocksdb
 curl -L http://127.0.0.1:12380/test -XPUT -d "rocks"
 curl -L http://127.0.0.1:12380/test
 

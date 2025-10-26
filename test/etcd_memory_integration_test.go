@@ -25,7 +25,7 @@ import (
 	"metaStore/internal/kvstore"
 	"metaStore/internal/memory"
 	"metaStore/internal/raft"
-	"metaStore/pkg/etcdcompat"
+	"metaStore/pkg/etcdapi"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/server/v3/etcdserver/api/snap"
@@ -43,8 +43,8 @@ type etcdCluster struct {
 	proposeC           []chan string
 	confChangeC        []chan raftpb.ConfChange
 	snapshotterReady   []<-chan *snap.Snapshotter
-	kvStores           []*memory.MemoryEtcdRaft
-	servers            []*etcdcompat.Server
+	kvStores           []*memory.Memory
+	servers            []*etcdapi.Server
 	clients            []*clientv3.Client
 }
 
@@ -62,8 +62,8 @@ func newEtcdCluster(t *testing.T, n int) *etcdCluster {
 		proposeC:         make([]chan string, len(peers)),
 		confChangeC:      make([]chan raftpb.ConfChange, len(peers)),
 		snapshotterReady: make([]<-chan *snap.Snapshotter, len(peers)),
-		kvStores:         make([]*memory.MemoryEtcdRaft, len(peers)),
-		servers:          make([]*etcdcompat.Server, len(peers)),
+		kvStores:         make([]*memory.Memory, len(peers)),
+		servers:          make([]*etcdapi.Server, len(peers)),
 		clients:          make([]*clientv3.Client, len(peers)),
 	}
 
@@ -74,7 +74,7 @@ func newEtcdCluster(t *testing.T, n int) *etcdCluster {
 		clus.proposeC[i] = make(chan string, 1)
 		clus.confChangeC[i] = make(chan raftpb.ConfChange, 1)
 
-		var kvs *memory.MemoryEtcdRaft
+		var kvs *memory.Memory
 		getSnapshot := func() ([]byte, error) {
 			if kvs == nil {
 				return nil, nil
@@ -88,7 +88,7 @@ func newEtcdCluster(t *testing.T, n int) *etcdCluster {
 
 	// Create KV stores and etcd servers
 	for i := range clus.peers {
-		kvs := memory.NewMemoryEtcdRaft(
+		kvs := memory.NewMemory(
 			<-clus.snapshotterReady[i],
 			clus.proposeC[i],
 			clus.commitC[i],
@@ -102,7 +102,7 @@ func newEtcdCluster(t *testing.T, n int) *etcdCluster {
 		addr := listener.Addr().String()
 		listener.Close()
 
-		server, err := etcdcompat.NewServer(etcdcompat.ServerConfig{
+		server, err := etcdapi.NewServer(etcdapi.ServerConfig{
 			Store:     kvs,
 			Address:   addr,
 			ClusterID: 1000,
@@ -112,7 +112,7 @@ func newEtcdCluster(t *testing.T, n int) *etcdCluster {
 		clus.servers[i] = server
 
 		// Start server in background
-		go func(srv *etcdcompat.Server) {
+		go func(srv *etcdapi.Server) {
 			if err := srv.Start(); err != nil {
 				t.Logf("Server start error: %v", err)
 			}
