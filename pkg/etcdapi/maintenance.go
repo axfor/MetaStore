@@ -123,3 +123,69 @@ func (s *MaintenanceServer) Downgrade(ctx context.Context, req *pb.DowngradeRequ
 		Header: s.server.getResponseHeader(),
 	}, nil
 }
+
+// MemberList 列出所有集群成员
+func (s *MaintenanceServer) MemberList(ctx context.Context, req *pb.MemberListRequest) (*pb.MemberListResponse, error) {
+	// TODO: 实现
+	// 1. 从 ClusterManager 获取成员列表
+	// 2. 转换为 protobuf 格式
+	// 3. 返回响应
+	return &pb.MemberListResponse{
+		Header:  s.server.getResponseHeader(),
+		Members: []*pb.Member{}, // TODO: 返回成员列表
+	}, nil
+}
+
+// MemberAdd 添加成员
+func (s *MaintenanceServer) MemberAdd(ctx context.Context, req *pb.MemberAddRequest) (*pb.MemberAddResponse, error) {
+	// TODO: 实现
+	// 1. 验证权限（需要 root）
+	// 2. 生成新的成员 ID
+	// 3. 创建 ConfChange (ConfChangeAddNode 或 ConfChangeAddLearnerNode)
+	// 4. 提交 ConfChange 到 Raft
+	// 5. 等待 ConfChange 应用
+	// 6. 返回新成员信息
+	return &pb.MemberAddResponse{
+		Header: s.server.getResponseHeader(),
+		Member: &pb.Member{}, // TODO: 返回新成员
+	}, nil
+}
+
+// MemberRemove 移除成员
+func (s *MaintenanceServer) MemberRemove(ctx context.Context, req *pb.MemberRemoveRequest) (*pb.MemberRemoveResponse, error) {
+	// TODO: 实现
+	// 1. 验证权限
+	// 2. 检查是否是最后一个成员（不能删除）
+	// 3. 创建 ConfChange (ConfChangeRemoveNode)
+	// 4. 提交 ConfChange 到 Raft
+	// 5. 等待应用
+	// 6. 返回响应
+	return &pb.MemberRemoveResponse{
+		Header: s.server.getResponseHeader(),
+	}, nil
+}
+
+// MemberUpdate 更新成员信息
+func (s *MaintenanceServer) MemberUpdate(ctx context.Context, req *pb.MemberUpdateRequest) (*pb.MemberUpdateResponse, error) {
+	// TODO: 实现
+	// 1. 验证权限
+	// 2. 检查成员是否存在
+	// 3. 更新 PeerURLs (可能需要 ConfChange)
+	// 4. 返回响应
+	return &pb.MemberUpdateResponse{
+		Header: s.server.getResponseHeader(),
+	}, nil
+}
+
+// MemberPromote 提升 learner 为 voting 成员
+func (s *MaintenanceServer) MemberPromote(ctx context.Context, req *pb.MemberPromoteRequest) (*pb.MemberPromoteResponse, error) {
+	// TODO: 实现
+	// 1. 验证权限
+	// 2. 检查成员是否是 learner
+	// 3. 创建 ConfChange (ConfChangeType_PROMOTE)
+	// 4. 提交 ConfChange
+	// 5. 返回响应
+	return &pb.MemberPromoteResponse{
+		Header: s.server.getResponseHeader(),
+	}, nil
+}
