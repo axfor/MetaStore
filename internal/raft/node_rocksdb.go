@@ -79,7 +79,7 @@ type raftNodeRocks struct {
 // newRaftNodeRocks initiates a raft instance backed by RocksDB
 func NewNodeRocksDB(id int, peers []string, join bool, getSnapshot func() ([]byte, error),
 	proposeC <-chan string, confChangeC <-chan raftpb.ConfChange, rocksDB *grocksdb.DB,
-) (<-chan *kvstore.Commit, <-chan error, <-chan *snap.Snapshotter) {
+) (<-chan *kvstore.Commit, <-chan error, <-chan *snap.Snapshotter, *raftNodeRocks) {
 	commitC := make(chan *kvstore.Commit)
 	errorC := make(chan error)
 
@@ -91,8 +91,8 @@ func NewNodeRocksDB(id int, peers []string, join bool, getSnapshot func() ([]byt
 		id:          id,
 		peers:       peers,
 		join:        join,
-		dbdir:       fmt.Sprintf("data/%d", id),
-		snapdir:     fmt.Sprintf("data/%d/snap", id),
+		dbdir:       fmt.Sprintf("data/rocksdb/%d", id),
+		snapdir:     fmt.Sprintf("data/rocksdb/%d/snap", id),
 		getSnapshot: getSnapshot,
 		snapCount:   defaultSnapshotCount,
 		stopc:       make(chan struct{}),
@@ -105,7 +105,7 @@ func NewNodeRocksDB(id int, peers []string, join bool, getSnapshot func() ([]byt
 		snapshotterReady: make(chan *snap.Snapshotter, 1),
 	}
 	go rc.startRaft()
-	return commitC, errorC, rc.snapshotterReady
+	return commitC, errorC, rc.snapshotterReady, rc
 }
 
 func (rc *raftNodeRocks) saveSnap(snap raftpb.Snapshot) error {
@@ -542,4 +542,23 @@ func (rc *raftNodeRocks) ReportUnreachable(id uint64) { rc.node.ReportUnreachabl
 
 func (rc *raftNodeRocks) ReportSnapshot(id uint64, status raft.SnapshotStatus) {
 	rc.node.ReportSnapshot(id, status)
+}
+
+// Status 返回 Raft 状态信息
+func (rc *raftNodeRocks) Status() kvstore.RaftStatus {
+	status := rc.node.Status()
+	return kvstore.RaftStatus{
+		NodeID:   status.ID,
+		Term:     status.Term,
+		LeaderID: status.Lead,
+		State:    status.RaftState.String(),
+		Applied:  status.Applied,
+		Commit:   status.Commit,
+	}
+}
+
+// TransferLeadership 将 leader 角色转移到指定节点
+func (rc *raftNodeRocks) TransferLeadership(targetID uint64) error {
+	rc.node.TransferLeadership(context.TODO(), 0, targetID)
+	return nil
 }

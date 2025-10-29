@@ -1,0 +1,722 @@
+// Copyright 2025 The axfor Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package etcdapi
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"sync/atomic"
+	"time"
+
+	"golang.org/x/crypto/bcrypt"
+	"metaStore/internal/kvstore"
+	"metaStore/pkg/syncmap"
+)
+
+// AuthManager manages authentication and authorization
+// Uses sync.Map for high-concurrency read-heavy operations
+// Expected performance improvement: 2-3x QPS in high-concurrency scenarios
+type AuthManager struct {
+	store kvstore.Store
+
+	// Memory cache using concurrent-safe sync.Map
+	// atomic.Bool for enabled flag provides lock-free reads
+	enabled atomic.Bool
+	users   *syncmap.Map[string, *UserInfo]
+	roles   *syncmap.Map[string, *RoleInfo]
+	tokens  *syncmap.Map[string, *TokenInfo]
+}
+
+// NewAuthManager creates an Auth manager with concurrent-safe maps
+func NewAuthManager(store kvstore.Store) *AuthManager {
+	am := &AuthManager{
+		store:  store,
+		users:  syncmap.NewMap[string, *UserInfo](),
+		roles:  syncmap.NewMap[string, *RoleInfo](),
+		tokens: syncmap.NewMap[string, *TokenInfo](),
+	}
+
+	// Load authentication state from storage
+	am.loadState()
+
+	// Start token cleanup timer
+	go am.cleanupExpiredTokens()
+
+	return am
+}
+
+// loadState loads authentication state from storage
+func (am *AuthManager) loadState() error {
+	// 1. Read /__auth/enabled
+	resp, err := am.store.Range(context.Background(), authEnabledKey, "", 1, 0)
+	if err == nil && len(resp.Kvs) > 0 {
+		am.enabled.Store(string(resp.Kvs[0].Value) == "true")
+	}
+
+	// 2. Load all users
+	endKey := authUserPrefix + "\xff"
+	resp, err = am.store.Range(context.Background(), authUserPrefix, endKey, 0, 0)
+	if err == nil {
+		for _, kv := range resp.Kvs {
+			var user UserInfo
+			if err := json.Unmarshal(kv.Value, &user); err == nil {
+				am.users.Store(user.Name, &user)
+			}
+		}
+	}
+
+	// 3. Load all roles
+	endKey = authRolePrefix + "\xff"
+	resp, err = am.store.Range(context.Background(), authRolePrefix, endKey, 0, 0)
+	if err == nil {
+		for _, kv := range resp.Kvs {
+			var role RoleInfo
+			if err := json.Unmarshal(kv.Value, &role); err == nil {
+				am.roles.Store(role.Name, &role)
+			}
+		}
+	}
+
+	// 4. Load valid tokens (skip expired ones)
+	endKey = authTokenPrefix + "\xff"
+	resp, err = am.store.Range(context.Background(), authTokenPrefix, endKey, 0, 0)
+	if err == nil {
+		now := time.Now().Unix()
+		for _, kv := range resp.Kvs {
+			var token TokenInfo
+			if err := json.Unmarshal(kv.Value, &token); err == nil {
+				// Only load non-expired tokens
+				if token.ExpiresAt > now {
+					am.tokens.Store(token.Token, &token)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// IsEnabled returns whether authentication is enabled
+// Lock-free read using atomic.Bool for high performance
+func (am *AuthManager) IsEnabled() bool {
+	return am.enabled.Load()
+}
+
+// Enable enables authentication
+func (am *AuthManager) Enable() error {
+	// 1. Check if root user exists
+	if _, exists := am.users.Load("root"); !exists {
+		return fmt.Errorf("root user does not exist, please create root user first")
+	}
+
+	// 2. If already enabled, return early
+	if am.enabled.Load() {
+		return nil
+	}
+
+	// 3. Set enabled = true (atomic operation)
+	am.enabled.Store(true)
+
+	// 4. Persist to storage
+	_, _, err := am.store.PutWithLease(context.Background(), authEnabledKey, "true", 0)
+	return err
+}
+
+// Disable disables authentication
+func (am *AuthManager) Disable() error {
+	// 1. Set enabled = false (atomic operation)
+	am.enabled.Store(false)
+
+	// 2. Persist to storage
+	if _, _, err := am.store.PutWithLease(context.Background(), authEnabledKey, "false", 0); err != nil {
+		return err
+	}
+
+	// 3. Clear all tokens from cache
+	am.tokens.Clear()
+
+	// 4. Delete all tokens from storage
+	endKey := authTokenPrefix + "\xff"
+	_, _, _, err := am.store.DeleteRange(context.Background(), authTokenPrefix, endKey)
+	return err
+}
+
+// Authenticate authenticates user and returns token
+// Lock-free read from sync.Map for better concurrency
+func (am *AuthManager) Authenticate(username, password string) (string, error) {
+	// 1. Find user (lock-free read)
+	user, exists := am.users.Load(username)
+	if !exists {
+		return "", fmt.Errorf("user not found: %s", username)
+	}
+
+	// 2. Verify password (bcrypt.CompareHashAndPassword)
+	if !checkPasswordHash(password, user.PasswordHash) {
+		return "", fmt.Errorf("invalid password")
+	}
+
+	// 3. Generate token
+	token, err := am.generateToken()
+	if err != nil {
+		return "", fmt.Errorf("failed to generate token: %w", err)
+	}
+
+	// 4. Store token info (24 hour TTL)
+	tokenInfo := &TokenInfo{
+		Token:     token,
+		Username:  username,
+		ExpiresAt: time.Now().Add(24 * time.Hour).Unix(),
+	}
+	am.tokens.Store(token, tokenInfo)
+
+	// 5. Persist token to storage
+	key := authTokenPrefix + token
+	data, err := json.Marshal(tokenInfo)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal token: %w", err)
+	}
+	if _, _, err := am.store.PutWithLease(context.Background(), key, string(data), 0); err != nil {
+		return "", fmt.Errorf("failed to persist token: %w", err)
+	}
+
+	// 6. Return token
+	return token, nil
+}
+
+// ValidateToken validates token
+// Lock-free read from sync.Map for better concurrency
+func (am *AuthManager) ValidateToken(token string) (*TokenInfo, error) {
+	// 1. Find token (lock-free read)
+	tokenInfo, exists := am.tokens.Load(token)
+	if !exists {
+		return nil, fmt.Errorf("invalid token")
+	}
+
+	// 2. Check expiration
+	if time.Now().Unix() > tokenInfo.ExpiresAt {
+		return nil, fmt.Errorf("token expired")
+	}
+
+	// 3. Return token info
+	return tokenInfo, nil
+}
+
+// CheckPermission checks if user has permission to perform operation
+// Lock-free read from sync.Map for better concurrency
+// This is a hot path that benefits significantly from lock-free operations
+func (am *AuthManager) CheckPermission(username string, key []byte, permType PermissionType) error {
+	// 1. Root user has all permissions
+	if username == "root" {
+		return nil
+	}
+
+	// 2. Get user's roles (lock-free read)
+	user, exists := am.users.Load(username)
+	if !exists {
+		return fmt.Errorf("user not found: %s", username)
+	}
+
+	// 3. Check role permissions
+	for _, roleName := range user.Roles {
+		role, exists := am.roles.Load(roleName)
+		if !exists {
+			continue
+		}
+
+		// 4. Check if key is within permission range
+		for _, perm := range role.Permissions {
+			// Check permission type
+			hasPermission := false
+			switch permType {
+			case PermissionRead:
+				hasPermission = perm.Type == PermissionRead || perm.Type == PermissionReadWrite
+			case PermissionWrite:
+				hasPermission = perm.Type == PermissionWrite || perm.Type == PermissionReadWrite
+			case PermissionReadWrite:
+				hasPermission = perm.Type == PermissionReadWrite
+			}
+
+			if !hasPermission {
+				continue
+			}
+
+			// Check key range
+			if am.keyInRange(key, perm.Key, perm.RangeEnd) {
+				return nil // Found matching permission
+			}
+		}
+	}
+
+	return fmt.Errorf("permission denied")
+}
+
+// keyInRange 检查 key 是否在 [start, end) 范围内
+func (am *AuthManager) keyInRange(key, start, end []byte) bool {
+	if len(end) == 0 {
+		// 单键匹配
+		return string(key) == string(start)
+	}
+	// 范围匹配
+	keyStr := string(key)
+	startStr := string(start)
+	endStr := string(end)
+	return keyStr >= startStr && (endStr == "\x00" || keyStr < endStr)
+}
+
+// AddUser adds a new user
+func (am *AuthManager) AddUser(name, password string) error {
+	// 1. Check if user already exists
+	if _, exists := am.users.Load(name); exists {
+		return fmt.Errorf("user already exists: %s", name)
+	}
+
+	// 2. Hash password
+	passwordHash, err := hashPassword(password)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	// 3. Create UserInfo
+	user := &UserInfo{
+		Name:         name,
+		PasswordHash: passwordHash,
+		Roles:        []string{},
+		CreatedAt:    time.Now().Unix(),
+	}
+
+	// 4. Persist to storage
+	key := authUserPrefix + name
+	data, err := json.Marshal(user)
+	if err != nil {
+		return fmt.Errorf("failed to marshal user: %w", err)
+	}
+	if _, _, err := am.store.PutWithLease(context.Background(), key, string(data), 0); err != nil {
+		return fmt.Errorf("failed to persist user: %w", err)
+	}
+
+	// 5. Update cache
+	am.users.Store(name, user)
+
+	return nil
+}
+
+// DeleteUser deletes a user
+func (am *AuthManager) DeleteUser(name string) error {
+	// 1. Check if root (cannot be deleted)
+	if name == "root" {
+		return fmt.Errorf("cannot delete root user")
+	}
+
+	// Check if user exists
+	if _, exists := am.users.Load(name); !exists {
+		return fmt.Errorf("user not found: %s", name)
+	}
+
+	// 2. Delete from storage
+	key := authUserPrefix + name
+	if _, _, _, err := am.store.DeleteRange(context.Background(), key, ""); err != nil {
+		return fmt.Errorf("failed to delete user from storage: %w", err)
+	}
+
+	// 3. Delete from cache
+	am.users.Delete(name)
+
+	// 4. Clean up all tokens for this user
+	am.tokens.Range(func(token string, info *TokenInfo) bool {
+		if info.Username == name {
+			am.tokens.Delete(token)
+			// Delete token from storage
+			tokenKey := authTokenPrefix + token
+			_, _, _, _ = am.store.DeleteRange(context.Background(), tokenKey, "")
+		}
+		return true
+	})
+
+	return nil
+}
+
+// GetUser retrieves user information
+func (am *AuthManager) GetUser(name string) (*UserInfo, error) {
+	user, exists := am.users.Load(name)
+	if !exists {
+		return nil, fmt.Errorf("user not found: %s", name)
+	}
+
+	// Return copy to avoid external modification
+	userCopy := &UserInfo{
+		Name:         user.Name,
+		PasswordHash: user.PasswordHash,
+		Roles:        make([]string, len(user.Roles)),
+		CreatedAt:    user.CreatedAt,
+	}
+	copy(userCopy.Roles, user.Roles)
+
+	return userCopy, nil
+}
+
+// ListUsers lists all users
+func (am *AuthManager) ListUsers() ([]*UserInfo, error) {
+	var users []*UserInfo
+	am.users.Range(func(name string, user *UserInfo) bool {
+		// Return copy to avoid external modification
+		userCopy := &UserInfo{
+			Name:         user.Name,
+			PasswordHash: user.PasswordHash,
+			Roles:        make([]string, len(user.Roles)),
+			CreatedAt:    user.CreatedAt,
+		}
+		copy(userCopy.Roles, user.Roles)
+		users = append(users, userCopy)
+		return true
+	})
+
+	return users, nil
+}
+
+// ChangePassword changes user password
+func (am *AuthManager) ChangePassword(name, newPassword string) error {
+	// 1. Find user
+	user, exists := am.users.Load(name)
+	if !exists {
+		return fmt.Errorf("user not found: %s", name)
+	}
+
+	// 2. Hash new password
+	passwordHash, err := hashPassword(newPassword)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	// 3. Update user info
+	user.PasswordHash = passwordHash
+
+	// 4. Persist
+	key := authUserPrefix + name
+	data, err := json.Marshal(user)
+	if err != nil {
+		return fmt.Errorf("failed to marshal user: %w", err)
+	}
+	if _, _, err := am.store.PutWithLease(context.Background(), key, string(data), 0); err != nil {
+		return fmt.Errorf("failed to persist user: %w", err)
+	}
+
+	// 5. Clean up all tokens for this user (force re-login)
+	am.tokens.Range(func(token string, info *TokenInfo) bool {
+		if info.Username == name {
+			am.tokens.Delete(token)
+			// Delete token from storage
+			tokenKey := authTokenPrefix + token
+			_, _, _, _ = am.store.DeleteRange(context.Background(), tokenKey, "")
+		}
+		return true
+	})
+
+	return nil
+}
+
+// GrantRole grants a role to a user
+func (am *AuthManager) GrantRole(username, rolename string) error {
+	// 1. Check if user and role exist
+	user, exists := am.users.Load(username)
+	if !exists {
+		return fmt.Errorf("user not found: %s", username)
+	}
+
+	if _, exists := am.roles.Load(rolename); !exists {
+		return fmt.Errorf("role not found: %s", rolename)
+	}
+
+	// Check if user already has this role
+	for _, r := range user.Roles {
+		if r == rolename {
+			return nil // Already has role, return early
+		}
+	}
+
+	// 2. Add role to user's role list
+	user.Roles = append(user.Roles, rolename)
+
+	// 3. Persist
+	key := authUserPrefix + username
+	data, err := json.Marshal(user)
+	if err != nil {
+		return fmt.Errorf("failed to marshal user: %w", err)
+	}
+	if _, _, err := am.store.PutWithLease(context.Background(), key, string(data), 0); err != nil {
+		return fmt.Errorf("failed to persist user: %w", err)
+	}
+
+	return nil
+}
+
+// RevokeRole revokes a role from a user
+func (am *AuthManager) RevokeRole(username, rolename string) error {
+	// Check if user exists
+	user, exists := am.users.Load(username)
+	if !exists {
+		return fmt.Errorf("user not found: %s", username)
+	}
+
+	// 从用户的角色列表中移除
+	newRoles := make([]string, 0, len(user.Roles))
+	found := false
+	for _, r := range user.Roles {
+		if r == rolename {
+			found = true
+			continue // 跳过要撤销的角色
+		}
+		newRoles = append(newRoles, r)
+	}
+
+	if !found {
+		return fmt.Errorf("user %s does not have role %s", username, rolename)
+	}
+
+	user.Roles = newRoles
+
+	// 持久化
+	key := authUserPrefix + username
+	data, err := json.Marshal(user)
+	if err != nil {
+		return fmt.Errorf("failed to marshal user: %w", err)
+	}
+	if _, _, err := am.store.PutWithLease(context.Background(), key, string(data), 0); err != nil {
+		return fmt.Errorf("failed to persist user: %w", err)
+	}
+
+	return nil
+}
+
+// AddRole 添加角色
+func (am *AuthManager) AddRole(name string) error {
+
+	// 检查角色是否已存在
+	if _, exists := am.roles.Load(name); exists {
+		return fmt.Errorf("role already exists: %s", name)
+	}
+
+	// 创建角色
+	role := &RoleInfo{
+		Name:        name,
+		Permissions: []Permission{},
+		CreatedAt:   time.Now().Unix(),
+	}
+
+	// 持久化
+	key := authRolePrefix + name
+	data, err := json.Marshal(role)
+	if err != nil {
+		return fmt.Errorf("failed to marshal role: %w", err)
+	}
+	if _, _, err := am.store.PutWithLease(context.Background(), key, string(data), 0); err != nil {
+		return fmt.Errorf("failed to persist role: %w", err)
+	}
+
+	// Update cache
+	am.roles.Store(name, role)
+
+	return nil
+}
+
+// DeleteRole 删除角色
+func (am *AuthManager) DeleteRole(name string) error {
+
+	// 1. 检查是否是 root 角色（不能删除）
+	if name == "root" {
+		return fmt.Errorf("cannot delete root role")
+	}
+
+	// 检查角色是否存在
+	if _, exists := am.roles.Load(name); !exists {
+		return fmt.Errorf("role not found: %s", name)
+	}
+
+	// 2. Remove this role from all users
+	am.users.Range(func(username string, user *UserInfo) bool {
+		newRoles := make([]string, 0, len(user.Roles))
+		hasRole := false
+		for _, r := range user.Roles {
+			if r != name {
+				newRoles = append(newRoles, r)
+			} else {
+				hasRole = true
+			}
+		}
+		if hasRole {
+			user.Roles = newRoles
+			// Persist user info
+			key := authUserPrefix + username
+			data, _ := json.Marshal(user)
+			_, _, _ = am.store.PutWithLease(context.Background(), key, string(data), 0)
+		}
+		return true
+	})
+
+	// 3. Delete role
+	am.roles.Delete(name)
+
+	// 4. 从存储删除
+	key := authRolePrefix + name
+	if _, _, _, err := am.store.DeleteRange(context.Background(), key, ""); err != nil {
+		return fmt.Errorf("failed to delete role from storage: %w", err)
+	}
+
+	return nil
+}
+
+// GetRole 获取角色信息
+func (am *AuthManager) GetRole(name string) (*RoleInfo, error) {
+
+	role, exists := am.roles.Load(name)
+	if !exists {
+		return nil, fmt.Errorf("role not found: %s", name)
+	}
+
+	// 返回副本，避免外部修改
+	roleCopy := &RoleInfo{
+		Name:        role.Name,
+		Permissions: make([]Permission, len(role.Permissions)),
+		CreatedAt:   role.CreatedAt,
+	}
+	copy(roleCopy.Permissions, role.Permissions)
+
+	return roleCopy, nil
+}
+
+// ListRoles lists all roles
+func (am *AuthManager) ListRoles() ([]*RoleInfo, error) {
+	var roles []*RoleInfo
+	am.roles.Range(func(name string, role *RoleInfo) bool {
+		// Return copy to avoid external modification
+		roleCopy := &RoleInfo{
+			Name:        role.Name,
+			Permissions: make([]Permission, len(role.Permissions)),
+			CreatedAt:   role.CreatedAt,
+		}
+		copy(roleCopy.Permissions, role.Permissions)
+		roles = append(roles, roleCopy)
+		return true
+	})
+
+	return roles, nil
+}
+
+// GrantPermission 授予权限
+func (am *AuthManager) GrantPermission(rolename string, perm Permission) error {
+
+	// 检查角色是否存在
+	role, exists := am.roles.Load(rolename)
+	if !exists {
+		return fmt.Errorf("role not found: %s", rolename)
+	}
+
+	// 添加权限
+	role.Permissions = append(role.Permissions, perm)
+
+	// 持久化
+	key := authRolePrefix + rolename
+	data, err := json.Marshal(role)
+	if err != nil {
+		return fmt.Errorf("failed to marshal role: %w", err)
+	}
+	if _, _, err := am.store.PutWithLease(context.Background(), key, string(data), 0); err != nil {
+		return fmt.Errorf("failed to persist role: %w", err)
+	}
+
+	return nil
+}
+
+// RevokePermission 撤销权限
+func (am *AuthManager) RevokePermission(rolename string, key, rangeEnd []byte) error {
+
+	// 检查角色是否存在
+	role, exists := am.roles.Load(rolename)
+	if !exists {
+		return fmt.Errorf("role not found: %s", rolename)
+	}
+
+	// 从权限列表中移除匹配的权限
+	newPerms := make([]Permission, 0, len(role.Permissions))
+	found := false
+	for _, perm := range role.Permissions {
+		// 检查是否匹配要撤销的权限
+		if string(perm.Key) == string(key) && string(perm.RangeEnd) == string(rangeEnd) {
+			found = true
+			continue // 跳过要撤销的权限
+		}
+		newPerms = append(newPerms, perm)
+	}
+
+	if !found {
+		return fmt.Errorf("permission not found for role %s", rolename)
+	}
+
+	role.Permissions = newPerms
+
+	// 持久化
+	roleKey := authRolePrefix + rolename
+	data, err := json.Marshal(role)
+	if err != nil {
+		return fmt.Errorf("failed to marshal role: %w", err)
+	}
+	if _, _, err := am.store.PutWithLease(context.Background(), roleKey, string(data), 0); err != nil {
+		return fmt.Errorf("failed to persist role: %w", err)
+	}
+
+	return nil
+}
+
+// generateToken 生成随机 token
+func (am *AuthManager) generateToken() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.URLEncoding.EncodeToString(b), nil
+}
+
+// hashPassword Hash 密码
+func hashPassword(password string) (string, error) {
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	return string(bytes), err
+}
+
+// checkPasswordHash 验证密码
+func checkPasswordHash(password, hash string) bool {
+	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+	return err == nil
+}
+
+// cleanupExpiredTokens periodically cleans up expired tokens
+func (am *AuthManager) cleanupExpiredTokens() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		now := time.Now().Unix()
+		am.tokens.Range(func(token string, info *TokenInfo) bool {
+			if info.ExpiresAt < now {
+				am.tokens.Delete(token)
+				// Delete from storage
+				tokenKey := authTokenPrefix + token
+				_, _, _, _ = am.store.DeleteRange(context.Background(), tokenKey, "")
+			}
+			return true
+		})
+	}
+}

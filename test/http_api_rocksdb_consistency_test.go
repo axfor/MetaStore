@@ -47,7 +47,7 @@ func TestHTTPAPIRocksDBClusterWriteReadConsistency(t *testing.T) {
 	for i := 0; i < numNodes; i++ {
 		// Use the commitC, errorC, and snapshotterReady channels from the cluster
 		snapshotter := <-clus.snapshotterReady[i]
-		kvs := rocksdbstore.NewRocksDB(clus.dbs[i], fmt.Sprintf("node_%d", i+1), snapshotter, clus.proposeC[i], clus.commitC[i], clus.errorC[i])
+		kvs := rocksdbstore.NewRocksDB(clus.dbs[i], snapshotter, clus.proposeC[i], clus.commitC[i], clus.errorC[i])
 		kvStores[i] = kvs
 		servers[i] = httptest.NewServer(httpapi.NewHTTPKVAPI(kvs, clus.confChangeC[i]))
 		defer servers[i].Close()
@@ -262,7 +262,7 @@ func TestHTTPAPIRocksDBClusterDataConsistencyAfterWrites(t *testing.T) {
 
 	for i := 0; i < numNodes; i++ {
 		snapshotter := <-clus.snapshotterReady[i]
-		kvs := rocksdbstore.NewRocksDB(clus.dbs[i], fmt.Sprintf("node_%d", i+1), snapshotter, clus.proposeC[i], clus.commitC[i], clus.errorC[i])
+		kvs := rocksdbstore.NewRocksDB(clus.dbs[i], snapshotter, clus.proposeC[i], clus.commitC[i], clus.errorC[i])
 		kvStores[i] = kvs
 		servers[i] = httptest.NewServer(httpapi.NewHTTPKVAPI(kvs, clus.confChangeC[i]))
 		defer servers[i].Close()
@@ -341,10 +341,10 @@ func TestHTTPAPIRocksDBSingleNodeWriteRead(t *testing.T) {
 
 	var kvs *rocksdbstore.RocksDB
 	getSnapshot := func() ([]byte, error) { return kvs.GetSnapshot() }
-	commitC, errorC, snapshotterReady := raft.NewNodeRocksDB(1, clusters, false, getSnapshot, proposeC, confChangeC, db)
+	commitC, errorC, snapshotterReady, _ := raft.NewNodeRocksDB(1, clusters, false, getSnapshot, proposeC, confChangeC, db)
 
 	snapshotter := <-snapshotterReady
-	kvs = rocksdbstore.NewRocksDB(db, "node_1", snapshotter, proposeC, commitC, errorC)
+	kvs = rocksdbstore.NewRocksDB(db, snapshotter, proposeC, commitC, errorC)
 
 	srv := httptest.NewServer(httpapi.NewHTTPKVAPI(kvs, confChangeC))
 	defer srv.Close()
@@ -421,10 +421,10 @@ func TestHTTPAPIRocksDBSingleNodeSequentialWrites(t *testing.T) {
 
 	var kvs *rocksdbstore.RocksDB
 	getSnapshot := func() ([]byte, error) { return kvs.GetSnapshot() }
-	commitC, errorC, snapshotterReady := raft.NewNodeRocksDB(1, clusters, false, getSnapshot, proposeC, confChangeC, db)
+	commitC, errorC, snapshotterReady, _ := raft.NewNodeRocksDB(1, clusters, false, getSnapshot, proposeC, confChangeC, db)
 
 	snapshotter := <-snapshotterReady
-	kvs = rocksdbstore.NewRocksDB(db, "node_1", snapshotter, proposeC, commitC, errorC)
+	kvs = rocksdbstore.NewRocksDB(db, snapshotter, proposeC, commitC, errorC)
 
 	srv := httptest.NewServer(httpapi.NewHTTPKVAPI(kvs, confChangeC))
 	defer srv.Close()

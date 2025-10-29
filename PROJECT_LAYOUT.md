@@ -117,10 +117,10 @@ go build -o metaStore ./cmd/metastore
 ### 运行
 ```bash
 # 内存模式
-./metaStore --storage memory --id 1 --port 9121
+./metaStore --storage memory --member-id 1 --port 9121
 
 # RocksDB模式
-./metaStore --storage rocksdb --id 1 --port 9121
+./metaStore --storage rocksdb --member-id 1 --port 9121
 ```
 
 ### 使用 Makefile

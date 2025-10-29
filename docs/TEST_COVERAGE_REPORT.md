@@ -78,7 +78,7 @@ CGO_LDFLAGS="-Wl,-U,_SecTrustCopyCertificateChain" go build -tags=rocksdb -o met
 
 ### 服务启动测试 ✅
 ```bash
-./metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380
+./metaStore --member-id 1 --cluster http://127.0.0.1:12379 --port 12380
 ```
 
 **启动日志**:
