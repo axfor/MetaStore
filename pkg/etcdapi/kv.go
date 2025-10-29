@@ -36,7 +36,7 @@ func (s *KVServer) Range(ctx context.Context, req *pb.RangeRequest) (*pb.RangeRe
 	revision := req.Revision
 
 	// 从 store 查询
-	resp, err := s.server.store.Range(key, rangeEnd, limit, revision)
+	resp, err := s.server.store.Range(ctx, key, rangeEnd, limit, revision)
 	if err != nil {
 		return nil, toGRPCError(err)
 	}
@@ -69,7 +69,7 @@ func (s *KVServer) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutResponse
 	leaseID := req.Lease
 
 	// 调用 store 存储
-	revision, prevKv, err := s.server.store.PutWithLease(key, value, leaseID)
+	revision, prevKv, err := s.server.store.PutWithLease(ctx, key, value, leaseID)
 	if err != nil {
 		return nil, toGRPCError(err)
 	}
@@ -102,7 +102,7 @@ func (s *KVServer) DeleteRange(ctx context.Context, req *pb.DeleteRangeRequest) 
 	rangeEnd := string(req.RangeEnd)
 
 	// 调用 store 删除
-	deleted, prevKvs, revision, err := s.server.store.DeleteRange(key, rangeEnd)
+	deleted, prevKvs, revision, err := s.server.store.DeleteRange(ctx, key, rangeEnd)
 	if err != nil {
 		return nil, toGRPCError(err)
 	}
@@ -154,7 +154,7 @@ func (s *KVServer) Txn(ctx context.Context, req *pb.TxnRequest) (*pb.TxnResponse
 	}
 
 	// 执行事务
-	txnResp, err := s.server.store.Txn(cmps, thenOps, elseOps)
+	txnResp, err := s.server.store.Txn(ctx, cmps, thenOps, elseOps)
 	if err != nil {
 		return nil, toGRPCError(err)
 	}
@@ -178,7 +178,7 @@ func (s *KVServer) Txn(ctx context.Context, req *pb.TxnRequest) (*pb.TxnResponse
 
 // Compact 压缩历史数据
 func (s *KVServer) Compact(ctx context.Context, req *pb.CompactionRequest) (*pb.CompactionResponse, error) {
-	err := s.server.store.Compact(req.Revision)
+	err := s.server.store.Compact(ctx, req.Revision)
 	if err != nil {
 		return nil, toGRPCError(err)
 	}

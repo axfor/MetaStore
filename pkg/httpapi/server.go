@@ -15,6 +15,7 @@
 package httpapi
 
 import (
+	"context"
 	"io"
 	"log"
 	"net/http"
@@ -187,7 +188,7 @@ func (s *Server) handleClusterDelete(w http.ResponseWriter, r *http.Request, key
 // handleKeyDelete 处理 DELETE 请求（删除 key-value 对）
 func (s *Server) handleKeyDelete(w http.ResponseWriter, r *http.Request, key string) {
 	// 使用 DeleteRange 删除单个 key（rangeEnd 为空表示单键删除）
-	_, _, _, err := s.store.DeleteRange(key, "")
+	_, _, _, err := s.store.DeleteRange(context.Background(), key, "")
 	if err != nil {
 		log.Printf("Failed to delete key %s: %v\n", key, err)
 		http.Error(w, "Failed on DELETE", http.StatusInternalServerError)

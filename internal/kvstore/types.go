@@ -199,3 +199,13 @@ func (l *Lease) Renew(ttl int64) int64 {
 	l.GrantTime = time.Now()
 	return l.TTL
 }
+
+// RaftStatus Raft 状态信息
+type RaftStatus struct {
+	NodeID   uint64 `json:"node_id"`   // 当前节点 ID
+	Term     uint64 `json:"term"`      // 当前 Term
+	LeaderID uint64 `json:"leader_id"` // Leader 节点 ID (0 表示无 leader)
+	State    string `json:"state"`     // "leader", "follower", "candidate", "pre-candidate"
+	Applied  uint64 `json:"applied"`   // 已应用的 index
+	Commit   uint64 `json:"commit"`    // 已提交的 index
+}

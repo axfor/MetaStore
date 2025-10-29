@@ -111,7 +111,7 @@ func startTestServerRocksDB(t *testing.T) (*etcdapi.Server, *clientv3.Client, fu
 		return kvs.GetSnapshot()
 	}
 
-	commitC, errorC, snapshotterReady := raft.NewNodeRocksDB(nodeID, peers, false, getSnapshot, proposeC, confChangeC, db)
+	commitC, errorC, snapshotterReady, _ := raft.NewNodeRocksDB(nodeID, peers, false, getSnapshot, proposeC, confChangeC, db)
 	kvs = rocksdb.NewRocksDB(db, <-snapshotterReady, proposeC, commitC, errorC)
 
 	// 创建 etcd 兼容服务器（随机端口）

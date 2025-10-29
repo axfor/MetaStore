@@ -15,6 +15,7 @@
 package etcdapi
 
 import (
+	"context"
 	"log"
 	"metaStore/internal/kvstore"
 	"sync"
@@ -60,7 +61,7 @@ func (lm *LeaseManager) Grant(id int64, ttl int64) (*kvstore.Lease, error) {
 	}
 
 	// 委托给 store
-	lease, err := lm.store.LeaseGrant(id, ttl)
+	lease, err := lm.store.LeaseGrant(context.Background(), id, ttl)
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +87,7 @@ func (lm *LeaseManager) Revoke(id int64) error {
 	}
 
 	// 委托给 store（会删除所有关联的键）
-	return lm.store.LeaseRevoke(id)
+	return lm.store.LeaseRevoke(context.Background(), id)
 }
 
 // Renew 续约一个 lease
@@ -100,7 +101,7 @@ func (lm *LeaseManager) Renew(id int64) (*kvstore.Lease, error) {
 	}
 
 	// 委托给 store
-	lease, err := lm.store.LeaseRenew(id)
+	lease, err := lm.store.LeaseRenew(context.Background(), id)
 	if err != nil {
 		return nil, err
 	}
@@ -123,12 +124,12 @@ func (lm *LeaseManager) TimeToLive(id int64) (*kvstore.Lease, error) {
 	}
 
 	// 委托给 store
-	return lm.store.LeaseTimeToLive(id)
+	return lm.store.LeaseTimeToLive(context.Background(), id)
 }
 
 // Leases 返回所有 lease
 func (lm *LeaseManager) Leases() ([]*kvstore.Lease, error) {
-	return lm.store.Leases()
+	return lm.store.Leases(context.Background())
 }
 
 // expiryChecker 定期检查并清理过期的 lease

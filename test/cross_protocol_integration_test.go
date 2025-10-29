@@ -132,7 +132,7 @@ func TestCrossProtocolMemoryDataInteroperability(t *testing.T) {
 		return kvs.GetSnapshot()
 	}
 
-	commitC, errorC, snapshotterReady := raft.NewNode(1, peers, false, getSnapshot, proposeC, confChangeC, "memory")
+	commitC, errorC, snapshotterReady, _ := raft.NewNode(1, peers, false, getSnapshot, proposeC, confChangeC, "memory")
 
 	kvs = memory.NewMemory(<-snapshotterReady, proposeC, commitC, errorC)
 
@@ -531,7 +531,7 @@ func TestCrossProtocolRocksDBDataInteroperability(t *testing.T) {
 		return kvs.GetSnapshot()
 	}
 
-	commitC, errorC, snapshotterReady := raft.NewNodeRocksDB(1, peers, false, getSnapshot, proposeC, confChangeC, db)
+	commitC, errorC, snapshotterReady, _ := raft.NewNodeRocksDB(1, peers, false, getSnapshot, proposeC, confChangeC, db)
 
 	kvs = rocksdb.NewRocksDB(db, <-snapshotterReady, proposeC, commitC, errorC)
 

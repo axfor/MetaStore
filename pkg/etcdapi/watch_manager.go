@@ -15,6 +15,7 @@
 package etcdapi
 
 import (
+	"context"
 	"metaStore/internal/kvstore"
 	"sync"
 	"sync/atomic"
@@ -79,7 +80,7 @@ func (wm *WatchManager) CreateWithID(watchID int64, key, rangeEnd string, startR
 	if wwo, ok := wm.store.(watchWithOptions); ok && opts != nil {
 		eventCh, err = wwo.WatchWithOptions(key, rangeEnd, startRevision, watchID, opts)
 	} else {
-		eventCh, err = wm.store.Watch(key, rangeEnd, startRevision, watchID)
+		eventCh, err = wm.store.Watch(context.Background(), key, rangeEnd, startRevision, watchID)
 	}
 
 	if err != nil {

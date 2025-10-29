@@ -15,6 +15,7 @@
 package memory
 
 import (
+	"context"
 	"bytes"
 	"fmt"
 	"metaStore/internal/kvstore"
@@ -69,7 +70,7 @@ func (m *MemoryEtcd) CurrentRevision() int64 {
 }
 
 // Range 执行范围查询
-func (m *MemoryEtcd) Range(key, rangeEnd string, limit int64, revision int64) (*kvstore.RangeResponse, error) {
+func (m *MemoryEtcd) Range(ctx context.Context, key, rangeEnd string, limit int64, revision int64) (*kvstore.RangeResponse, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -110,7 +111,7 @@ func (m *MemoryEtcd) Range(key, rangeEnd string, limit int64, revision int64) (*
 }
 
 // PutWithLease 存储键值对，可选关联 lease
-func (m *MemoryEtcd) PutWithLease(key, value string, leaseID int64) (int64, *kvstore.KeyValue, error) {
+func (m *MemoryEtcd) PutWithLease(ctx context.Context, key, value string, leaseID int64) (int64, *kvstore.KeyValue, error) {
 	m.mu.Lock()
 
 	// 验证 lease（如果指定）
@@ -177,7 +178,7 @@ func (m *MemoryEtcd) PutWithLease(key, value string, leaseID int64) (int64, *kvs
 }
 
 // DeleteRange 删除范围内的键
-func (m *MemoryEtcd) DeleteRange(key, rangeEnd string) (int64, []*kvstore.KeyValue, int64, error) {
+func (m *MemoryEtcd) DeleteRange(ctx context.Context, key, rangeEnd string) (int64, []*kvstore.KeyValue, int64, error) {
 	m.mu.Lock()
 
 	var deleted int64
@@ -257,7 +258,7 @@ func (m *MemoryEtcd) DeleteRange(key, rangeEnd string) (int64, []*kvstore.KeyVal
 }
 
 // Txn 执行事务
-func (m *MemoryEtcd) Txn(cmps []kvstore.Compare, thenOps []kvstore.Op, elseOps []kvstore.Op) (*kvstore.TxnResponse, error) {
+func (m *MemoryEtcd) Txn(ctx context.Context, cmps []kvstore.Compare, thenOps []kvstore.Op, elseOps []kvstore.Op) (*kvstore.TxnResponse, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -535,7 +536,7 @@ func (m *MemoryEtcd) Lookup(key string) (string, bool) {
 
 func (m *MemoryEtcd) Propose(k string, v string) {
 	// 简化实现，直接调用 PutWithLease
-	m.PutWithLease(k, v, 0)
+	m.PutWithLease(context.Background(), k, v, 0)
 }
 
 func (m *MemoryEtcd) GetSnapshot() ([]byte, error) {
@@ -550,8 +551,35 @@ func (m *MemoryEtcd) GetSnapshot() ([]byte, error) {
 	return []byte(buf.String()), nil
 }
 
-// Compact 压缩（暂时简化实现）
-func (m *MemoryEtcd) Compact(revision int64) error {
-	// TODO: 实现完整的压缩逻辑
+// Compact 压缩指定 revision 之前的历史数据
+func (m *MemoryEtcd) Compact(ctx context.Context, revision int64) error {
+	// etcd 的 Compact 用于压缩历史版本，清理指定 revision 之前的数据
+	//
+	// 对于内存存储：
+	// 1. 当前不保留 MVCC 历史版本，每次更新直接覆盖
+	// 2. 过期 Lease 的清理由 LeaseManager 定期处理
+	// 3. 这里只需保持 API 兼容性
+	//
+	// 未来可扩展：实现 MVCC 历史版本管理和压缩
+	// 当前实现：no-op
+
 	return nil
+}
+
+// GetRaftStatus returns Raft status information
+// For standalone MemoryEtcd (no Raft), returns a simple status
+func (m *MemoryEtcd) GetRaftStatus() kvstore.RaftStatus {
+	return kvstore.RaftStatus{
+		NodeID:   1,
+		Term:     1,
+		LeaderID: 1,
+		State:    "leader", // Standalone mode, always leader
+		Applied:  uint64(m.revision.Load()),
+		Commit:   uint64(m.revision.Load()),
+	}
+}
+
+// TransferLeadership is not supported in standalone mode
+func (m *MemoryEtcd) TransferLeadership(targetID uint64) error {
+	return fmt.Errorf("leadership transfer not supported in standalone mode")
 }

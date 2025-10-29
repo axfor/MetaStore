@@ -64,10 +64,13 @@ func main() {
 		// nodeID := fmt.Sprintf("node_%d", *memberID)
 		var kvs *rocksdb.RocksDB
 		getSnapshot := func() ([]byte, error) { return kvs.GetSnapshot() }
-		commitC, errorC, snapshotterReady := raft.NewNodeRocksDB(*memberID, strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC, db)
+		commitC, errorC, snapshotterReady, raftNode := raft.NewNodeRocksDB(*memberID, strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC, db)
 
 		kvs = rocksdb.NewRocksDB(db, <-snapshotterReady, proposeC, commitC, errorC)
 		defer kvs.Close()
+
+		// 注入 raft 节点引用，用于获取状态信息
+		kvs.SetRaftNode(raftNode, uint64(*memberID))
 
 		// Start HTTP API server
 		go func() {
@@ -100,9 +103,12 @@ func main() {
 		log.Println("Starting with memory + WAL storage and etcd gRPC support")
 		var kvs *memory.Memory
 		getSnapshot := func() ([]byte, error) { return kvs.GetSnapshot() }
-		commitC, errorC, snapshotterReady := raft.NewNode(*memberID, strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC, "memory")
+		commitC, errorC, snapshotterReady, raftNode := raft.NewNode(*memberID, strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC, "memory")
 
 		kvs = memory.NewMemory(<-snapshotterReady, proposeC, commitC, errorC)
+
+		// 注入 raft 节点引用，用于获取状态信息
+		kvs.SetRaftNode(raftNode, uint64(*memberID))
 
 		// Start HTTP API server
 		go func() {

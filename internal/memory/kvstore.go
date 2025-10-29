@@ -15,6 +15,7 @@
 package memory
 
 import (
+	"context"
 	"bytes"
 	"encoding/gob"
 	"encoding/json"
@@ -29,6 +30,12 @@ import (
 	"go.etcd.io/raft/v3/raftpb"
 )
 
+// RaftNode Raft 节点接口，用于获取 Raft 状态和控制
+type RaftNode interface {
+	Status() kvstore.RaftStatus
+	TransferLeadership(targetID uint64) error
+}
+
 // Memory 集成了 Raft 共识的 etcd 兼容存储
 type Memory struct {
 	*MemoryEtcd // 嵌入 etcd 语义实现
@@ -42,6 +49,10 @@ type Memory struct {
 	pendingOps   map[string]chan struct{}          // key -> wait channel
 	pendingTxnResults map[string]*kvstore.TxnResponse // seqNum -> txn result
 	seqNum       int64
+
+	// Raft 节点引用（用于获取状态信息）
+	raftNode RaftNode
+	nodeID   uint64
 }
 
 // RaftOperation 表示通过 Raft 提交的操作
@@ -221,7 +232,7 @@ func (m *Memory) applyLegacyOp(data string) {
 }
 
 // PutWithLease 存储键值对（通过 Raft）
-func (m *Memory) PutWithLease(key, value string, leaseID int64) (int64, *kvstore.KeyValue, error) {
+func (m *Memory) PutWithLease(ctx context.Context, key, value string, leaseID int64) (int64, *kvstore.KeyValue, error) {
 	// 生成唯一序列号
 	m.mu.Lock()
 	m.seqNum++
@@ -266,7 +277,7 @@ func (m *Memory) PutWithLease(key, value string, leaseID int64) (int64, *kvstore
 }
 
 // DeleteRange 删除范围内的键（通过 Raft）
-func (m *Memory) DeleteRange(key, rangeEnd string) (int64, []*kvstore.KeyValue, int64, error) {
+func (m *Memory) DeleteRange(ctx context.Context, key, rangeEnd string) (int64, []*kvstore.KeyValue, int64, error) {
 	// 先检查有多少 key 会被删除（在提交到 Raft 之前）
 	m.MemoryEtcd.mu.RLock()
 	var deleted int64
@@ -328,7 +339,7 @@ func (m *Memory) DeleteRange(key, rangeEnd string) (int64, []*kvstore.KeyValue, 
 }
 
 // LeaseGrant 创建租约（通过 Raft）
-func (m *Memory) LeaseGrant(id int64, ttl int64) (*kvstore.Lease, error) {
+func (m *Memory) LeaseGrant(ctx context.Context, id int64, ttl int64) (*kvstore.Lease, error) {
 	// 生成唯一序列号
 	m.mu.Lock()
 	m.seqNum++
@@ -373,7 +384,7 @@ func (m *Memory) LeaseGrant(id int64, ttl int64) (*kvstore.Lease, error) {
 }
 
 // LeaseRevoke 撤销租约（通过 Raft）
-func (m *Memory) LeaseRevoke(id int64) error {
+func (m *Memory) LeaseRevoke(ctx context.Context, id int64) error {
 	// 生成唯一序列号
 	m.mu.Lock()
 	m.seqNum++
@@ -409,7 +420,7 @@ func (m *Memory) LeaseRevoke(id int64) error {
 }
 
 // Txn 执行事务（通过 Raft）
-func (m *Memory) Txn(cmps []kvstore.Compare, thenOps []kvstore.Op, elseOps []kvstore.Op) (*kvstore.TxnResponse, error) {
+func (m *Memory) Txn(ctx context.Context, cmps []kvstore.Compare, thenOps []kvstore.Op, elseOps []kvstore.Op) (*kvstore.TxnResponse, error) {
 	// 生成唯一序列号
 	m.mu.Lock()
 	m.seqNum++
@@ -514,4 +525,44 @@ func (m *Memory) recoverFromSnapshot(snapshotData []byte) error {
 	m.MemoryEtcd.leases = snapshot.Leases
 
 	return nil
+}
+
+// SetRaftNode 设置 Raft 节点引用（用于依赖注入）
+func (m *Memory) SetRaftNode(node RaftNode, nodeID uint64) {
+	m.raftNode = node
+	m.nodeID = nodeID
+}
+
+// GetRaftStatus 获取 Raft 状态信息
+func (m *Memory) GetRaftStatus() kvstore.RaftStatus {
+	if m.raftNode == nil {
+		// 如果没有 Raft 节点，返回默认状态（单机模式）
+		return kvstore.RaftStatus{
+			NodeID:   m.nodeID,
+			Term:     0,
+			LeaderID: 0,
+			State:    "standalone",
+			Applied:  0,
+			Commit:   0,
+		}
+	}
+
+	// 从 Raft 节点获取真实状态
+	return m.raftNode.Status()
+}
+
+// TransferLeadership 转移 leader 角色到指定节点
+func (m *Memory) TransferLeadership(targetID uint64) error {
+	if m.raftNode == nil {
+		return fmt.Errorf("raft node not available")
+	}
+
+	// 检查当前节点是否是 leader
+	status := m.raftNode.Status()
+	if status.LeaderID != m.nodeID {
+		return fmt.Errorf("not leader, current leader: %d", status.LeaderID)
+	}
+
+	// 调用 Raft 节点的 TransferLeadership
+	return m.raftNode.TransferLeadership(targetID)
 }
