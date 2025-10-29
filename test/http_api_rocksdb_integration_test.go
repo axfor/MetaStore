@@ -75,7 +75,7 @@ func newRocksDBCluster(n int) *rocksDBCluster {
 
 		// Use a dummy getSnapshot function
 		getSnapshot := func() ([]byte, error) { return nil, nil }
-		clus.commitC[i], clus.errorC[i], clus.snapshotterReady[i] = raft.NewNodeRocksDB(
+		clus.commitC[i], clus.errorC[i], clus.snapshotterReady[i], _ = raft.NewNodeRocksDB(
 			i+1,
 			clus.peers,
 			false,

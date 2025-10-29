@@ -1,0 +1,79 @@
+# MetaStore Configuration File
+# 生产环境配置示例
+
+server:
+  # 集群配置（必须指定，不能为 0）
+  cluster_id: 1234567890
+  member_id: 1
+  listen_address: ":2379"
+
+  # gRPC 配置
+  grpc:
+    # 消息大小限制
+    max_recv_msg_size: 1572864          # 1.5MB (etcd 默认)
+    max_send_msg_size: 1572864          # 1.5MB
+    max_concurrent_streams: 1000        # 最大并发流
+
+    # 流控制窗口
+    initial_window_size: 1048576        # 1MB
+    initial_conn_window_size: 1048576   # 1MB
+
+    # Keepalive 配置
+    keepalive_time: 5s                  # Keep-alive 时间
+    keepalive_timeout: 1s               # Keep-alive 超时
+    max_connection_idle: 15s            # 最大空闲连接时间
+    max_connection_age: 10m             # 最大连接存活时间
+    max_connection_age_grace: 5s        # 连接关闭宽限期
+
+    # 限流配置 (生产环境建议启用)
+    enable_rate_limit: true             # 是否启用限流
+    rate_limit_qps: 10000               # 每秒请求数限制 (根据实际负载调整)
+    rate_limit_burst: 20000             # 突发请求令牌桶大小 (通常为 QPS 的 2 倍)
+
+  # 资源限制配置
+  limits:
+    max_connections: 1000               # 最大连接数
+    max_watch_count: 10000              # 最大 Watch 数量
+    max_lease_count: 10000              # 最大 Lease 数量
+    max_request_size: 1572864           # 1.5MB 最大请求大小
+
+  # Lease 配置
+  lease:
+    check_interval: 1s                  # Lease 过期检查间隔
+    default_ttl: 60s                    # 默认 TTL
+
+  # 认证配置
+  auth:
+    token_ttl: 24h                      # Token 过期时间
+    token_cleanup_interval: 5m          # Token 清理间隔
+    bcrypt_cost: 10                     # bcrypt 加密强度 (4-31)
+    enable_audit: false                 # 是否启用审计日志
+
+  # 维护配置
+  maintenance:
+    snapshot_chunk_size: 4194304        # 4MB Snapshot 分块大小
+
+  # 可靠性配置
+  reliability:
+    shutdown_timeout: 30s               # 优雅关闭超时
+    drain_timeout: 5s                   # 连接耗尽超时
+    enable_crc: false                   # 是否启用 CRC 校验
+    enable_health_check: true           # 是否启用健康检查
+    enable_panic_recovery: true         # 是否启用 Panic 恢复
+
+  # 日志配置
+  log:
+    level: info                         # debug, info, warn, error, dpanic, panic, fatal
+    encoding: json                      # json 或 console
+    output_paths:
+      - stdout
+      - /var/log/metastore/app.log
+    error_output_paths:
+      - stderr
+      - /var/log/metastore/error.log
+
+  # 监控配置
+  monitoring:
+    enable_prometheus: true             # 是否启用 Prometheus
+    prometheus_port: 9090               # Prometheus 端口
+    slow_request_threshold: 100ms       # 慢查询阈值

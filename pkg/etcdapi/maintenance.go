@@ -16,6 +16,8 @@ package etcdapi
 
 import (
 	"context"
+	"fmt"
+	"hash/crc32"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 )
@@ -26,12 +28,55 @@ type MaintenanceServer struct {
 	server *Server
 }
 
-// Alarm 告警管理（暂不实现）
+// Alarm 告警管理
 func (s *MaintenanceServer) Alarm(ctx context.Context, req *pb.AlarmRequest) (*pb.AlarmResponse, error) {
-	return &pb.AlarmResponse{
-		Header: s.server.getResponseHeader(),
-		Alarms: []*pb.AlarmMember{}, // 空列表，表示无告警
-	}, nil
+	switch req.Action {
+	case pb.AlarmRequest_GET:
+		// 获取告警列表
+		alarms := s.server.alarmMgr.List()
+
+		// 如果指定了 MemberID 或 Alarm 类型，进行过滤
+		if req.MemberID != 0 || req.Alarm != pb.AlarmType_NONE {
+			filtered := make([]*pb.AlarmMember, 0)
+			for _, alarm := range alarms {
+				if (req.MemberID == 0 || alarm.MemberID == req.MemberID) &&
+					(req.Alarm == pb.AlarmType_NONE || alarm.Alarm == req.Alarm) {
+					filtered = append(filtered, alarm)
+				}
+			}
+			alarms = filtered
+		}
+
+		return &pb.AlarmResponse{
+			Header: s.server.getResponseHeader(),
+			Alarms: alarms,
+		}, nil
+
+	case pb.AlarmRequest_ACTIVATE:
+		// 激活告警
+		alarm := &pb.AlarmMember{
+			MemberID: req.MemberID,
+			Alarm:    req.Alarm,
+		}
+		s.server.alarmMgr.Activate(alarm)
+
+		return &pb.AlarmResponse{
+			Header: s.server.getResponseHeader(),
+			Alarms: []*pb.AlarmMember{alarm},
+		}, nil
+
+	case pb.AlarmRequest_DEACTIVATE:
+		// 取消告警
+		s.server.alarmMgr.Deactivate(req.MemberID, req.Alarm)
+
+		return &pb.AlarmResponse{
+			Header: s.server.getResponseHeader(),
+			Alarms: []*pb.AlarmMember{},
+		}, nil
+
+	default:
+		return nil, toGRPCError(fmt.Errorf("unknown alarm action: %v", req.Action))
+	}
 }
 
 // Status 获取服务器状态
@@ -43,39 +88,71 @@ func (s *MaintenanceServer) Status(ctx context.Context, req *pb.StatusRequest) (
 		dbSize = int64(len(snapshot))
 	}
 
+	// 获取真实的 Raft 状态
+	raftStatus := s.server.store.GetRaftStatus()
+
 	return &pb.StatusResponse{
 		Header:    s.server.getResponseHeader(),
 		Version:   "3.6.0-compatible", // MetaStore 版本
 		DbSize:    dbSize,
-		Leader:    s.server.memberID,  // 简化：当前节点就是 leader
+		Leader:    raftStatus.LeaderID, // 真实的 Leader ID
 		RaftIndex: uint64(s.server.store.CurrentRevision()),
-		RaftTerm:  1, // 简化：固定 term
+		RaftTerm:  raftStatus.Term, // 真实的 Raft Term
 	}, nil
 }
 
-// Defragment 碎片整理（暂不实现）
+// Defragment 碎片整理（兼容 etcd 接口）
 func (s *MaintenanceServer) Defragment(ctx context.Context, req *pb.DefragmentRequest) (*pb.DefragmentResponse, error) {
-	// TODO: 实现数据库碎片整理
+	// Defragment 用于整理数据库碎片
+	// 对于 RocksDB：由存储引擎自动处理压缩，无需手动触发
+	// 对于 Memory：内存存储无碎片问题
+	// 这里只需返回成功响应，保持 etcd API 兼容性
+
 	return &pb.DefragmentResponse{
 		Header: s.server.getResponseHeader(),
 	}, nil
 }
 
-// Hash 计算数据库哈希（暂不实现）
+// Hash 计算数据库哈希（用于集群一致性检查）
 func (s *MaintenanceServer) Hash(ctx context.Context, req *pb.HashRequest) (*pb.HashResponse, error) {
-	// TODO: 实现哈希计算
+	// 获取快照并计算 CRC32 哈希
+	snapshot, err := s.server.store.GetSnapshot()
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	// 计算 CRC32 哈希
+	hash := crc32.ChecksumIEEE(snapshot)
+
 	return &pb.HashResponse{
 		Header: s.server.getResponseHeader(),
-		Hash:   0, // 占位
+		Hash:   uint32(hash),
 	}, nil
 }
 
-// HashKV 计算 KV 哈希（暂不实现）
+// HashKV 计算指定 revision 的 KV 哈希
 func (s *MaintenanceServer) HashKV(ctx context.Context, req *pb.HashKVRequest) (*pb.HashKVResponse, error) {
-	// TODO: 实现 KV 哈希计算
+	// 获取指定 revision 的所有 KV 数据
+	// 使用 Range 查询所有键
+	resp, err := s.server.store.Range(ctx, "", "\x00", 0, req.Revision)
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	// 计算哈希：将所有 KV 序列化后计算 CRC32
+	hasher := crc32.NewIEEE()
+	for _, kv := range resp.Kvs {
+		hasher.Write(kv.Key)
+		hasher.Write(kv.Value)
+	}
+
+	hash := hasher.Sum32()
+	compactRevision := s.server.store.CurrentRevision()
+
 	return &pb.HashKVResponse{
-		Header: s.server.getResponseHeader(),
-		Hash:   0, // 占位
+		Header:          s.server.getResponseHeader(),
+		Hash:            hash,
+		CompactRevision: compactRevision,
 	}, nil
 }
 
@@ -108,84 +185,149 @@ func (s *MaintenanceServer) Snapshot(req *pb.SnapshotRequest, stream pb.Maintena
 	return nil
 }
 
-// MoveLeader 转移 leader（暂不实现）
+// MoveLeader 转移 leader（通过 Raft TransferLeadership）
 func (s *MaintenanceServer) MoveLeader(ctx context.Context, req *pb.MoveLeaderRequest) (*pb.MoveLeaderResponse, error) {
-	// TODO: 实现 leader 转移
+	// 检查当前节点是否是 leader
+	raftStatus := s.server.store.GetRaftStatus()
+	if raftStatus.LeaderID != s.server.memberID {
+		return nil, toGRPCError(fmt.Errorf("not leader, current leader: %d", raftStatus.LeaderID))
+	}
+
+	// 验证目标节点ID
+	if req.TargetID == 0 {
+		return nil, toGRPCError(fmt.Errorf("target ID must be specified"))
+	}
+
+	// 调用 Store 的 TransferLeadership 方法进行 leader 转移
+	if err := s.server.store.TransferLeadership(req.TargetID); err != nil {
+		return nil, toGRPCError(fmt.Errorf("failed to transfer leadership: %w", err))
+	}
+
 	return &pb.MoveLeaderResponse{
 		Header: s.server.getResponseHeader(),
 	}, nil
 }
 
-// Downgrade 降级（暂不实现）
+// Downgrade 降级（暂不支持）
 func (s *MaintenanceServer) Downgrade(ctx context.Context, req *pb.DowngradeRequest) (*pb.DowngradeResponse, error) {
-	// TODO: 实现降级功能
-	return &pb.DowngradeResponse{
-		Header: s.server.getResponseHeader(),
-	}, nil
+	// Downgrade 用于降级集群版本，当前不支持
+	// 返回 unimplemented 错误
+	return nil, toGRPCError(fmt.Errorf("downgrade is not supported"))
 }
 
 // MemberList 列出所有集群成员
 func (s *MaintenanceServer) MemberList(ctx context.Context, req *pb.MemberListRequest) (*pb.MemberListResponse, error) {
-	// TODO: 实现
+	if s.server.clusterMgr == nil {
+		return &pb.MemberListResponse{
+			Header:  s.server.getResponseHeader(),
+			Members: []*pb.Member{},
+		}, nil
+	}
+
 	// 1. 从 ClusterManager 获取成员列表
+	members := s.server.clusterMgr.ListMembers()
+
 	// 2. 转换为 protobuf 格式
+	pbMembers := make([]*pb.Member, 0, len(members))
+	for _, member := range members {
+		pbMembers = append(pbMembers, &pb.Member{
+			ID:         member.ID,
+			Name:       member.Name,
+			PeerURLs:   member.PeerURLs,
+			ClientURLs: member.ClientURLs,
+			IsLearner:  member.IsLearner,
+		})
+	}
+
 	// 3. 返回响应
 	return &pb.MemberListResponse{
 		Header:  s.server.getResponseHeader(),
-		Members: []*pb.Member{}, // TODO: 返回成员列表
+		Members: pbMembers,
 	}, nil
 }
 
 // MemberAdd 添加成员
 func (s *MaintenanceServer) MemberAdd(ctx context.Context, req *pb.MemberAddRequest) (*pb.MemberAddResponse, error) {
-	// TODO: 实现
-	// 1. 验证权限（需要 root）
-	// 2. 生成新的成员 ID
-	// 3. 创建 ConfChange (ConfChangeAddNode 或 ConfChangeAddLearnerNode)
-	// 4. 提交 ConfChange 到 Raft
-	// 5. 等待 ConfChange 应用
-	// 6. 返回新成员信息
+	if s.server.clusterMgr == nil {
+		return nil, toGRPCError(fmt.Errorf("cluster manager not initialized"))
+	}
+
+	// 1. 调用 ClusterManager 添加成员
+	member, err := s.server.clusterMgr.AddMember(req.PeerURLs, req.IsLearner)
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	// 2. 返回新成员信息
 	return &pb.MemberAddResponse{
 		Header: s.server.getResponseHeader(),
-		Member: &pb.Member{}, // TODO: 返回新成员
+		Member: &pb.Member{
+			ID:         member.ID,
+			Name:       member.Name,
+			PeerURLs:   member.PeerURLs,
+			ClientURLs: member.ClientURLs,
+			IsLearner:  member.IsLearner,
+		},
+		Members: nil, // 可选：返回所有成员
 	}, nil
 }
 
 // MemberRemove 移除成员
 func (s *MaintenanceServer) MemberRemove(ctx context.Context, req *pb.MemberRemoveRequest) (*pb.MemberRemoveResponse, error) {
-	// TODO: 实现
-	// 1. 验证权限
-	// 2. 检查是否是最后一个成员（不能删除）
-	// 3. 创建 ConfChange (ConfChangeRemoveNode)
-	// 4. 提交 ConfChange 到 Raft
-	// 5. 等待应用
-	// 6. 返回响应
+	if s.server.clusterMgr == nil {
+		return nil, toGRPCError(fmt.Errorf("cluster manager not initialized"))
+	}
+
+	// 1. 检查是否是最后一个成员
+	members := s.server.clusterMgr.ListMembers()
+	if len(members) <= 1 {
+		return nil, toGRPCError(fmt.Errorf("cannot remove the last member"))
+	}
+
+	// 2. 调用 ClusterManager 移除成员
+	if err := s.server.clusterMgr.RemoveMember(req.ID); err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	// 3. 返回响应
 	return &pb.MemberRemoveResponse{
-		Header: s.server.getResponseHeader(),
+		Header:  s.server.getResponseHeader(),
+		Members: nil, // 可选：返回所有成员
 	}, nil
 }
 
 // MemberUpdate 更新成员信息
 func (s *MaintenanceServer) MemberUpdate(ctx context.Context, req *pb.MemberUpdateRequest) (*pb.MemberUpdateResponse, error) {
-	// TODO: 实现
-	// 1. 验证权限
-	// 2. 检查成员是否存在
-	// 3. 更新 PeerURLs (可能需要 ConfChange)
-	// 4. 返回响应
+	if s.server.clusterMgr == nil {
+		return nil, toGRPCError(fmt.Errorf("cluster manager not initialized"))
+	}
+
+	// 1. 调用 ClusterManager 更新成员
+	if err := s.server.clusterMgr.UpdateMember(req.ID, req.PeerURLs); err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	// 2. 返回响应
 	return &pb.MemberUpdateResponse{
-		Header: s.server.getResponseHeader(),
+		Header:  s.server.getResponseHeader(),
+		Members: nil, // 可选：返回所有成员
 	}, nil
 }
 
 // MemberPromote 提升 learner 为 voting 成员
 func (s *MaintenanceServer) MemberPromote(ctx context.Context, req *pb.MemberPromoteRequest) (*pb.MemberPromoteResponse, error) {
-	// TODO: 实现
-	// 1. 验证权限
-	// 2. 检查成员是否是 learner
-	// 3. 创建 ConfChange (ConfChangeType_PROMOTE)
-	// 4. 提交 ConfChange
-	// 5. 返回响应
+	if s.server.clusterMgr == nil {
+		return nil, toGRPCError(fmt.Errorf("cluster manager not initialized"))
+	}
+
+	// 1. 调用 ClusterManager 提升成员
+	if err := s.server.clusterMgr.PromoteMember(req.ID); err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	// 2. 返回响应
 	return &pb.MemberPromoteResponse{
-		Header: s.server.getResponseHeader(),
+		Header:  s.server.getResponseHeader(),
+		Members: nil, // 可选：返回所有成员
 	}, nil
 }

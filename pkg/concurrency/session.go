@@ -16,82 +16,180 @@ package concurrency
 
 import (
 	"context"
+	"fmt"
+	"sync"
+	"time"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
-// Session 表示一个租约会话
+// Session 表示一个基于 Lease 的会话
+// 会话会自动续约 Lease，当会话关闭时会自动撤销 Lease
 type Session struct {
-	client  *clientv3.Client
-	leaseID clientv3.LeaseID
-	donec   chan struct{}
+	client *clientv3.Client
+	lease  clientv3.Lease
+	id     clientv3.LeaseID
+
 	cancel  context.CancelFunc
+	donec   <-chan struct{}
+	mu      sync.Mutex
+	closed  bool
 }
 
-// NewSession 创建新会话
+// SessionOption 会话配置选项
+type SessionOption func(*sessionOptions)
+
+type sessionOptions struct {
+	ttl     int
+	leaseID clientv3.LeaseID
+	ctx     context.Context
+}
+
+// WithTTL 设置会话 TTL（秒）
+func WithTTL(ttl int) SessionOption {
+	return func(so *sessionOptions) {
+		if ttl > 0 {
+			so.ttl = ttl
+		}
+	}
+}
+
+// WithLease 使用现有的 Lease ID
+func WithLease(leaseID clientv3.LeaseID) SessionOption {
+	return func(so *sessionOptions) {
+		so.leaseID = leaseID
+	}
+}
+
+// WithContext 设置 context
+func WithContext(ctx context.Context) SessionOption {
+	return func(so *sessionOptions) {
+		so.ctx = ctx
+	}
+}
+
+// NewSession 创建新的会话
 func NewSession(client *clientv3.Client, opts ...SessionOption) (*Session, error) {
-	ctx, cancel := context.WithCancel(client.Ctx())
-
-	// 默认选项
-	cfg := &sessionConfig{
-		ttl: 60,
-		ctx: ctx,
+	options := &sessionOptions{
+		ttl: 60, // 默认 60 秒
+		ctx: context.Background(),
 	}
 
-	// 应用选项
 	for _, opt := range opts {
-		opt(cfg)
+		opt(options)
 	}
 
-	// TODO: 实现
-	// 1. 创建 Lease
-	// 2. 启动 KeepAlive goroutine
-	// 3. 监控 Lease 失效
-	// 4. 返回 Session
+	ctx, cancel := context.WithCancel(options.ctx)
+	s := &Session{
+		client: client,
+		lease:  clientv3.NewLease(client),
+		cancel: cancel,
+	}
 
-	return &Session{
-		client:  client,
-		leaseID: 0, // TODO: 从 LeaseGrant 获取
-		donec:   make(chan struct{}),
-		cancel:  cancel,
-	}, nil
+	// 如果没有提供 LeaseID，创建新的 Lease
+	if options.leaseID == clientv3.NoLease {
+		resp, err := s.lease.Grant(ctx, int64(options.ttl))
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("failed to grant lease: %w", err)
+		}
+		s.id = resp.ID
+	} else {
+		// 使用现有 Lease，验证其是否有效
+		ttlResp, err := s.lease.TimeToLive(ctx, options.leaseID)
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("failed to check lease: %w", err)
+		}
+		if ttlResp.TTL <= 0 {
+			cancel()
+			return nil, fmt.Errorf("lease %x expired or not found", options.leaseID)
+		}
+		s.id = options.leaseID
+	}
+
+	// 启动自动续约
+	donec := make(chan struct{})
+	s.donec = donec
+	go s.keepAliveLoop(ctx, donec)
+
+	return s, nil
+}
+
+// keepAliveLoop 自动续约循环
+func (s *Session) keepAliveLoop(ctx context.Context, donec chan struct{}) {
+	defer close(donec)
+
+	// 创建 KeepAlive 通道
+	kac, err := s.lease.KeepAlive(ctx, s.id)
+	if err != nil {
+		return
+	}
+
+	// 消费 KeepAlive 响应
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case ka, ok := <-kac:
+			if !ok {
+				// KeepAlive 通道关闭，会话失效
+				return
+			}
+			if ka == nil {
+				// 收到 nil 响应，可能是网络问题
+				continue
+			}
+			// 成功续约
+		}
+	}
+}
+
+// Close 关闭会话并撤销 Lease
+func (s *Session) Close() error {
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return nil
+	}
+	s.closed = true
+	s.mu.Unlock()
+
+	// 取消 context，停止 keepalive
+	s.cancel()
+
+	// 等待 keepalive 循环结束
+	<-s.donec
+
+	// 撤销 Lease（使用新的 context，因为原 context 已取消）
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	_, err := s.lease.Revoke(ctx, s.id)
+	return err
 }
 
 // Lease 返回会话的 Lease ID
 func (s *Session) Lease() clientv3.LeaseID {
-	return s.leaseID
+	return s.id
 }
 
-// Done 返回会话结束通道
+// Done 返回一个 channel，当会话失效时会被关闭
 func (s *Session) Done() <-chan struct{} {
 	return s.donec
 }
 
-// Close 关闭会话
-func (s *Session) Close() error {
+// Orphan 结束会话但不撤销 Lease
+// 用于将资源交给其他进程管理
+func (s *Session) Orphan() {
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return
+	}
+	s.closed = true
+	s.mu.Unlock()
+
 	s.cancel()
-	// TODO: 撤销 Lease
-	return nil
-}
-
-// SessionOption 会话选项
-type SessionOption func(*sessionConfig)
-
-type sessionConfig struct {
-	ttl int
-	ctx context.Context
-}
-
-// WithTTL 设置 TTL
-func WithTTL(ttl int) SessionOption {
-	return func(cfg *sessionConfig) {
-		cfg.ttl = ttl
-	}
-}
-
-// WithContext 设置 Context
-func WithContext(ctx context.Context) SessionOption {
-	return func(cfg *sessionConfig) {
-		cfg.ctx = ctx
-	}
+	<-s.donec
 }

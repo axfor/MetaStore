@@ -15,6 +15,7 @@
 package memory
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"metaStore/internal/kvstore"
@@ -22,7 +23,7 @@ import (
 )
 
 // Watch 创建一个 watch，返回事件通道
-func (m *MemoryEtcd) Watch(key, rangeEnd string, startRevision int64, watchID int64) (<-chan kvstore.WatchEvent, error) {
+func (m *MemoryEtcd) Watch(ctx context.Context, key, rangeEnd string, startRevision int64, watchID int64) (<-chan kvstore.WatchEvent, error) {
 	return m.WatchWithOptions(key, rangeEnd, startRevision, watchID, nil)
 }
 
@@ -65,9 +66,44 @@ func (m *MemoryEtcd) WatchWithOptions(key, rangeEnd string, startRevision int64,
 
 	m.watches[watchID] = sub
 
-	// TODO: 如果 startRevision > 0，需要发送历史事件
+	// 如果 startRevision > 0，发送历史事件
+	// 注意：当前实现不保留完整历史，只能从当前数据生成初始快照
+	if startRevision > 0 && startRevision < m.revision.Load() {
+		// 异步发送当前所有匹配的键作为 PUT 事件
+		go m.sendHistoricalEvents(sub, key, rangeEnd)
+	}
 
 	return eventCh, nil
+}
+
+// sendHistoricalEvents 发送历史事件（从当前数据快照）
+func (m *MemoryEtcd) sendHistoricalEvents(sub *watchSubscription, key, rangeEnd string) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	// 获取所有匹配的键
+	for k, kv := range m.kvData {
+		if m.matchWatch(k, key, rangeEnd) {
+			event := kvstore.WatchEvent{
+				Type:     kvstore.EventTypePut,
+				Kv:       kv,
+				PrevKv:   nil, // 历史事件不返回 prevKv
+				Revision: kv.ModRevision,
+			}
+
+			// 非阻塞发送
+			select {
+			case sub.eventCh <- event:
+				// 成功发送
+			case <-sub.cancel:
+				// Watch 已取消
+				return
+			default:
+				// Channel 满了，跳过此事件
+				log.Printf("Watch %d channel full, skipping historical event for key %s", sub.watchID, k)
+			}
+		}
+	}
 }
 
 // CancelWatch 取消一个 watch
@@ -191,7 +227,7 @@ func (m *MemoryEtcd) matchWatch(key, watchKey, rangeEnd string) bool {
 }
 
 // LeaseGrant 创建一个新的 lease
-func (m *MemoryEtcd) LeaseGrant(id int64, ttl int64) (*kvstore.Lease, error) {
+func (m *MemoryEtcd) LeaseGrant(ctx context.Context, id int64, ttl int64) (*kvstore.Lease, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -212,7 +248,7 @@ func (m *MemoryEtcd) LeaseGrant(id int64, ttl int64) (*kvstore.Lease, error) {
 }
 
 // LeaseRevoke 撤销一个 lease（删除所有关联的键）
-func (m *MemoryEtcd) LeaseRevoke(id int64) error {
+func (m *MemoryEtcd) LeaseRevoke(ctx context.Context, id int64) error {
 	m.mu.Lock()
 
 	lease, ok := m.leases[id]
@@ -267,7 +303,7 @@ func (m *MemoryEtcd) LeaseRevoke(id int64) error {
 }
 
 // LeaseRenew 续约一个 lease
-func (m *MemoryEtcd) LeaseRenew(id int64) (*kvstore.Lease, error) {
+func (m *MemoryEtcd) LeaseRenew(ctx context.Context, id int64) (*kvstore.Lease, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -282,7 +318,7 @@ func (m *MemoryEtcd) LeaseRenew(id int64) (*kvstore.Lease, error) {
 }
 
 // LeaseTimeToLive 获取 lease 的剩余时间
-func (m *MemoryEtcd) LeaseTimeToLive(id int64) (*kvstore.Lease, error) {
+func (m *MemoryEtcd) LeaseTimeToLive(ctx context.Context, id int64) (*kvstore.Lease, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -306,7 +342,7 @@ func (m *MemoryEtcd) LeaseTimeToLive(id int64) (*kvstore.Lease, error) {
 }
 
 // Leases 返回所有 lease
-func (m *MemoryEtcd) Leases() ([]*kvstore.Lease, error) {
+func (m *MemoryEtcd) Leases(ctx context.Context) ([]*kvstore.Lease, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 

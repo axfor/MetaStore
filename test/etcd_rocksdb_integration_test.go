@@ -94,7 +94,7 @@ func newEtcdRocksDBCluster(t *testing.T, n int) *etcdRocksDBCluster {
 			}
 			return kvs.GetSnapshot()
 		}
-		clus.commitC[i], clus.errorC[i], clus.snapshotterReady[i] = raft.NewNodeRocksDB(
+		clus.commitC[i], clus.errorC[i], clus.snapshotterReady[i], _ = raft.NewNodeRocksDB(
 			i+1, clus.peers, false, getSnapshot, clus.proposeC[i], clus.confChangeC[i], db,
 		)
 	}

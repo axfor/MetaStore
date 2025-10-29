@@ -94,7 +94,7 @@ var defaultSnapshotCount uint64 = 10000
 // storageType: "memory" or "rocksdb" to separate data directories
 func NewNode(id int, peers []string, join bool, getSnapshot func() ([]byte, error), proposeC <-chan string,
 	confChangeC <-chan raftpb.ConfChange, storageType string,
-) (<-chan *kvstore.Commit, <-chan error, <-chan *snap.Snapshotter) {
+) (<-chan *kvstore.Commit, <-chan error, <-chan *snap.Snapshotter, *raftNode) {
 	commitC := make(chan *kvstore.Commit)
 	errorC := make(chan error)
 
@@ -125,7 +125,7 @@ func NewNode(id int, peers []string, join bool, getSnapshot func() ([]byte, erro
 		// rest of structure populated after WAL replay
 	}
 	go rc.startRaft()
-	return commitC, errorC, rc.snapshotterReady
+	return commitC, errorC, rc.snapshotterReady, rc
 }
 
 func newLogger(options ...zap.Option) *zap.Logger {
@@ -548,4 +548,23 @@ func (rc *raftNode) IsIDRemoved(_ uint64) bool   { return false }
 func (rc *raftNode) ReportUnreachable(id uint64) { rc.node.ReportUnreachable(id) }
 func (rc *raftNode) ReportSnapshot(id uint64, status raft.SnapshotStatus) {
 	rc.node.ReportSnapshot(id, status)
+}
+
+// Status 返回 Raft 状态信息
+func (rc *raftNode) Status() kvstore.RaftStatus {
+	status := rc.node.Status()
+	return kvstore.RaftStatus{
+		NodeID:   status.ID,
+		Term:     status.Term,
+		LeaderID: status.Lead,
+		State:    status.RaftState.String(),
+		Applied:  status.Applied,
+		Commit:   status.Commit,
+	}
+}
+
+// TransferLeadership 将 leader 角色转移到指定节点
+func (rc *raftNode) TransferLeadership(targetID uint64) error {
+	rc.node.TransferLeadership(context.TODO(), 0, targetID)
+	return nil
 }

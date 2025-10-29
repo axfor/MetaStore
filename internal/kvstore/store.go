@@ -14,68 +14,78 @@
 
 package kvstore
 
+import "context"
+
 // Store is the interface that all KV stores must implement
+// All methods support context for timeout control and cancellation
 type Store interface {
-	// 原有方法（保持向后兼容）
+	// Legacy methods (kept for backward compatibility)
 	Lookup(key string) (string, bool)
 	Propose(k string, v string)
 	GetSnapshot() ([]byte, error)
 
-	// etcd 兼容方法
+	// etcd-compatible methods with Context support
 
-	// Range 执行范围查询
-	// key: 起始键
-	// rangeEnd: 结束键（空表示单键查询，"\x00" 表示查询所有键）
-	// limit: 返回的最大键数（0 表示无限制）
-	// revision: 查询指定 revision 的数据（0 表示最新）
-	Range(key, rangeEnd string, limit int64, revision int64) (*RangeResponse, error)
+	// Range executes a range query
+	// ctx: context for timeout and cancellation
+	// key: start key
+	// rangeEnd: end key (empty for single key, "\x00" for all keys)
+	// limit: max keys to return (0 for unlimited)
+	// revision: query data at specific revision (0 for latest)
+	Range(ctx context.Context, key, rangeEnd string, limit int64, revision int64) (*RangeResponse, error)
 
-	// PutWithLease 存储键值对，可选关联 lease
-	// 返回新的 revision 和旧值（如果存在）
-	PutWithLease(key, value string, leaseID int64) (revision int64, prevKv *KeyValue, err error)
+	// PutWithLease stores a key-value pair with optional lease
+	// Returns new revision and previous value (if any)
+	PutWithLease(ctx context.Context, key, value string, leaseID int64) (revision int64, prevKv *KeyValue, err error)
 
-	// DeleteRange 删除指定范围的键
-	// 返回删除的键数量、被删除的键值对和新的 revision
-	DeleteRange(key, rangeEnd string) (deleted int64, prevKvs []*KeyValue, revision int64, err error)
+	// DeleteRange deletes keys in the specified range
+	// Returns number of deleted keys, deleted key-value pairs, and new revision
+	DeleteRange(ctx context.Context, key, rangeEnd string) (deleted int64, prevKvs []*KeyValue, revision int64, err error)
 
-	// Txn 执行事务
-	// cmps: 比较条件列表
-	// thenOps: 比较成功时执行的操作
-	// elseOps: 比较失败时执行的操作
-	Txn(cmps []Compare, thenOps []Op, elseOps []Op) (*TxnResponse, error)
+	// Txn executes a transaction
+	// cmps: comparison conditions
+	// thenOps: operations to execute if comparisons succeed
+	// elseOps: operations to execute if comparisons fail
+	Txn(ctx context.Context, cmps []Compare, thenOps []Op, elseOps []Op) (*TxnResponse, error)
 
-	// Watch 创建一个 watch，返回事件通道
-	// key: 要监听的键
-	// rangeEnd: 范围结束键（空表示单键）
-	// startRevision: 开始监听的 revision（0 表示当前）
-	// watchID: watch 的唯一标识符
-	Watch(key, rangeEnd string, startRevision int64, watchID int64) (<-chan WatchEvent, error)
+	// Watch creates a watch and returns event channel
+	// key: key to watch
+	// rangeEnd: range end key (empty for single key)
+	// startRevision: revision to start watching from (0 for current)
+	// watchID: unique watch identifier
+	Watch(ctx context.Context, key, rangeEnd string, startRevision int64, watchID int64) (<-chan WatchEvent, error)
 
-	// CancelWatch 取消一个 watch
+	// CancelWatch cancels a watch
 	CancelWatch(watchID int64) error
 
-	// Compact 压缩指定 revision 之前的历史数据
-	Compact(revision int64) error
+	// Compact compacts historical data before specified revision
+	Compact(ctx context.Context, revision int64) error
 
-	// CurrentRevision 返回当前的 revision
+	// CurrentRevision returns current revision
 	CurrentRevision() int64
 
-	// Lease 相关方法
+	// Lease-related methods
 
-	// LeaseGrant 创建一个新的 lease
-	LeaseGrant(id int64, ttl int64) (*Lease, error)
+	// LeaseGrant creates a new lease
+	LeaseGrant(ctx context.Context, id int64, ttl int64) (*Lease, error)
 
-	// LeaseRevoke 撤销一个 lease（删除所有关联的键）
-	LeaseRevoke(id int64) error
+	// LeaseRevoke revokes a lease (deletes all associated keys)
+	LeaseRevoke(ctx context.Context, id int64) error
 
-	// LeaseRenew 续约一个 lease
-	LeaseRenew(id int64) (*Lease, error)
+	// LeaseRenew renews a lease
+	LeaseRenew(ctx context.Context, id int64) (*Lease, error)
 
-	// LeaseTimeToLive 获取 lease 的剩余时间
-	LeaseTimeToLive(id int64) (*Lease, error)
+	// LeaseTimeToLive gets remaining time for a lease
+	LeaseTimeToLive(ctx context.Context, id int64) (*Lease, error)
 
-	// Leases 返回所有 lease
-	Leases() ([]*Lease, error)
+	// Leases returns all leases
+	Leases(ctx context.Context) ([]*Lease, error)
+
+	// GetRaftStatus returns Raft status information
+	GetRaftStatus() RaftStatus
+
+	// TransferLeadership transfers leadership to another node
+	TransferLeadership(targetID uint64) error
 }
 
 // Commit represents a commit event from raft

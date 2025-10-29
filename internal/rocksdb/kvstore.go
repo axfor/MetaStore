@@ -15,16 +15,19 @@
 package rocksdb
 
 import (
+	"context"
 	"bytes"
+	"encoding/binary"
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
 	"log"
-	"metaStore/internal/kvstore"
 	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"metaStore/internal/kvstore"
 
 	"github.com/linxGnu/grocksdb"
 	"go.etcd.io/etcd/server/v3/etcdserver/api/snap"
@@ -38,6 +41,12 @@ const (
 	leasePrefix = "lease:"
 )
 
+// RaftNode Raft 节点接口，用于获取 Raft 状态
+type RaftNode interface {
+	Status() kvstore.RaftStatus
+	TransferLeadership(targetID uint64) error
+}
+
 // RocksDB integrates Raft consensus with etcd-compatible RocksDB storage
 type RocksDB struct {
 	db          *grocksdb.DB
@@ -49,24 +58,28 @@ type RocksDB struct {
 
 	mu                sync.Mutex
 	pendingMu         sync.RWMutex
-	pendingOps        map[string]chan struct{}          // for sync wait
-	pendingTxnResults map[string]*kvstore.TxnResponse   // seqNum -> txn result
+	pendingOps        map[string]chan struct{}        // for sync wait
+	pendingTxnResults map[string]*kvstore.TxnResponse // seqNum -> txn result
 	seqNum            int64
 
 	// Watch support
 	watchMu sync.RWMutex
 	watches map[int64]*watchSubscription
+
+	// Raft 节点引用（用于获取状态信息）
+	raftNode RaftNode
+	nodeID   uint64
 }
 
 // watchSubscription represents a watch subscription
 type watchSubscription struct {
-	watchID  int64
-	key      string
-	rangeEnd string
-	startRev int64
-	eventCh  chan kvstore.WatchEvent
-	cancel   chan struct{}
-	closed   atomic.Bool  // 防止重复关闭
+	watchID   int64
+	key       string
+	rangeEnd  string
+	startRev  int64
+	eventCh   chan kvstore.WatchEvent
+	cancel    chan struct{}
+	closed    atomic.Bool // 防止重复关闭
 	closeOnce sync.Once   // 确保只关闭一次
 
 	// Options
@@ -287,7 +300,7 @@ func (r *RocksDB) incrementRevision() (int64, error) {
 }
 
 // Range performs range query
-func (r *RocksDB) Range(key, rangeEnd string, limit int64, revision int64) (*kvstore.RangeResponse, error) {
+func (r *RocksDB) Range(ctx context.Context, key, rangeEnd string, limit int64, revision int64) (*kvstore.RangeResponse, error) {
 	var kvs []*kvstore.KeyValue
 
 	// Single key query
@@ -345,7 +358,7 @@ func (r *RocksDB) Range(key, rangeEnd string, limit int64, revision int64) (*kvs
 }
 
 // PutWithLease stores key-value with optional lease
-func (r *RocksDB) PutWithLease(key, value string, leaseID int64) (int64, *kvstore.KeyValue, error) {
+func (r *RocksDB) PutWithLease(ctx context.Context, key, value string, leaseID int64) (int64, *kvstore.KeyValue, error) {
 	// Check prevKv before submitting to Raft
 	prevKv, _ := r.getKeyValue(key)
 
@@ -463,7 +476,7 @@ func (r *RocksDB) putUnlocked(key, value string, leaseID int64) error {
 }
 
 // DeleteRange deletes keys in range
-func (r *RocksDB) DeleteRange(key, rangeEnd string) (int64, []*kvstore.KeyValue, int64, error) {
+func (r *RocksDB) DeleteRange(ctx context.Context, key, rangeEnd string) (int64, []*kvstore.KeyValue, int64, error) {
 	// Check what will be deleted (before Raft commit)
 	var deleted int64
 	var prevKvs []*kvstore.KeyValue
@@ -639,7 +652,7 @@ func (r *RocksDB) deleteUnlocked(key, rangeEnd string) error {
 }
 
 // LeaseGrant creates a lease
-func (r *RocksDB) LeaseGrant(id int64, ttl int64) (*kvstore.Lease, error) {
+func (r *RocksDB) LeaseGrant(ctx context.Context, id int64, ttl int64) (*kvstore.Lease, error) {
 	// Generate sequence number
 	r.mu.Lock()
 	r.seqNum++
@@ -695,7 +708,7 @@ func (r *RocksDB) leaseGrantUnlocked(id int64, ttl int64) error {
 }
 
 // LeaseRevoke revokes a lease
-func (r *RocksDB) LeaseRevoke(id int64) error {
+func (r *RocksDB) LeaseRevoke(ctx context.Context, id int64) error {
 	// Generate sequence number
 	r.mu.Lock()
 	r.seqNum++
@@ -754,7 +767,7 @@ func (r *RocksDB) leaseRevokeUnlocked(id int64) error {
 }
 
 // Watch creates a watch and returns an event channel
-func (r *RocksDB) Watch(key, rangeEnd string, startRevision int64, watchID int64) (<-chan kvstore.WatchEvent, error) {
+func (r *RocksDB) Watch(ctx context.Context, key, rangeEnd string, startRevision int64, watchID int64) (<-chan kvstore.WatchEvent, error) {
 	return r.WatchWithOptions(key, rangeEnd, startRevision, watchID, nil)
 }
 
@@ -797,10 +810,46 @@ func (r *RocksDB) WatchWithOptions(key, rangeEnd string, startRevision int64, wa
 
 	r.watches[watchID] = sub
 
-	// TODO: If startRevision > 0, send historical events
-	// This requires maintaining a history of changes or using WAL replay
+	// 如果 startRevision > 0，发送历史事件
+	// 注意：当前实现不保留完整历史，只能从当前数据生成初始快照
+	if startRevision > 0 && startRevision < r.CurrentRevision() {
+		// 异步发送当前所有匹配的键作为 PUT 事件
+		go r.sendHistoricalEvents(sub, key, rangeEnd)
+	}
 
 	return eventCh, nil
+}
+
+// sendHistoricalEvents 发送历史事件（从当前数据快照）
+func (r *RocksDB) sendHistoricalEvents(sub *watchSubscription, key, rangeEnd string) {
+	// 使用 Range 查询获取所有匹配的键
+	resp, err := r.Range(context.Background(), key, rangeEnd, 0, 0)
+	if err != nil {
+		log.Printf("Failed to get historical events for watch %d: %v", sub.watchID, err)
+		return
+	}
+
+	// 发送所有键作为 PUT 事件
+	for _, kv := range resp.Kvs {
+		event := kvstore.WatchEvent{
+			Type:     kvstore.EventTypePut,
+			Kv:       kv,
+			PrevKv:   nil, // 历史事件不返回 prevKv
+			Revision: kv.ModRevision,
+		}
+
+		// 非阻塞发送
+		select {
+		case sub.eventCh <- event:
+			// 成功发送
+		case <-sub.cancel:
+			// Watch 已取消
+			return
+		default:
+			// Channel 满了，跳过此事件
+			log.Printf("Watch %d channel full, skipping historical event for key %s", sub.watchID, string(kv.Key))
+		}
+	}
 }
 
 // CancelWatch cancels a watch
@@ -832,14 +881,124 @@ func (r *RocksDB) CancelWatch(watchID int64) error {
 }
 
 // Compact compresses historical data before specified revision
-func (r *RocksDB) Compact(revision int64) error {
-	// TODO: Implement compaction
-	// For now, this is a no-op
+// Lightweight implementation that:
+// 1. Records compacted revision for client query validation
+// 2. Triggers RocksDB physical compaction (SST file merging)
+// 3. Cleans up expired lease metadata
+func (r *RocksDB) Compact(ctx context.Context, revision int64) error {
+	currentRev := r.CurrentRevision()
+
+	// Validation: cannot compact future revisions
+	if revision > currentRev {
+		return fmt.Errorf("cannot compact to future revision %d (current: %d)", revision, currentRev)
+	}
+
+	// Validation: cannot compact to revision 0 or negative
+	if revision <= 0 {
+		return fmt.Errorf("invalid compact revision: %d", revision)
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// Get current compacted revision
+	compactedRev := r.getCompactedRevisionUnlocked()
+	if revision <= compactedRev {
+		return fmt.Errorf("already compacted to revision %d (requested: %d)", compactedRev, revision)
+	}
+
+	log.Printf("Starting compact: target=%d, current=%d, lastCompacted=%d",
+		revision, currentRev, compactedRev)
+
+	startTime := time.Now()
+
+	// 1. Record compacted revision
+	if err := r.setCompactedRevisionUnlocked(revision); err != nil {
+		return fmt.Errorf("failed to record compacted revision: %w", err)
+	}
+
+	// 2. Trigger RocksDB physical compaction (SST file merging)
+	// This reclaims space from deleted keys and reduces read amplification
+	startKey := []byte(kvPrefix)
+	endKey := []byte(kvPrefix + "\xff")
+
+	// CompactRange is asynchronous but we can wait for it
+	r.db.CompactRange(grocksdb.Range{Start: startKey, Limit: endKey})
+
+	// 3. Optional: Clean up expired leases (best effort)
+	// This doesn't affect correctness but helps reclaim space
+	cleanedLeases := r.cleanupExpiredLeasesUnlocked()
+
+	duration := time.Since(startTime)
+	log.Printf("Compact completed: revision=%d, duration=%v, cleanedLeases=%d",
+		revision, duration, cleanedLeases)
+
 	return nil
 }
 
+// getCompactedRevisionUnlocked reads the compacted revision from DB (caller must hold lock)
+func (r *RocksDB) getCompactedRevisionUnlocked() int64 {
+	key := []byte("meta:compacted_revision")
+	value, err := r.db.Get(r.ro, key)
+	if err != nil || value.Size() == 0 {
+		return 0
+	}
+	defer value.Free()
+
+	data := value.Data()
+	if len(data) != 8 {
+		return 0
+	}
+
+	return int64(binary.BigEndian.Uint64(data))
+}
+
+// setCompactedRevisionUnlocked writes the compacted revision to DB (caller must hold lock)
+func (r *RocksDB) setCompactedRevisionUnlocked(revision int64) error {
+	key := []byte("meta:compacted_revision")
+	value := make([]byte, 8)
+	binary.BigEndian.PutUint64(value, uint64(revision))
+
+	return r.db.Put(r.wo, key, value)
+}
+
+// cleanupExpiredLeasesUnlocked removes expired leases (caller must hold lock)
+// Returns number of cleaned leases
+func (r *RocksDB) cleanupExpiredLeasesUnlocked() int {
+	cleaned := 0
+	now := time.Now()
+
+	// Iterate all leases
+	it := r.db.NewIterator(r.ro)
+	defer it.Close()
+
+	prefix := []byte(leasePrefix)
+	for it.Seek(prefix); it.Valid() && bytes.HasPrefix(it.Key().Data(), prefix); it.Next() {
+		// Decode lease
+		var lease kvstore.Lease
+		if err := gob.NewDecoder(bytes.NewReader(it.Value().Data())).Decode(&lease); err != nil {
+			log.Printf("Warning: failed to decode lease during cleanup: %v", err)
+			continue
+		}
+
+		// Check if expired
+		elapsed := now.Sub(lease.GrantTime)
+		if elapsed > time.Duration(lease.TTL)*time.Second {
+			// Delete expired lease metadata
+			// Note: Associated keys are already deleted by LeaseManager
+			if err := r.db.Delete(r.wo, it.Key().Data()); err != nil {
+				log.Printf("Warning: failed to delete expired lease %d: %v", lease.ID, err)
+			} else {
+				cleaned++
+			}
+		}
+	}
+
+	return cleaned
+}
+
 // LeaseRenew renews a lease
-func (r *RocksDB) LeaseRenew(id int64) (*kvstore.Lease, error) {
+func (r *RocksDB) LeaseRenew(ctx context.Context, id int64) (*kvstore.Lease, error) {
 	// Get current lease
 	lease, err := r.getLease(id)
 	if err != nil {
@@ -867,12 +1026,12 @@ func (r *RocksDB) LeaseRenew(id int64) (*kvstore.Lease, error) {
 }
 
 // LeaseTimeToLive gets remaining time of a lease
-func (r *RocksDB) LeaseTimeToLive(id int64) (*kvstore.Lease, error) {
+func (r *RocksDB) LeaseTimeToLive(ctx context.Context, id int64) (*kvstore.Lease, error) {
 	return r.getLease(id)
 }
 
 // Leases returns all leases
-func (r *RocksDB) Leases() ([]*kvstore.Lease, error) {
+func (r *RocksDB) Leases(ctx context.Context) ([]*kvstore.Lease, error) {
 	var leases []*kvstore.Lease
 
 	it := r.db.NewIterator(r.ro)
@@ -895,7 +1054,7 @@ func (r *RocksDB) Leases() ([]*kvstore.Lease, error) {
 // Propose proposes a value (for backward compatibility with old Store interface)
 func (r *RocksDB) Propose(k string, v string) {
 	// Convert to etcd Put operation
-	r.PutWithLease(k, v, 0)
+	r.PutWithLease(context.Background(), k, v, 0)
 }
 
 // Lookup looks up a key (for backward compatibility)
@@ -908,7 +1067,7 @@ func (r *RocksDB) Lookup(key string) (string, bool) {
 }
 
 // Txn executes a transaction (through Raft)
-func (r *RocksDB) Txn(cmps []kvstore.Compare, thenOps []kvstore.Op, elseOps []kvstore.Op) (*kvstore.TxnResponse, error) {
+func (r *RocksDB) Txn(ctx context.Context, cmps []kvstore.Compare, thenOps []kvstore.Op, elseOps []kvstore.Op) (*kvstore.TxnResponse, error) {
 	// Generate sequence number
 	r.mu.Lock()
 	r.seqNum++
@@ -1182,7 +1341,7 @@ func (r *RocksDB) txnUnlocked(cmps []kvstore.Compare, thenOps []kvstore.Op, else
 	for i, op := range ops {
 		switch op.Type {
 		case kvstore.OpRange:
-			resp, err := r.Range(string(op.Key), string(op.RangeEnd), op.Limit, 0)
+			resp, err := r.Range(context.Background(), string(op.Key), string(op.RangeEnd), op.Limit, 0)
 			if err != nil {
 				return nil, err
 			}
@@ -1342,3 +1501,42 @@ func (r *RocksDB) compareBytes(a, b []byte, result kvstore.CompareResult) bool {
 	return false
 }
 
+// SetRaftNode 设置 Raft 节点引用（用于依赖注入）
+func (r *RocksDB) SetRaftNode(node RaftNode, nodeID uint64) {
+	r.raftNode = node
+	r.nodeID = nodeID
+}
+
+// GetRaftStatus 获取 Raft 状态信息
+func (r *RocksDB) GetRaftStatus() kvstore.RaftStatus {
+	if r.raftNode == nil {
+		// 如果没有 Raft 节点，返回默认状态（单机模式）
+		return kvstore.RaftStatus{
+			NodeID:   r.nodeID,
+			Term:     0,
+			LeaderID: 0,
+			State:    "standalone",
+			Applied:  0,
+			Commit:   0,
+		}
+	}
+
+	// 从 Raft 节点获取真实状态
+	return r.raftNode.Status()
+}
+
+// TransferLeadership 转移 leader 角色到指定节点
+func (r *RocksDB) TransferLeadership(targetID uint64) error {
+	if r.raftNode == nil {
+		return fmt.Errorf("raft node not available")
+	}
+
+	// 检查当前节点是否是 leader
+	status := r.raftNode.Status()
+	if status.LeaderID != r.nodeID {
+		return fmt.Errorf("not leader, current leader: %d", status.LeaderID)
+	}
+
+	// 调用 Raft 节点的 TransferLeadership
+	return r.raftNode.TransferLeadership(targetID)
+}

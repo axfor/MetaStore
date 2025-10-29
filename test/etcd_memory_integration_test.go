@@ -81,7 +81,7 @@ func newEtcdCluster(t *testing.T, n int) *etcdCluster {
 			}
 			return kvs.GetSnapshot()
 		}
-		clus.commitC[i], clus.errorC[i], clus.snapshotterReady[i] = raft.NewNode(
+		clus.commitC[i], clus.errorC[i], clus.snapshotterReady[i], _ = raft.NewNode(
 			i+1, clus.peers, false, getSnapshot, clus.proposeC[i], clus.confChangeC[i], "memory",
 		)
 	}
