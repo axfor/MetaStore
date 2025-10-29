@@ -192,7 +192,7 @@ total 128K
 
 # 3. 重启节点
 kill $PID
-./metaStore-rocksdb --id 1 --cluster http://127.0.0.1:12379 --port 12380 --rocksdb
+./metaStore-rocksdb --member-id 1 --cluster http://127.0.0.1:12379 --port 12380 --rocksdb
 
 # 4. 验证数据仍存在
 curl -L http://127.0.0.1:12380/persist-test
@@ -246,7 +246,7 @@ curl -L http://127.0.0.1:12380/crash-test -XPUT -d "before-crash"
 kill -9 $PID
 
 # 3. 重启
-./metaStore-rocksdb --id 1 --cluster http://127.0.0.1:12379 --port 12380 --rocksdb
+./metaStore-rocksdb --member-id 1 --cluster http://127.0.0.1:12379 --port 12380 --rocksdb
 
 # 4. 验证数据完整
 curl -L http://127.0.0.1:12380/crash-test
@@ -278,7 +278,7 @@ curl -L http://127.0.0.1:12380/crash-test
 ```bash
 # 启动3节点集群（RocksDB模式）
 for id in 1 2 3; do
-  ./metaStore-rocksdb --id $id \
+  ./metaStore-rocksdb --member-id $id \
     --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 \
     --port ${id}2380 \
     --rocksdb &

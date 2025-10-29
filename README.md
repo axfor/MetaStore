@@ -14,6 +14,7 @@ A Lightweight, distributed, high-performance Metadata management component that 
 - **Dynamic Membership**: Add/remove nodes without downtime
 - **Snapshots**: Automatic log compaction via snapshots
 - **Single Binary**: Lightweight, easy to deploy
+- **🆕 etcd v3 Compatibility**: gRPC API compatible with etcd v3 (see [etcd Compatibility](#etcd-compatibility))
 
 ## Building
 
@@ -192,7 +193,7 @@ The unified build produces a single binary that supports **both** memory and Roc
 
 ```sh
 # Start with memory + WAL storage (default)
-metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380 --storage memory
+metaStore --member-id 1 --cluster http://127.0.0.1:12379 --port 12380 --storage memory
 ```
 
 #### RocksDB Mode
@@ -202,13 +203,13 @@ metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380 --storage memory
 mkdir -p data
 
 # Start with RocksDB storage
-metaStore --id 1 --cluster http://127.0.0.1:12379 --port 12380 --storage rocksdb
+metaStore --member-id1 --cluster http://127.0.0.1:12379 --port 12380 --storage rocksdb
 ```
 
 The unified binary allows you to choose the storage engine at runtime using the `--storage` flag.
 
 Each store process maintains a single raft instance and a key-value server.
-The process's list of comma separated peers (--cluster), its raft ID index into the peer list (--id), and HTTP key-value server port (--port) are passed through the command line.
+The process's list of comma separated peers (--cluster), its raft ID index into the peer list (--member-id), and HTTP key-value server port (--port) are passed through the command line.
 
 Next, store a value ("hello") to a key ("my-key"):
 
@@ -248,9 +249,9 @@ Nodes can be added to or removed from a running cluster using requests to the RE
 
 For example, suppose we have a 3-node cluster that was started with the commands:
 ```sh
-metaStore --id 1 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 12380
-metaStore --id 2 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 22380
-metaStore --id 3 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 32380
+metaStore --member-id1 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 12380
+metaStore --member-id2 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 22380
+metaStore --member-id3 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 32380
 ```
 
 A fourth node with ID 4 can be added by issuing a POST:
@@ -260,7 +261,7 @@ curl -L http://127.0.0.1:12380/4 -XPOST -d http://127.0.0.1:42379
 
 Then the new node can be started as the others were, using the --join option:
 ```sh
-metaStore --id 4 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379,http://127.0.0.1:42379 --port 42380 --join
+metaStore --member-id4 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379,http://127.0.0.1:42379 --port 42380 --join
 ```
 
 The new node should join the cluster and be able to service key/value requests.
@@ -295,7 +296,7 @@ For store, this commit channel is consumed by the key-value store.
 ### Memory + WAL (Default)
 
 - **Persistence**: Write-Ahead Log (WAL) + periodic snapshots
-- **Storage Location**: `./metaStore-{id}/` (WAL), `./metaStore-{id}-snap/` (snapshots)
+- **Storage Location**: `./data/{id}/wal` (WAL), `./data/{id}/snap/` (snapshots)
 - **Use Case**: Fast performance, suitable for most scenarios
 - **Data Loss**: Minimal (only uncommitted entries on crash)
 - **Recovery**: Fast snapshot + WAL replay
@@ -323,7 +324,7 @@ For store, this commit channel is consumed by the key-value store.
 ## Command Line Options
 
 ```
---id int            Node ID (default: 1)
+--member-id int     Node ID (default: 1)
 --cluster string    Comma-separated list of cluster peer URLs (default: "http://127.0.0.1:9021")
 --port int          HTTP API port for key-value operations (default: 9121)
 --join              Join an existing cluster (default: false)
@@ -434,6 +435,8 @@ For detailed structure information, see [PROJECT_LAYOUT.md](PROJECT_LAYOUT.md).
 - [Implementation Details](docs/IMPLEMENTATION.md) - Architecture and design decisions
 - [Project Summary](docs/PROJECT_SUMMARY.md) - Complete project overview
 - [Files Checklist](docs/FILES_CHECKLIST.md) - Complete file inventory
+- ⭐ **[etcd Interface Status Report](docs/ETCD_INTERFACE_STATUS.md)** - Complete list of implemented etcd v3 interfaces and known defects ([English](docs/ETCD_INTERFACE_STATUS_EN.md))
+- [Transaction Implementation Report](docs/TRANSACTION_IMPLEMENTATION.md) - etcd Transaction feature implementation details ([English](docs/TRANSACTION_IMPLEMENTATION_EN.md))
 
 ### RocksDB Documentation
 - [RocksDB Test Guide](docs/ROCKSDB_TEST_GUIDE.md) - How to run RocksDB tests in different environments
@@ -442,6 +445,111 @@ For detailed structure information, see [PROJECT_LAYOUT.md](PROJECT_LAYOUT.md).
 ### Development Guides
 - [Git Commit Guide](docs/GIT_COMMIT.md) - How to commit changes to the project
 
+## etcd Compatibility
+
+MetaStore now provides an **etcd v3 compatible gRPC API layer**, allowing you to use official etcd client SDKs (like `go.etcd.io/etcd/client/v3`) to interact with MetaStore.
+
+### Quick Start with etcd Compatibility
+
+#### 1. Start the etcd-compatible server (Demo mode)
+
+```bash
+# Build the demo server
+go build ./cmd/etcd-demo
+
+# Start server (listens on :2379 by default)
+./etcd-demo
+```
+
+#### 2. Use etcd clientv3 to connect
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "log"
+    "time"
+
+    clientv3 "go.etcd.io/etcd/client/v3"
+)
+
+func main() {
+    cli, err := clientv3.New(clientv3.Config{
+        Endpoints:   []string{"localhost:2379"},
+        DialTimeout: 5 * time.Second,
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer cli.Close()
+
+    // Put
+    cli.Put(context.Background(), "foo", "bar")
+
+    // Get
+    resp, _ := cli.Get(context.Background(), "foo")
+    for _, kv := range resp.Kvs {
+        fmt.Printf("%s: %s\n", kv.Key, kv.Value)
+    }
+}
+```
+
+#### 3. Run the complete example
+
+```bash
+# Terminal 1: Start server
+./etcd-demo
+
+# Terminal 2: Run example
+go run examples/etcd-client/main.go
+```
+
+### Supported etcd v3 Features
+
+✅ **Fully Supported**:
+- KV operations (Range, Put, DeleteRange, Txn)
+- Watch (event streaming)
+- Lease (grant, revoke, keepalive, TTL)
+- Maintenance (Status, Snapshot)
+- gRPC API compatibility
+
+⚠️ **Partially Supported**:
+- Compact (simplified implementation)
+- MVCC (current version only, no historical queries)
+
+❌ **Not Implemented**:
+- Auth/RBAC
+- Cluster management APIs
+- Historical revision queries
+
+### Documentation
+
+- **[etcd Usage Guide](docs/etcd-usage-guide.md)** - How to use the etcd-compatible API
+- **[etcd Compatibility Design](docs/etcd-compatibility-design.md)** - Architecture and implementation details
+- **[Limitations](docs/limitations.md)** - Current limitations and differences from official etcd
+
+### Current Status
+
+**Version**: v0.1.0-demo (Phase 1)
+
+This is a **demonstration version** that:
+- ✅ Provides etcd v3 gRPC API compatibility
+- ✅ Supports all core KV/Watch/Lease operations
+- ⚠️ Runs in single-node mode without Raft (demo only)
+- ⚠️ Uses in-memory storage (no persistence)
+
+**Not recommended for production use yet.**
+
+### Roadmap
+
+- **Phase 1 (Current)**: etcd API compatibility layer + demo mode
+- **Phase 2 (Planned)**: Raft integration + RocksDB persistence
+- **Phase 3 (Future)**: Auth/RBAC + performance optimization
 
 
+### TODO
+
+- [Cmd cross protocol](todo/cmd_cross_protocol.md)
 

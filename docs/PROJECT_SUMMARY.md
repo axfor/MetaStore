@@ -89,12 +89,12 @@
 go build -o store.exe
 
 # 单节点启动
-./metaStore.exe --id 1 --cluster http://127.0.0.1:12379 --port 12380
+./metaStore.exe --member-id 1 --cluster http://127.0.0.1:12379 --port 12380
 
 # 3节点集群
-./metaStore.exe --id 1 --cluster http://127.0.0.1:12379,... --port 12380
-./metaStore.exe --id 2 --cluster http://127.0.0.1:12379,... --port 22380
-./metaStore.exe --id 3 --cluster http://127.0.0.1:12379,... --port 32380
+./metaStore.exe --member-id 1 --cluster http://127.0.0.1:12379,... --port 12380
+./metaStore.exe --member-id 2 --cluster http://127.0.0.1:12379,... --port 22380
+./metaStore.exe --member-id 3 --cluster http://127.0.0.1:12379,... --port 32380
 ```
 
 ### RocksDB构建 (需要RocksDB库)
@@ -104,7 +104,7 @@ go build -o store.exe
 CGO_ENABLED=1 go build -tags=rocksdb -o store-rocksdb
 
 # 启动
-./metaStore-rocksdb --id 1 --cluster ... --port 12380 --rocksdb
+./metaStore-rocksdb --member-id 1 --cluster ... --port 12380 --rocksdb
 ```
 
 ## 🧪 测试验证

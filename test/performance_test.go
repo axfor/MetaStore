@@ -1,0 +1,531 @@
+// Copyright 2025 The axfor Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package test
+
+import (
+	"context"
+	"fmt"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	clientv3 "go.etcd.io/etcd/client/v3"
+)
+
+// TestPerformance_LargeScaleLoad tests system behavior under large-scale concurrent load
+// This test simulates production workload with multiple concurrent clients
+func TestPerformance_LargeScaleLoad(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping large-scale load test in short mode")
+	}
+
+	// Start test server
+	node, cleanup := startMemoryNode(t, 1)
+	defer cleanup()
+
+	// Create etcd client
+	cli, err := clientv3.New(clientv3.Config{
+		Endpoints:   []string{node.clientAddr},
+		DialTimeout: 5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+	defer cli.Close()
+
+	// Test parameters
+	numClients := 50
+	operationsPerClient := 1000
+	totalOperations := numClients * operationsPerClient
+
+	t.Logf("Starting large-scale load test: %d clients, %d ops/client = %d total ops",
+		numClients, operationsPerClient, totalOperations)
+
+	// Counters
+	var (
+		successCount int64
+		errorCount   int64
+		totalLatency int64
+	)
+
+	startTime := time.Now()
+
+	// Launch concurrent clients
+	var wg sync.WaitGroup
+	for i := 0; i < numClients; i++ {
+		wg.Add(1)
+		go func(clientID int) {
+			defer wg.Done()
+
+			ctx := context.Background()
+			for j := 0; j < operationsPerClient; j++ {
+				key := fmt.Sprintf("/load-test/client-%d/key-%d", clientID, j)
+				value := fmt.Sprintf("value-%d-%d", clientID, j)
+
+				opStart := time.Now()
+
+				// Put operation
+				_, err := cli.Put(ctx, key, value)
+				if err != nil {
+					atomic.AddInt64(&errorCount, 1)
+					continue
+				}
+
+				// Get operation
+				_, err = cli.Get(ctx, key)
+				if err != nil {
+					atomic.AddInt64(&errorCount, 1)
+					continue
+				}
+
+				latency := time.Since(opStart)
+				atomic.AddInt64(&totalLatency, int64(latency))
+				atomic.AddInt64(&successCount, 1)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	duration := time.Since(startTime)
+
+	// Calculate metrics
+	successOps := atomic.LoadInt64(&successCount)
+	errorOps := atomic.LoadInt64(&errorCount)
+	avgLatency := time.Duration(atomic.LoadInt64(&totalLatency) / successOps)
+	throughput := float64(successOps) / duration.Seconds()
+
+	// Report results
+	t.Logf("Load test completed in %v", duration)
+	t.Logf("Total operations: %d", totalOperations)
+	t.Logf("Successful operations: %d (%.2f%%)", successOps, float64(successOps)/float64(totalOperations)*100)
+	t.Logf("Failed operations: %d", errorOps)
+	t.Logf("Average latency: %v", avgLatency)
+	t.Logf("Throughput: %.2f ops/sec", throughput)
+
+	// Assert acceptable performance
+	if errorOps > int64(totalOperations/100) { // Allow max 1% error rate
+		t.Errorf("Error rate too high: %d errors out of %d operations", errorOps, totalOperations)
+	}
+
+	if avgLatency > 200*time.Millisecond {
+		t.Errorf("Average latency too high: %v (expected < 200ms)", avgLatency)
+	}
+
+	if throughput < 800 {
+		t.Errorf("Throughput too low: %.2f ops/sec (expected > 800)", throughput)
+	}
+}
+
+// TestPerformance_SustainedLoad tests system stability under sustained load
+func TestPerformance_SustainedLoad(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping sustained load test in short mode")
+	}
+
+	node, cleanup := startMemoryNode(t, 1)
+	defer cleanup()
+
+	cli, err := clientv3.New(clientv3.Config{
+		Endpoints:   []string{node.clientAddr},
+		DialTimeout: 5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+	defer cli.Close()
+
+	// Test parameters
+	duration := 30 * time.Second
+	numClients := 20
+	targetOpsPerSec := 100
+
+	t.Logf("Starting sustained load test: %d clients for %v", numClients, duration)
+
+	var (
+		totalOps   int64
+		errorCount int64
+		stopFlag   int32
+	)
+
+	startTime := time.Now()
+
+	// Launch concurrent workers
+	var wg sync.WaitGroup
+	for i := 0; i < numClients; i++ {
+		wg.Add(1)
+		go func(clientID int) {
+			defer wg.Done()
+
+			ctx := context.Background()
+			opCount := 0
+
+			for atomic.LoadInt32(&stopFlag) == 0 {
+				key := fmt.Sprintf("/sustained/client-%d/op-%d", clientID, opCount)
+				value := fmt.Sprintf("value-%d", opCount)
+
+				_, err := cli.Put(ctx, key, value)
+				if err != nil {
+					atomic.AddInt64(&errorCount, 1)
+				} else {
+					atomic.AddInt64(&totalOps, 1)
+				}
+
+				opCount++
+
+				// Rate limiting
+				time.Sleep(time.Second / time.Duration(targetOpsPerSec))
+			}
+		}(i)
+	}
+
+	// Run for specified duration
+	time.Sleep(duration)
+	atomic.StoreInt32(&stopFlag, 1)
+	wg.Wait()
+
+	elapsed := time.Since(startTime)
+
+	// Calculate metrics
+	ops := atomic.LoadInt64(&totalOps)
+	errors := atomic.LoadInt64(&errorCount)
+	throughput := float64(ops) / elapsed.Seconds()
+
+	t.Logf("Sustained load test completed")
+	t.Logf("Duration: %v", elapsed)
+	t.Logf("Total operations: %d", ops)
+	t.Logf("Errors: %d (%.2f%%)", errors, float64(errors)/float64(ops)*100)
+	t.Logf("Average throughput: %.2f ops/sec", throughput)
+
+	// Assert stability
+	if errors > ops/100 {
+		t.Errorf("Error rate too high: %d errors", errors)
+	}
+}
+
+// TestPerformance_MixedWorkload tests realistic mixed workload
+func TestPerformance_MixedWorkload(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping mixed workload test in short mode")
+	}
+
+	node, cleanup := startMemoryNode(t, 1)
+	defer cleanup()
+
+	cli, err := clientv3.New(clientv3.Config{
+		Endpoints:   []string{node.clientAddr},
+		DialTimeout: 5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+	defer cli.Close()
+
+	// Test parameters
+	testDuration := 20 * time.Second
+	numClients := 30
+
+	t.Logf("Starting mixed workload test: %d clients for %v", numClients, testDuration)
+
+	var (
+		putCount    int64
+		getCount    int64
+		deleteCount int64
+		rangeCount  int64
+		errorCount  int64
+		stopFlag    int32
+	)
+
+	startTime := time.Now()
+
+	// Launch workers with different workload patterns
+	var wg sync.WaitGroup
+
+	// 40% PUT operations
+	for i := 0; i < numClients*2/5; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			ctx := context.Background()
+			opNum := 0
+			for atomic.LoadInt32(&stopFlag) == 0 {
+				key := fmt.Sprintf("/mixed/put-%d-%d", id, opNum)
+				_, err := cli.Put(ctx, key, fmt.Sprintf("value-%d", opNum))
+				if err != nil {
+					atomic.AddInt64(&errorCount, 1)
+				} else {
+					atomic.AddInt64(&putCount, 1)
+				}
+				opNum++
+				time.Sleep(10 * time.Millisecond)
+			}
+		}(i)
+	}
+
+	// 40% GET operations
+	for i := 0; i < numClients*2/5; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			ctx := context.Background()
+			opNum := 0
+			for atomic.LoadInt32(&stopFlag) == 0 {
+				key := fmt.Sprintf("/mixed/put-%d-%d", id%10, opNum%100)
+				_, err := cli.Get(ctx, key)
+				if err != nil {
+					atomic.AddInt64(&errorCount, 1)
+				} else {
+					atomic.AddInt64(&getCount, 1)
+				}
+				opNum++
+				time.Sleep(10 * time.Millisecond)
+			}
+		}(i)
+	}
+
+	// 10% RANGE operations
+	for i := 0; i < numClients/10; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			ctx := context.Background()
+			for atomic.LoadInt32(&stopFlag) == 0 {
+				_, err := cli.Get(ctx, "/mixed/", clientv3.WithPrefix())
+				if err != nil {
+					atomic.AddInt64(&errorCount, 1)
+				} else {
+					atomic.AddInt64(&rangeCount, 1)
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
+		}(i)
+	}
+
+	// 10% DELETE operations
+	for i := 0; i < numClients/10; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			ctx := context.Background()
+			opNum := 0
+			for atomic.LoadInt32(&stopFlag) == 0 {
+				key := fmt.Sprintf("/mixed/put-%d-%d", id%10, opNum%100)
+				_, err := cli.Delete(ctx, key)
+				if err != nil {
+					atomic.AddInt64(&errorCount, 1)
+				} else {
+					atomic.AddInt64(&deleteCount, 1)
+				}
+				opNum++
+				time.Sleep(50 * time.Millisecond)
+			}
+		}(i)
+	}
+
+	// Run for duration
+	time.Sleep(testDuration)
+	atomic.StoreInt32(&stopFlag, 1)
+	wg.Wait()
+
+	elapsed := time.Since(startTime)
+
+	// Collect metrics
+	puts := atomic.LoadInt64(&putCount)
+	gets := atomic.LoadInt64(&getCount)
+	deletes := atomic.LoadInt64(&deleteCount)
+	ranges := atomic.LoadInt64(&rangeCount)
+	errors := atomic.LoadInt64(&errorCount)
+	totalOps := puts + gets + deletes + ranges
+
+	t.Logf("Mixed workload test completed in %v", elapsed)
+	t.Logf("Total operations: %d", totalOps)
+	t.Logf("  PUT: %d (%.1f%%)", puts, float64(puts)/float64(totalOps)*100)
+	t.Logf("  GET: %d (%.1f%%)", gets, float64(gets)/float64(totalOps)*100)
+	t.Logf("  DELETE: %d (%.1f%%)", deletes, float64(deletes)/float64(totalOps)*100)
+	t.Logf("  RANGE: %d (%.1f%%)", ranges, float64(ranges)/float64(totalOps)*100)
+	t.Logf("Errors: %d (%.2f%%)", errors, float64(errors)/float64(totalOps)*100)
+	t.Logf("Throughput: %.2f ops/sec", float64(totalOps)/elapsed.Seconds())
+
+	// Assert acceptable error rate
+	if errors > totalOps/50 { // Max 2% error rate
+		t.Errorf("Error rate too high: %d errors out of %d operations", errors, totalOps)
+	}
+}
+
+// TestPerformance_WatchScalability tests watch performance with many watchers
+func TestPerformance_WatchScalability(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping watch scalability test in short mode")
+	}
+
+	node, cleanup := startMemoryNode(t, 1)
+	defer cleanup()
+
+	cli, err := clientv3.New(clientv3.Config{
+		Endpoints:   []string{node.clientAddr},
+		DialTimeout: 5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+	defer cli.Close()
+
+	// Test parameters
+	numWatchers := 100
+	numEvents := 1000
+
+	t.Logf("Starting watch scalability test: %d watchers, %d events", numWatchers, numEvents)
+
+	// Create multiple watchers
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var watchersReady sync.WaitGroup
+	var eventsReceived int64
+
+	// Start watchers
+	for i := 0; i < numWatchers; i++ {
+		watchersReady.Add(1)
+		go func(watcherID int) {
+			defer watchersReady.Done()
+
+			watchChan := cli.Watch(ctx, fmt.Sprintf("/watch-test/watcher-%d", watcherID))
+
+			// Signal ready
+			watchersReady.Done()
+			watchersReady.Add(1)
+
+			// Receive events
+			for range watchChan {
+				atomic.AddInt64(&eventsReceived, 1)
+			}
+		}(i)
+	}
+
+	// Wait for all watchers to be ready
+	watchersReady.Wait()
+	time.Sleep(100 * time.Millisecond)
+
+	// Generate events
+	startTime := time.Now()
+	for i := 0; i < numEvents; i++ {
+		key := fmt.Sprintf("/watch-test/watcher-%d", i%numWatchers)
+		_, err := cli.Put(context.Background(), key, fmt.Sprintf("event-%d", i))
+		if err != nil {
+			t.Logf("Put failed: %v", err)
+		}
+	}
+
+	// Wait for events to be delivered
+	time.Sleep(2 * time.Second)
+	cancel()
+
+	duration := time.Since(startTime)
+	received := atomic.LoadInt64(&eventsReceived)
+
+	t.Logf("Watch test completed in %v", duration)
+	t.Logf("Events generated: %d", numEvents)
+	t.Logf("Events received: %d", received)
+	t.Logf("Event throughput: %.2f events/sec", float64(received)/duration.Seconds())
+
+	// Assert most events were delivered (allow some loss due to timing)
+	if received < int64(numEvents)*9/10 {
+		t.Errorf("Too many events lost: received %d out of %d", received, numEvents)
+	}
+}
+
+// TestPerformance_TransactionThroughput tests transaction performance
+func TestPerformance_TransactionThroughput(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping transaction throughput test in short mode")
+	}
+
+	node, cleanup := startMemoryNode(t, 1)
+	defer cleanup()
+
+	cli, err := clientv3.New(clientv3.Config{
+		Endpoints:   []string{node.clientAddr},
+		DialTimeout: 5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+	defer cli.Close()
+
+	// Test parameters
+	numTransactions := 10000
+	numClients := 10
+
+	t.Logf("Starting transaction throughput test: %d transactions across %d clients",
+		numTransactions, numClients)
+
+	var (
+		successCount int64
+		errorCount   int64
+	)
+
+	startTime := time.Now()
+
+	// Launch concurrent clients
+	var wg sync.WaitGroup
+	txnsPerClient := numTransactions / numClients
+
+	for i := 0; i < numClients; i++ {
+		wg.Add(1)
+		go func(clientID int) {
+			defer wg.Done()
+
+			ctx := context.Background()
+			for j := 0; j < txnsPerClient; j++ {
+				key := fmt.Sprintf("/txn-test/client-%d/key-%d", clientID, j)
+
+				// Transaction: if key doesn't exist, create it
+				txn := cli.Txn(ctx).
+					If(clientv3.Compare(clientv3.Version(key), "=", 0)).
+					Then(clientv3.OpPut(key, fmt.Sprintf("value-%d", j))).
+					Else(clientv3.OpGet(key))
+
+				_, err := txn.Commit()
+				if err != nil {
+					atomic.AddInt64(&errorCount, 1)
+				} else {
+					atomic.AddInt64(&successCount, 1)
+				}
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	duration := time.Since(startTime)
+
+	// Calculate metrics
+	success := atomic.LoadInt64(&successCount)
+	errors := atomic.LoadInt64(&errorCount)
+	throughput := float64(success) / duration.Seconds()
+
+	t.Logf("Transaction test completed in %v", duration)
+	t.Logf("Successful transactions: %d", success)
+	t.Logf("Failed transactions: %d", errors)
+	t.Logf("Throughput: %.2f txn/sec", throughput)
+
+	// Assert acceptable performance
+	if errors > int64(numTransactions/100) {
+		t.Errorf("Error rate too high: %d errors", errors)
+	}
+
+	if throughput < 500 {
+		t.Errorf("Transaction throughput too low: %.2f txn/sec (expected > 500)", throughput)
+	}
+}
