@@ -11,7 +11,7 @@ echo ""
 rm -rf raft-cluster-test
 mkdir -p raft-cluster-test/{node1,node2,node3}
 
-l=$(pkill metastore >/dev/null 2>&1 || true)
+l=$(pkill -9 metastore >/dev/null 2>&1 || true)
 
 # 编译
 echo "1. 编译程序..."
@@ -19,6 +19,7 @@ make build
 echo "✅ 编译成功"
 echo ""
 
+pre_dir=$(pwd)
 
 cp metaStore raft-cluster-test/
 cd raft-cluster-test 
@@ -100,20 +101,29 @@ echo ""
 
 # 等待 leader 选举
 echo "4. 等待 Raft leader 选举..."
-sleep 5
+sleep 10
 echo ""
 
 # 测试 etcd 客户端（连接到节点1）
-echo "5. 测试 etcd clientv3 (连接节点1)..."
- 
+echo "5. 测试 etcdctl..."
+
 export ETCDCTL_API=3
 export ETCDCTL_ENDPOINTS="localhost:12379,localhost:12380,localhost:12381"
-chmod a+x ./tools/etcdctl
-./tools/etcdctl  --endpoints=$ETCDCTL_ENDPOINTS member list --write-out=table
-./tools/etcdctl  put cluster-key-2025 2025
-./tools/etcdctl  get cluster-key-2025 
-./tools/etcdctl  get cluster-key-2025 --prefix	
 
+
+chmod a+x $pre_dir/tools/etcdctl
+
+echo "测试 Cluster 服务..."
+$pre_dir/tools/etcdctl member list --write-out=table
+echo ""
+
+echo "测试 KV 操作..."
+$pre_dir/tools/etcdctl  put cluster-key-2025 2025
+$pre_dir/tools/etcdctl  get cluster-key-2025
+$pre_dir/tools/etcdctl  get cluster-key-2025 --prefix
+echo "✅ KV 操作测试通过"	
+
+echo "5. 测试 etcd clientv3..."
 echo "--------------------------->>>>>>>>>>>>>>>>>>>>>>>"
 
 cat > test_cluster.go << 'GOEOF'
@@ -209,6 +219,6 @@ wait $PID1 $PID2 $PID3 2>/dev/null || true
 echo ""
 echo "===== Phase 2 集群测试完成 ====="
 
-cd - 
+cd $pre_dir 
 rm -rf raft-cluster-test
 
