@@ -20,6 +20,7 @@ make build
 echo "✅ 编译成功"
 echo""
 
+pre_dir=$(pwd)
 
 cp metaStore raft-cluster-test/
 cd raft-cluster-test
@@ -52,8 +53,29 @@ echo "============================================"
 echo "============================================"
 
 # 测试 etcd 兼容性
-echo "3. 测试 etcd clientv3..."
+echo "3. 测试 etcdctl..."
 
+export ETCDCTL_API=3
+export ETCDCTL_ENDPOINTS="localhost:12379"
+
+
+chmod a+x $pre_dir/tools/etcdctl
+
+echo "测试 Cluster 服务..."
+$pre_dir/tools/etcdctl member list --write-out=table
+echo ""
+
+echo "测试 KV 操作..."
+
+$pre_dir/tools/etcdctl  put single-key-2025 2025
+$pre_dir/tools/etcdctl  get single-key-2025
+$pre_dir/tools/etcdctl  get single-key-2025 --prefix
+
+echo "✅ KV 操作测试通过"	
+
+
+echo "3. 测试 etcd clientv3..."
+echo "--------------------------->>>>>>>>>>>>>>>>>>>>>>>"
 
 # 创建简单测试程序
 cat > test_client.go << 'GOEOF'
@@ -115,6 +137,6 @@ wait $PID 2>/dev/null || true
 echo ""
 echo "===== Phase 2 测试完成 ====="
 
-cd - 
+cd $pre_dir
 rm -rf raft-cluster-test
 
