@@ -17,14 +17,15 @@ package httpapi
 import (
 	"context"
 	"io"
-	"log"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"metaStore/internal/kvstore"
+	"metaStore/pkg/log"
 
 	"go.etcd.io/raft/v3/raftpb"
+	"go.uber.org/zap"
 )
 
 // Server HTTP API 服务器
@@ -61,13 +62,13 @@ func NewServer(cfg Config) *Server {
 
 // Start 启动 HTTP 服务器
 func (s *Server) Start() error {
-	log.Printf("Starting HTTP API server on %s", s.httpServer.Addr)
+	log.Info("Starting HTTP API server", zap.String("address", s.httpServer.Addr), zap.String("component", "httpapi"))
 	return s.httpServer.ListenAndServe()
 }
 
 // Stop 停止 HTTP 服务器
 func (s *Server) Stop() error {
-	log.Println("Stopping HTTP API server")
+	log.Info("Stopping HTTP API server", zap.String("component", "httpapi"))
 	return s.httpServer.Close()
 }
 
@@ -116,7 +117,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handlePut(w http.ResponseWriter, r *http.Request, key string) {
 	v, err := io.ReadAll(r.Body)
 	if err != nil {
-		log.Printf("Failed to read on PUT (%v)\n", err)
+		log.Error("Failed to read body on PUT", zap.Error(err), zap.String("component", "httpapi"))
 		http.Error(w, "Failed on PUT", http.StatusBadRequest)
 		return
 	}
@@ -141,7 +142,7 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request, key string) {
 func (s *Server) handleClusterAdd(w http.ResponseWriter, r *http.Request, key string) {
 	url, err := io.ReadAll(r.Body)
 	if err != nil {
-		log.Printf("Failed to read on POST (%v)\n", err)
+		log.Error("Failed to read body on POST", zap.Error(err), zap.String("component", "httpapi"))
 		http.Error(w, "Failed on POST", http.StatusBadRequest)
 		return
 	}
@@ -149,7 +150,7 @@ func (s *Server) handleClusterAdd(w http.ResponseWriter, r *http.Request, key st
 	// key 已经去掉前导斜杠，直接解析
 	nodeID, err := strconv.ParseUint(key, 0, 64)
 	if err != nil {
-		log.Printf("Failed to convert ID for conf change (%v)\n", err)
+		log.Error("Failed to convert ID for conf change", zap.Error(err), zap.String("component", "httpapi"))
 		http.Error(w, "Failed on POST", http.StatusBadRequest)
 		return
 	}
@@ -170,7 +171,7 @@ func (s *Server) handleClusterDelete(w http.ResponseWriter, r *http.Request, key
 	// key 已经去掉前导斜杠，直接解析
 	nodeID, err := strconv.ParseUint(key, 0, 64)
 	if err != nil {
-		log.Printf("Failed to convert ID for conf change (%v)\n", err)
+		log.Error("Failed to convert ID for conf change", zap.Error(err), zap.String("component", "httpapi"))
 		http.Error(w, "Failed on DELETE", http.StatusBadRequest)
 		return
 	}
@@ -190,7 +191,7 @@ func (s *Server) handleKeyDelete(w http.ResponseWriter, r *http.Request, key str
 	// 使用 DeleteRange 删除单个 key（rangeEnd 为空表示单键删除）
 	_, _, _, err := s.store.DeleteRange(context.Background(), key, "")
 	if err != nil {
-		log.Printf("Failed to delete key %s: %v\n", key, err)
+		log.Error("Failed to delete key", zap.String("key", key), zap.Error(err), zap.String("component", "httpapi"))
 		http.Error(w, "Failed on DELETE", http.StatusInternalServerError)
 		return
 	}
@@ -209,12 +210,12 @@ func ServeHTTPKVAPI(kv kvstore.Store, port int, confChangeC chan<- raftpb.ConfCh
 
 	go func() {
 		if err := srv.Start(); err != nil && err != http.ErrServerClosed {
-			log.Fatal(err)
+			log.Fatal("HTTP server failed", zap.Error(err), zap.String("component", "httpapi"))
 		}
 	}()
 
 	// exit when raft goes down
 	if err, ok := <-errorC; ok {
-		log.Fatal(err)
+		log.Fatal("Raft error", zap.Error(err), zap.String("component", "httpapi"))
 	}
 }

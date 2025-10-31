@@ -83,6 +83,7 @@ func newRocksDBCluster(n int) *rocksDBCluster {
 			clus.proposeC[i],
 			clus.confChangeC[i],
 			clus.dbs[i],
+			dataDir,
 		)
 	}
 

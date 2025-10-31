@@ -78,7 +78,7 @@ type raftNodeRocks struct {
 
 // newRaftNodeRocks initiates a raft instance backed by RocksDB
 func NewNodeRocksDB(id int, peers []string, join bool, getSnapshot func() ([]byte, error),
-	proposeC <-chan string, confChangeC <-chan raftpb.ConfChange, rocksDB *grocksdb.DB,
+	proposeC <-chan string, confChangeC <-chan raftpb.ConfChange, rocksDB *grocksdb.DB, dataDir string,
 ) (<-chan *kvstore.Commit, <-chan error, <-chan *snap.Snapshotter, *raftNodeRocks) {
 	commitC := make(chan *kvstore.Commit)
 	errorC := make(chan error)
@@ -91,8 +91,8 @@ func NewNodeRocksDB(id int, peers []string, join bool, getSnapshot func() ([]byt
 		id:          id,
 		peers:       peers,
 		join:        join,
-		dbdir:       fmt.Sprintf("data/rocksdb/%d", id),
-		snapdir:     fmt.Sprintf("data/rocksdb/%d/snap", id),
+		dbdir:       dataDir,
+		snapdir:     fmt.Sprintf("%s/snap", dataDir),
 		getSnapshot: getSnapshot,
 		snapCount:   defaultSnapshotCount,
 		stopc:       make(chan struct{}),
@@ -113,7 +113,7 @@ func (rc *raftNodeRocks) saveSnap(snap raftpb.Snapshot) error {
 	if err := rc.snapshotter.SaveSnap(snap); err != nil {
 		return err
 	}
-	log.Printf("saved snapshot at index %d", snap.Metadata.Index)
+	rc.logger.Info("saved snapshot", zap.Uint64("index", snap.Metadata.Index), zap.String("component", "raft-rocks"))
 	return nil
 }
 
@@ -206,7 +206,10 @@ func (rc *raftNodeRocks) initRocksDBStorage() error {
 	// Load snapshot and apply to RocksDB storage
 	snapshot := rc.loadSnapshot()
 	if snapshot != nil && !raft.IsEmptySnap(*snapshot) {
-		log.Printf("applying snapshot at term %d and index %d to RocksDB storage", snapshot.Metadata.Term, snapshot.Metadata.Index)
+		rc.logger.Info("applying snapshot to RocksDB storage",
+			zap.Uint64("term", snapshot.Metadata.Term),
+			zap.Uint64("index", snapshot.Metadata.Index),
+			zap.String("component", "raft-rocks"))
 		if err := rc.raftStorage.ApplySnapshot(*snapshot); err != nil {
 			return fmt.Errorf("failed to apply snapshot: %v", err)
 		}
@@ -299,17 +302,17 @@ func (rc *raftNodeRocks) startRaft() {
 			// Check if we already have a snapshot
 			snap, err := rc.raftStorage.Snapshot()
 			if err == nil && raft.IsEmptySnap(snap) {
-				log.Printf("creating initial snapshot for new cluster")
+				rc.logger.Info("creating initial snapshot for new cluster", zap.String("component", "raft-rocks"))
 				data, err := rc.getSnapshot()
 				if err != nil {
-					log.Printf("failed to get initial snapshot data: %v", err)
+					rc.logger.Error("failed to get initial snapshot data", zap.Error(err), zap.String("component", "raft-rocks"))
 					return
 				}
 
 				// Create initial snapshot at index 0
 				_, err = rc.raftStorage.CreateSnapshot(0, &rc.confState, data)
 				if err != nil {
-					log.Printf("failed to create initial snapshot: %v", err)
+					rc.logger.Error("failed to create initial snapshot", zap.Error(err), zap.String("component", "raft-rocks"))
 				}
 			}
 		}()
@@ -343,8 +346,8 @@ func (rc *raftNodeRocks) publishSnapshot(snapshotToSave raftpb.Snapshot) {
 		return
 	}
 
-	log.Printf("publishing snapshot at index %d", rc.snapshotIndex)
-	defer log.Printf("finished publishing snapshot at index %d", rc.snapshotIndex)
+	rc.logger.Info("publishing snapshot", zap.Uint64("index", rc.snapshotIndex), zap.String("component", "raft-rocks"))
+	defer rc.logger.Info("finished publishing snapshot", zap.Uint64("index", rc.snapshotIndex), zap.String("component", "raft-rocks"))
 
 	if snapshotToSave.Metadata.Index <= rc.appliedIndex {
 		log.Fatalf("snapshot index [%d] should > progress.appliedIndex [%d]", snapshotToSave.Metadata.Index, rc.appliedIndex)
@@ -370,7 +373,10 @@ func (rc *raftNodeRocks) maybeTriggerSnapshot(applyDoneC <-chan struct{}) {
 		}
 	}
 
-	log.Printf("start snapshot [applied index: %d | last snapshot index: %d]", rc.appliedIndex, rc.snapshotIndex)
+	rc.logger.Info("start snapshot",
+		zap.Uint64("applied_index", rc.appliedIndex),
+		zap.Uint64("last_snapshot_index", rc.snapshotIndex),
+		zap.String("component", "raft-rocks"))
 	data, err := rc.getSnapshot()
 	if err != nil {
 		log.Panic(err)
@@ -397,7 +403,7 @@ func (rc *raftNodeRocks) maybeTriggerSnapshot(applyDoneC <-chan struct{}) {
 			panic(err)
 		}
 	} else {
-		log.Printf("compacted log at index %d", compactIndex)
+		rc.logger.Info("compacted log", zap.Uint64("index", compactIndex), zap.String("component", "raft-rocks"))
 	}
 
 	rc.snapshotIndex = rc.appliedIndex

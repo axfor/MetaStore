@@ -16,13 +16,14 @@ package http
 
 import (
 	"io"
-	"log"
 	"net/http"
 	"strconv"
 
 	"metaStore/internal/kvstore"
+	"metaStore/pkg/log"
 
 	"go.etcd.io/raft/v3/raftpb"
+	"go.uber.org/zap"
 )
 
 // httpKVAPI handles HTTP requests for key-value operations
@@ -46,7 +47,7 @@ func (h *httpKVAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPut:
 		v, err := io.ReadAll(r.Body)
 		if err != nil {
-			log.Printf("Failed to read on PUT (%v)\n", err)
+			log.Error("Failed to read body on PUT", zap.Error(err), zap.String("component", "http-api"))
 			http.Error(w, "Failed on PUT", http.StatusBadRequest)
 			return
 		}
@@ -65,14 +66,14 @@ func (h *httpKVAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		url, err := io.ReadAll(r.Body)
 		if err != nil {
-			log.Printf("Failed to read on POST (%v)\n", err)
+			log.Error("Failed to read body on POST", zap.Error(err), zap.String("component", "http-api"))
 			http.Error(w, "Failed on POST", http.StatusBadRequest)
 			return
 		}
 
 		nodeID, err := strconv.ParseUint(key[1:], 0, 64)
 		if err != nil {
-			log.Printf("Failed to convert ID for conf change (%v)\n", err)
+			log.Error("Failed to convert ID for conf change", zap.Error(err), zap.String("component", "http-api"))
 			http.Error(w, "Failed on POST", http.StatusBadRequest)
 			return
 		}
@@ -88,7 +89,7 @@ func (h *httpKVAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case http.MethodDelete:
 		nodeID, err := strconv.ParseUint(key[1:], 0, 64)
 		if err != nil {
-			log.Printf("Failed to convert ID for conf change (%v)\n", err)
+			log.Error("Failed to convert ID for conf change", zap.Error(err), zap.String("component", "http-api"))
 			http.Error(w, "Failed on DELETE", http.StatusBadRequest)
 			return
 		}
@@ -121,12 +122,12 @@ func ServeHTTPKVAPI(kv kvstore.Store, port int, confChangeC chan<- raftpb.ConfCh
 	}
 	go func() {
 		if err := srv.ListenAndServe(); err != nil {
-			log.Fatal(err)
+			log.Fatal("HTTP server failed", zap.Error(err), zap.String("component", "http-api"))
 		}
 	}()
 
 	// exit when raft goes down
 	if err, ok := <-errorC; ok {
-		log.Fatal(err)
+		log.Fatal("Raft error", zap.Error(err), zap.String("component", "http-api"))
 	}
 }
