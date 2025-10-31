@@ -51,6 +51,9 @@ source ~/.bash_profile  && source ~/.zshrc
 
 
 
+unset https_proxy
+unset http_proxy
+unset all_proxy
 
 cat  ~/.bash_profile  
 

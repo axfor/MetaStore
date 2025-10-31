@@ -82,10 +82,12 @@ func main() {
 		// Start etcd gRPC server
 		log.Info("Starting etcd gRPC server", zap.String("address", *grpcAddr), zap.String("component", "main"))
 		etcdServer, err := etcdapi.NewServer(etcdapi.ServerConfig{
-			Store:     kvs,
-			Address:   *grpcAddr,
-			ClusterID: uint64(*clusterID),
-			MemberID:  uint64(*memberID),
+			Store:        kvs,
+			Address:      *grpcAddr,
+			ClusterID:    uint64(*clusterID),
+			MemberID:     uint64(*memberID),
+			ClusterPeers: strings.Split(*cluster, ","),
+			ConfChangeC:  confChangeC,
 		})
 		if err != nil {
 			log.Fatalf("Failed to create etcd server: %v", err)
@@ -120,10 +122,12 @@ func main() {
 		// Start etcd gRPC server
 		log.Info("Starting etcd gRPC server", zap.String("address", *grpcAddr), zap.String("component", "main"))
 		etcdServer, err := etcdapi.NewServer(etcdapi.ServerConfig{
-			Store:     kvs,
-			Address:   *grpcAddr,
-			ClusterID: uint64(*clusterID),
-			MemberID:  uint64(*memberID),
+			Store:        kvs,
+			Address:      *grpcAddr,
+			ClusterID:    uint64(*clusterID),
+			MemberID:     uint64(*memberID),
+			ClusterPeers: strings.Split(*cluster, ","),
+			ConfChangeC:  confChangeC,
 		})
 		if err != nil {
 			log.Fatalf("Failed to create etcd server: %v", err)

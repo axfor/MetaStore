@@ -51,8 +51,9 @@ type Server struct {
 	dataValidator *reliability.DataValidator    // 数据验证器
 
 	// 配置
-	clusterID uint64          // 集群 ID
-	memberID  uint64          // 成员 ID
+	clusterID    uint64   // 集群 ID
+	memberID     uint64   // 成员 ID
+	clusterPeers []string // 集群所有成员的 peer URLs
 }
 
 // ServerConfig 服务器配置
@@ -61,6 +62,7 @@ type ServerConfig struct {
 	Address     string                     // 监听地址（例如 ":2379"）
 	ClusterID   uint64                     // 集群 ID
 	MemberID    uint64                     // 成员 ID
+	ClusterPeers []string                  // 集群所有成员的 peer URLs（用于member list）
 	ConfChangeC chan<- raftpb.ConfChange   // Raft ConfChange 通道（可选）
 
 	// 可靠性配置
@@ -120,6 +122,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		dataValidator: dataValidator,
 		clusterID:     cfg.ClusterID,
 		memberID:      cfg.MemberID,
+		clusterPeers:  cfg.ClusterPeers,
 	}
 
 	// 创建 gRPC server（注册多个拦截器）
@@ -135,26 +138,33 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	// 初始化 ClusterManager（如果提供了 ConfChangeC）
 	if cfg.ConfChangeC != nil {
 		s.clusterMgr = NewClusterManager(cfg.ConfChangeC)
-		// 初始化当前成员
-		s.clusterMgr.InitialMembers([]*MemberInfo{
-			{
-				ID:         cfg.MemberID,
-				Name:       fmt.Sprintf("node-%d", cfg.MemberID),
-				PeerURLs:   []string{}, // 从配置获取
-				ClientURLs: []string{cfg.Address},
+
+		// 初始化所有集群成员
+		members := make([]*MemberInfo, 0, len(cfg.ClusterPeers))
+		for i, peerURL := range cfg.ClusterPeers {
+			memberID := uint64(i + 1) // 成员ID从1开始
+			members = append(members, &MemberInfo{
+				ID:         memberID,
+				Name:       fmt.Sprintf("node-%d", memberID),
+				PeerURLs:   []string{peerURL},
+				ClientURLs: []string{fmt.Sprintf("http://127.0.0.1:%d", 9120+memberID)}, // 根据约定生成
 				IsLearner:  false,
-			},
-		})
+			})
+		}
+		s.clusterMgr.InitialMembers(members)
 	}
 
 	// 注册 gRPC 服务
 	pb.RegisterKVServer(grpcSrv, &KVServer{server: s})
 	pb.RegisterWatchServer(grpcSrv, &WatchServer{server: s})
 	pb.RegisterLeaseServer(grpcSrv, &LeaseServer{server: s})
-	pb.RegisterMaintenanceServer(grpcSrv, &MaintenanceServer{server: s})
+
+	maintenanceServer := &MaintenanceServer{server: s}
+	pb.RegisterMaintenanceServer(grpcSrv, maintenanceServer)
 	pb.RegisterAuthServer(grpcSrv, &AuthServer{server: s})
 
-	// 注: Cluster 服务的 MemberXXX 方法已在 MaintenanceServer 中实现
+	// 注册 Cluster 服务（委托给 MaintenanceServer 的实现）
+	pb.RegisterClusterServer(grpcSrv, &ClusterServer{maintenance: maintenanceServer})
 
 	// 注册健康检查服务
 	if cfg.EnableHealthCheck {
