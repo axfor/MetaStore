@@ -143,8 +143,15 @@ func startMemoryNode(t testing.TB, nodeID int) (*testNode, func()) {
 		close(proposeC)
 		<-errorC
 
+		// Wait for WAL files to be released before cleanup
+		// This prevents "file already locked" errors in subsequent tests
+		time.Sleep(500 * time.Millisecond)
+
 		// Clean up data directory
 		os.RemoveAll(dataDir)
+
+		// Additional wait to ensure cleanup completes
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	return node, cleanup
@@ -190,7 +197,7 @@ func startRocksDBNode(t testing.TB, nodeID int) (*testRocksDBNode, func()) {
 	}
 
 	commitC, errorC, snapshotterReady, raftNode := raft.NewNodeRocksDB(
-		nodeID, peers, false, getSnapshot, proposeC, confChangeC, db,
+		nodeID, peers, false, getSnapshot, proposeC, confChangeC, db, dataDir,
 	)
 
 	// Create RocksDB KV store
@@ -275,8 +282,15 @@ func startRocksDBNode(t testing.TB, nodeID int) (*testRocksDBNode, func()) {
 			db.Close()
 		}
 
+		// Wait for WAL files to be released before cleanup
+		// This prevents "file already locked" errors in subsequent tests
+		time.Sleep(500 * time.Millisecond)
+
 		// Clean up data directory
 		os.RemoveAll(dataDir)
+
+		// Additional wait to ensure cleanup completes
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	return node, cleanup

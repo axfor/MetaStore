@@ -17,7 +17,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 
@@ -26,8 +25,10 @@ import (
 	"metaStore/internal/rocksdb"
 	"metaStore/pkg/etcdapi"
 	"metaStore/pkg/httpapi"
+	"metaStore/pkg/log"
 
 	"go.etcd.io/raft/v3/raftpb"
+	"go.uber.org/zap"
 )
 
 func main() {
@@ -49,7 +50,7 @@ func main() {
 	switch *storageEngine {
 	case "rocksdb":
 		// RocksDB mode - persistent storage
-		log.Println("Starting with RocksDB persistent storage")
+		log.Info("Starting with RocksDB persistent storage", zap.String("component", "main"))
 		dbPath := fmt.Sprintf("data/rocksdb/%d", *memberID)
 		db, err := rocksdb.Open(dbPath)
 		if err != nil {
@@ -64,7 +65,7 @@ func main() {
 		// nodeID := fmt.Sprintf("node_%d", *memberID)
 		var kvs *rocksdb.RocksDB
 		getSnapshot := func() ([]byte, error) { return kvs.GetSnapshot() }
-		commitC, errorC, snapshotterReady, raftNode := raft.NewNodeRocksDB(*memberID, strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC, db)
+		commitC, errorC, snapshotterReady, raftNode := raft.NewNodeRocksDB(*memberID, strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC, db, dbPath)
 
 		kvs = rocksdb.NewRocksDB(db, <-snapshotterReady, proposeC, commitC, errorC)
 		defer kvs.Close()
@@ -74,12 +75,12 @@ func main() {
 
 		// Start HTTP API server
 		go func() {
-			log.Printf("Starting HTTP API on port %d", *kvport)
+			log.Info("Starting HTTP API", zap.Int("port", *kvport), zap.String("component", "main"))
 			httpapi.ServeHTTPKVAPI(kvs, *kvport, confChangeC, errorC)
 		}()
 
 		// Start etcd gRPC server
-		log.Printf("Starting etcd gRPC server on %s", *grpcAddr)
+		log.Info("Starting etcd gRPC server", zap.String("address", *grpcAddr), zap.String("component", "main"))
 		etcdServer, err := etcdapi.NewServer(etcdapi.ServerConfig{
 			Store:     kvs,
 			Address:   *grpcAddr,
@@ -100,7 +101,7 @@ func main() {
 
 	case "memory":
 		// Memory + WAL mode with etcd compatibility
-		log.Println("Starting with memory + WAL storage and etcd gRPC support")
+		log.Info("Starting with memory + WAL storage and etcd gRPC support", zap.String("component", "main"))
 		var kvs *memory.Memory
 		getSnapshot := func() ([]byte, error) { return kvs.GetSnapshot() }
 		commitC, errorC, snapshotterReady, raftNode := raft.NewNode(*memberID, strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC, "memory")
@@ -112,12 +113,12 @@ func main() {
 
 		// Start HTTP API server
 		go func() {
-			log.Printf("Starting HTTP API on port %d", *kvport)
+			log.Info("Starting HTTP API", zap.Int("port", *kvport), zap.String("component", "main"))
 			httpapi.ServeHTTPKVAPI(kvs, *kvport, confChangeC, errorC)
 		}()
 
 		// Start etcd gRPC server
-		log.Printf("Starting etcd gRPC server on %s", *grpcAddr)
+		log.Info("Starting etcd gRPC server", zap.String("address", *grpcAddr), zap.String("component", "main"))
 		etcdServer, err := etcdapi.NewServer(etcdapi.ServerConfig{
 			Store:     kvs,
 			Address:   *grpcAddr,
