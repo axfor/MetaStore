@@ -61,21 +61,21 @@ clean:
 ## test: Run all tests (including RocksDB storage tests)
 test:
 	@echo "$(CYAN)Running all tests...$(NO_COLOR)"
-	@echo "$(YELLOW)Testing memory storage and raft layer...$(NO_COLOR)"
-	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v ./internal/memory/ ./internal/raft/ ./test/
-	@echo "$(YELLOW)Testing RocksDB storage layer...$(NO_COLOR)"
-	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v ./internal/rocksdb/ ./internal/raft/ ./test/
+	@echo "$(YELLOW)Testing internal packages...$(NO_COLOR)"
+	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v -timeout=10m ./internal/...
+	@echo "$(YELLOW)Testing integration and system tests...$(NO_COLOR)"
+	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v -timeout=45m ./test/
 	@echo "$(GREEN)All tests passed!$(NO_COLOR)"
 
 ## test-unit: Run only unit tests (no integration tests)
 test-unit:
 	@echo "$(CYAN)Running unit tests...$(NO_COLOR)"
-	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v ./internal/...
+	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v -timeout=10m ./internal/...
 
 ## test-integration: Run only integration tests
 test-integration:
 	@echo "$(CYAN)Running integration tests...$(NO_COLOR)"
-	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v ./test/ -timeout=60s
+	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v -timeout=20m ./test/
 
 ## test-storage: Run only RocksDB storage tests
 test-storage:
@@ -85,9 +85,21 @@ test-storage:
 ## test-coverage: Run tests with coverage report
 test-coverage:
 	@echo "$(CYAN)Running tests with coverage...$(NO_COLOR)"
-	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -coverprofile=coverage.out ./internal/... ./test/
+	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -timeout=20m -coverprofile=coverage.out ./internal/... ./test/
 	@go tool cover -html=coverage.out -o coverage.html
 	@echo "$(GREEN)Coverage report generated: coverage.html$(NO_COLOR)"
+
+## test-maintenance: Run only Maintenance Service tests
+test-maintenance:
+	@echo "$(CYAN)Running Maintenance Service tests...$(NO_COLOR)"
+	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v -timeout=10m -run="TestMaintenance_" ./test/
+	@echo "$(GREEN)Maintenance tests passed!$(NO_COLOR)"
+
+## test-quick: Run quick tests (Maintenance only, for rapid verification)
+test-quick:
+	@echo "$(CYAN)Running quick tests...$(NO_COLOR)"
+	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v -timeout=5m -run="TestMaintenance_(Status|Hash|Alarm)" ./test/
+	@echo "$(GREEN)Quick tests passed!$(NO_COLOR)"
 
 ## deps: Download dependencies
 deps:

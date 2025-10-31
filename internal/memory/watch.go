@@ -17,9 +17,11 @@ package memory
 import (
 	"context"
 	"fmt"
-	"log"
 	"metaStore/internal/kvstore"
+	"metaStore/pkg/log"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 // Watch 创建一个 watch，返回事件通道
@@ -100,7 +102,10 @@ func (m *MemoryEtcd) sendHistoricalEvents(sub *watchSubscription, key, rangeEnd 
 				return
 			default:
 				// Channel 满了，跳过此事件
-				log.Printf("Watch %d channel full, skipping historical event for key %s", sub.watchID, k)
+				log.Warn("Watch channel full, skipping historical event",
+				zap.Int64("watchID", sub.watchID),
+				zap.String("key", k),
+				zap.String("component", "watch"))
 			}
 		}
 	}
@@ -211,7 +216,7 @@ func (m *MemoryEtcd) slowSendEvent(sub *watchSubscription, event kvstore.WatchEv
 		// Watch cancelled
 	case <-timer.C:
 		// Timeout - force cancel this slow watch
-		log.Printf("Watch %d is too slow, force cancelling", sub.watchID)
+		log.Warn("Watch is too slow, force cancelling", zap.Int64("watch_id", sub.watchID), zap.String("component", "memory-watch"))
 		m.CancelWatch(sub.watchID)
 	}
 }

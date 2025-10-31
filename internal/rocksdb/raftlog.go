@@ -18,12 +18,14 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"log"
 	"sync"
+
+	"metaStore/pkg/log"
 
 	"github.com/linxGnu/grocksdb"
 	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
+	"go.uber.org/zap"
 )
 
 const (
@@ -520,7 +522,10 @@ func (s *RocksDBStorage) ApplySnapshot(snap raftpb.Snapshot) error {
 
 	s.firstIndex = newFirstIndex
 
-	log.Printf("Applied snapshot at index %d, new firstIndex: %d", index, s.firstIndex)
+	log.Info("Applied Raft snapshot",
+		zap.Uint64("snapshotIndex", index),
+		zap.Uint64("newFirstIndex", s.firstIndex),
+		zap.String("component", "raft-storage"))
 
 	return nil
 }
@@ -559,7 +564,9 @@ func (s *RocksDBStorage) Compact(compactIndex uint64) error {
 
 	s.firstIndex = compactIndex
 
-	log.Printf("Compacted log to index %d", compactIndex)
+	log.Info("Compacted Raft log",
+		zap.Uint64("compactIndex", compactIndex),
+		zap.String("component", "raft-storage"))
 
 	return nil
 }

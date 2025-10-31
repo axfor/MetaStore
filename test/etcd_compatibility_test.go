@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -111,7 +112,7 @@ func startTestServerRocksDB(t *testing.T) (*etcdapi.Server, *clientv3.Client, fu
 		return kvs.GetSnapshot()
 	}
 
-	commitC, errorC, snapshotterReady, _ := raft.NewNodeRocksDB(nodeID, peers, false, getSnapshot, proposeC, confChangeC, db)
+	commitC, errorC, snapshotterReady, _ := raft.NewNodeRocksDB(nodeID, peers, false, getSnapshot, proposeC, confChangeC, db, dataDir)
 	kvs = rocksdb.NewRocksDB(db, <-snapshotterReady, proposeC, commitC, errorC)
 
 	// 创建 etcd 兼容服务器（随机端口）
@@ -140,14 +141,17 @@ func startTestServerRocksDB(t *testing.T) (*etcdapi.Server, *clientv3.Client, fu
 	})
 	require.NoError(t, err)
 
-	// 清理函数
+	// 清理函数 - 使用sync.Once防止重复关闭channel
+	var cleanupOnce sync.Once
 	cleanupAll := func() {
-		cli.Close()
-		server.Stop()
-		close(proposeC)
-		<-errorC
-		db.Close()
-		cleanup()
+		cleanupOnce.Do(func() {
+			cli.Close()
+			server.Stop()
+			close(proposeC) // 现在安全了，只会被调用一次
+			<-errorC
+			db.Close()
+			cleanup()
+		})
 	}
 
 	t.Cleanup(cleanupAll)

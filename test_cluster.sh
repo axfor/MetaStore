@@ -105,6 +105,16 @@ echo ""
 
 # 测试 etcd 客户端（连接到节点1）
 echo "5. 测试 etcd clientv3 (连接节点1)..."
+ 
+export ETCDCTL_API=3
+export ETCDCTL_ENDPOINTS="localhost:12379,localhost:12380,localhost:12381"
+chmod a+x ./tools/etcdctl
+./tools/etcdctl  --endpoints=$ETCDCTL_ENDPOINTS member list --write-out=table
+./tools/etcdctl  put cluster-key-2025 2025
+./tools/etcdctl  get cluster-key-2025 
+./tools/etcdctl  get cluster-key-2025 --prefix	
+
+echo "--------------------------->>>>>>>>>>>>>>>>>>>>>>>"
 
 cat > test_cluster.go << 'GOEOF'
 package main

@@ -259,7 +259,7 @@ func (rc *raftNode) openWAL(snapshot *raftpb.Snapshot) *wal.WAL {
 	if snapshot != nil {
 		walsnap.Index, walsnap.Term = snapshot.Metadata.Index, snapshot.Metadata.Term
 	}
-	log.Printf("loading WAL at term %d and index %d", walsnap.Term, walsnap.Index)
+	rc.logger.Info("loading WAL", zap.Uint64("term", walsnap.Term), zap.Uint64("index", walsnap.Index), zap.String("component", "raft-memory"))
 	w, err := wal.Open(newLogger(), rc.waldir, walsnap)
 	if err != nil {
 		log.Fatalf("store: error loading wal (%v)", err)
@@ -270,7 +270,7 @@ func (rc *raftNode) openWAL(snapshot *raftpb.Snapshot) *wal.WAL {
 
 // replayWAL replays WAL entries into the raft instance.
 func (rc *raftNode) replayWAL() *wal.WAL {
-	log.Printf("replaying WAL of member %d", rc.id)
+	rc.logger.Info("replaying WAL", zap.Int("member_id", rc.id), zap.String("component", "raft-memory"))
 	snapshot := rc.loadSnapshot()
 	w := rc.openWAL(snapshot)
 	_, st, ents, err := w.ReadAll()
@@ -371,8 +371,8 @@ func (rc *raftNode) publishSnapshot(snapshotToSave raftpb.Snapshot) {
 		return
 	}
 
-	log.Printf("publishing snapshot at index %d", rc.snapshotIndex)
-	defer log.Printf("finished publishing snapshot at index %d", rc.snapshotIndex)
+	rc.logger.Info("publishing snapshot", zap.Uint64("index", rc.snapshotIndex), zap.String("component", "raft-memory"))
+	defer rc.logger.Info("finished publishing snapshot", zap.Uint64("index", rc.snapshotIndex), zap.String("component", "raft-memory"))
 
 	if snapshotToSave.Metadata.Index <= rc.appliedIndex {
 		log.Fatalf("snapshot index [%d] should > progress.appliedIndex [%d]", snapshotToSave.Metadata.Index, rc.appliedIndex)
@@ -400,7 +400,10 @@ func (rc *raftNode) maybeTriggerSnapshot(applyDoneC <-chan struct{}) {
 		}
 	}
 
-	log.Printf("start snapshot [applied index: %d | last snapshot index: %d]", rc.appliedIndex, rc.snapshotIndex)
+	rc.logger.Info("start snapshot",
+		zap.Uint64("applied_index", rc.appliedIndex),
+		zap.Uint64("last_snapshot_index", rc.snapshotIndex),
+		zap.String("component", "raft-memory"))
 	data, err := rc.getSnapshot()
 	if err != nil {
 		log.Panic(err)
@@ -422,7 +425,7 @@ func (rc *raftNode) maybeTriggerSnapshot(applyDoneC <-chan struct{}) {
 			panic(err)
 		}
 	} else {
-		log.Printf("compacted log at index %d", compactIndex)
+		rc.logger.Info("compacted log", zap.Uint64("index", compactIndex), zap.String("component", "raft-memory"))
 	}
 
 	rc.snapshotIndex = rc.appliedIndex
