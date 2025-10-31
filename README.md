@@ -605,15 +605,8 @@ make build
 
 ## 📜 License
 
-Apache License 2.0 - See [LICENSE](LICENSE) for details.
+Apache License 2.0 - See [LICENSE](LICENSE) for details. 
 
-Inherited from [etcd](https://github.com/etcd-io/etcd).
-
-## 🙏 Acknowledgments
-
-- [etcd](https://github.com/etcd-io/etcd) - For the excellent Raft library
-- [RocksDB](https://github.com/facebook/rocksdb) - For the high-performance storage engine
-- [Prometheus](https://prometheus.io/) - For the monitoring framework
 
 ## 🗺️ Roadmap
 
