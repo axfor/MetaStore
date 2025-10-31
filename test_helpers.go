@@ -94,12 +94,10 @@ func startMemoryNode(t testing.TB, nodeID int) (*testNode, func()) {
 
 	// Create etcd server
 	server, err := etcdapi.NewServer(etcdapi.ServerConfig{
-		Store:        kvs,
-		Address:      clientAddr,
-		ClusterID:    1000,
-		MemberID:     uint64(nodeID),
-		ClusterPeers: peers,
-		ConfChangeC:  confChangeC,
+		Store:     kvs,
+		Address:   clientAddr,
+		ClusterID: 1000,
+		MemberID:  uint64(nodeID),
 	})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
@@ -224,12 +222,10 @@ func startRocksDBNode(t testing.TB, nodeID int) (*testRocksDBNode, func()) {
 
 	// Create etcd server
 	server, err := etcdapi.NewServer(etcdapi.ServerConfig{
-		Store:        kvs,
-		Address:      clientAddr,
-		ClusterID:    2000,
-		MemberID:     uint64(nodeID),
-		ClusterPeers: peers,
-		ConfChangeC:  confChangeC,
+		Store:     kvs,
+		Address:   clientAddr,
+		ClusterID: 2000,
+		MemberID:  uint64(nodeID),
 	})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)

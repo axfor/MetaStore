@@ -119,7 +119,8 @@
       "Bash(break)",
       "Bash(xargs:*)",
       "Bash(while read f)",
-      "Bash(sort:*)"
+      "Bash(sort:*)",
+      "Bash(./test_cluster.sh:*)"
     ],
     "deny": [],
     "ask": []
