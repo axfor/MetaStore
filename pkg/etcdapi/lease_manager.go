@@ -16,11 +16,13 @@ package etcdapi
 
 import (
 	"context"
-	"log"
 	"metaStore/internal/kvstore"
+	"metaStore/pkg/log"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 // LeaseManager 管理所有的 lease
@@ -161,9 +163,9 @@ func (lm *LeaseManager) checkExpiredLeases() {
 	// 撤销过期的 lease
 	for _, id := range expiredIDs {
 		if err := lm.Revoke(id); err != nil {
-			log.Printf("Failed to revoke expired lease %d: %v", id, err)
+			log.Error("Failed to revoke expired lease", zap.Int64("lease_id", id), zap.Error(err), zap.String("component", "lease-manager"))
 		} else {
-			log.Printf("Revoked expired lease %d", id)
+			log.Info("Revoked expired lease", zap.Int64("lease_id", id), zap.String("component", "lease-manager"))
 		}
 	}
 }

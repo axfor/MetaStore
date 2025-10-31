@@ -21,17 +21,18 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
-	"log"
 	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"metaStore/internal/kvstore"
+	"metaStore/pkg/log"
 
 	"github.com/linxGnu/grocksdb"
 	"go.etcd.io/etcd/server/v3/etcdserver/api/snap"
 	"go.etcd.io/raft/v3/raftpb"
+	"go.uber.org/zap"
 )
 
 const (
@@ -116,7 +117,8 @@ func NewRocksDB(
 	errorC <-chan error,
 ) *RocksDB {
 	wo := grocksdb.NewDefaultWriteOptions()
-	wo.SetSync(true) // Ensure durability
+	// Using default Sync=false for better write performance
+	// Raft consensus provides durability through replication
 	ro := grocksdb.NewDefaultReadOptions()
 
 	r := &RocksDB{
@@ -133,12 +135,15 @@ func NewRocksDB(
 	// Recover from snapshot if exists
 	snapshot, err := r.loadSnapshot()
 	if err != nil {
-		log.Panic(err)
+		log.Fatal("Failed to load snapshot", zap.Error(err), zap.String("component", "storage-rocksdb"))
 	}
 	if snapshot != nil {
-		log.Printf("Loading RocksDB snapshot at term %d and index %d", snapshot.Metadata.Term, snapshot.Metadata.Index)
+		log.Info("Loading RocksDB snapshot",
+			zap.Uint64("term", snapshot.Metadata.Term),
+			zap.Uint64("index", snapshot.Metadata.Index),
+			zap.String("component", "storage-rocksdb"))
 		if err := r.recoverFromSnapshot(snapshot.Data); err != nil {
-			log.Panic(err)
+			log.Fatal("Failed to recover from snapshot", zap.Error(err), zap.String("component", "storage-rocksdb"))
 		}
 	}
 
@@ -165,12 +170,15 @@ func (r *RocksDB) readCommits(commitC <-chan *kvstore.Commit, errorC <-chan erro
 			// Reload snapshot
 			snapshot, err := r.loadSnapshot()
 			if err != nil {
-				log.Panic(err)
+				log.Fatal("Failed to reload snapshot", zap.Error(err), zap.String("component", "storage-rocksdb"))
 			}
 			if snapshot != nil {
-				log.Printf("Reloading RocksDB snapshot at term %d and index %d", snapshot.Metadata.Term, snapshot.Metadata.Index)
+				log.Info("Reloading RocksDB snapshot",
+					zap.Uint64("term", snapshot.Metadata.Term),
+					zap.Uint64("index", snapshot.Metadata.Index),
+					zap.String("component", "storage-rocksdb"))
 				if err := r.recoverFromSnapshot(snapshot.Data); err != nil {
-					log.Panic(err)
+					log.Fatal("Failed to recover from reloaded snapshot", zap.Error(err), zap.String("component", "storage-rocksdb"))
 				}
 			}
 			continue
@@ -190,7 +198,7 @@ func (r *RocksDB) readCommits(commitC <-chan *kvstore.Commit, errorC <-chan erro
 	}
 
 	if err, ok := <-errorC; ok {
-		log.Fatal(err)
+		log.Fatal("Raft commit error", zap.Error(err), zap.String("component", "storage-rocksdb"))
 	}
 }
 
@@ -200,32 +208,51 @@ func (r *RocksDB) applyOperation(op RaftOperation) {
 	case "PUT":
 		// Apply PUT
 		if err := r.putUnlocked(op.Key, op.Value, op.LeaseID); err != nil {
-			log.Printf("Failed to apply PUT: %v", err)
+			log.Error("Failed to apply PUT operation",
+				zap.Error(err),
+				zap.String("key", op.Key),
+				zap.String("component", "storage-rocksdb"))
 		}
 
 	case "DELETE":
 		// Apply DELETE
 		if err := r.deleteUnlocked(op.Key, op.RangeEnd); err != nil {
-			log.Printf("Failed to apply DELETE: %v", err)
+			log.Error("Failed to apply DELETE operation",
+				zap.Error(err),
+				zap.String("key", op.Key),
+				zap.String("rangeEnd", op.RangeEnd),
+				zap.String("component", "storage-rocksdb"))
 		}
 
 	case "LEASE_GRANT":
 		// Apply Lease Grant
 		if err := r.leaseGrantUnlocked(op.LeaseID, op.TTL); err != nil {
-			log.Printf("Failed to apply LEASE_GRANT: %v", err)
+			log.Error("Failed to apply LEASE_GRANT operation",
+				zap.Error(err),
+				zap.Int64("leaseID", op.LeaseID),
+				zap.Int64("ttl", op.TTL),
+				zap.String("component", "storage-rocksdb"))
 		}
 
 	case "LEASE_REVOKE":
 		// Apply Lease Revoke
 		if err := r.leaseRevokeUnlocked(op.LeaseID); err != nil {
-			log.Printf("Failed to apply LEASE_REVOKE: %v", err)
+			log.Error("Failed to apply LEASE_REVOKE operation",
+				zap.Error(err),
+				zap.Int64("leaseID", op.LeaseID),
+				zap.String("component", "storage-rocksdb"))
 		}
 
 	case "TXN":
 		// Apply Transaction
 		txnResp, err := r.txnUnlocked(op.Compares, op.ThenOps, op.ElseOps)
 		if err != nil {
-			log.Printf("Failed to apply TXN: %v", err)
+			log.Error("Failed to apply TXN operation",
+				zap.Error(err),
+				zap.Int("compareCount", len(op.Compares)),
+				zap.Int("thenOpsCount", len(op.ThenOps)),
+				zap.Int("elseOpsCount", len(op.ElseOps)),
+				zap.String("component", "storage-rocksdb"))
 		}
 		// Save transaction result for client to read
 		if op.SeqNum != "" && txnResp != nil {
@@ -235,7 +262,9 @@ func (r *RocksDB) applyOperation(op RaftOperation) {
 		}
 
 	default:
-		log.Printf("Unknown operation type: %s", op.Type)
+		log.Warn("Unknown operation type",
+			zap.String("type", op.Type),
+			zap.String("component", "storage-rocksdb"))
 	}
 
 	// Notify waiting client
@@ -254,12 +283,17 @@ func (r *RocksDB) applyLegacyOp(data string) {
 	var dataKv kvstore.KV
 	dec := gob.NewDecoder(bytes.NewBufferString(data))
 	if err := dec.Decode(&dataKv); err != nil {
-		log.Fatalf("Could not decode message: %v", err)
+		log.Fatal("Failed to decode legacy message",
+			zap.Error(err),
+			zap.String("component", "storage-rocksdb"))
 	}
 
 	// Convert to etcd operation
 	if err := r.putUnlocked(dataKv.Key, dataKv.Val, 0); err != nil {
-		log.Printf("Failed to apply legacy PUT: %v", err)
+		log.Error("Failed to apply legacy PUT operation",
+			zap.Error(err),
+			zap.String("key", dataKv.Key),
+			zap.String("component", "storage-rocksdb"))
 	}
 }
 
@@ -374,6 +408,13 @@ func (r *RocksDB) PutWithLease(ctx context.Context, key, value string, leaseID i
 	r.pendingOps[seqNum] = waitCh
 	r.pendingMu.Unlock()
 
+	// Cleanup function to remove pending operation on error/timeout
+	cleanup := func() {
+		r.pendingMu.Lock()
+		delete(r.pendingOps, seqNum)
+		r.pendingMu.Unlock()
+	}
+
 	op := RaftOperation{
 		Type:    "PUT",
 		Key:     key,
@@ -384,19 +425,35 @@ func (r *RocksDB) PutWithLease(ctx context.Context, key, value string, leaseID i
 
 	data, err := json.Marshal(op)
 	if err != nil {
-		r.pendingMu.Lock()
-		delete(r.pendingOps, seqNum)
-		r.pendingMu.Unlock()
+		cleanup()
 		return 0, nil, err
 	}
 
-	r.proposeC <- string(data)
+	// Use select to handle proposeC with timeout
+	select {
+	case r.proposeC <- string(data):
+		// Successfully sent to Raft
+	case <-ctx.Done():
+		cleanup()
+		return 0, nil, ctx.Err()
+	case <-time.After(30 * time.Second):
+		cleanup()
+		return 0, nil, fmt.Errorf("timeout proposing operation to Raft")
+	}
 
-	// Wait for Raft commit
-	<-waitCh
-
-	currentRevision := r.CurrentRevision()
-	return currentRevision, prevKv, nil
+	// Wait for Raft commit with timeout
+	select {
+	case <-waitCh:
+		// Raft commit completed
+		currentRevision := r.CurrentRevision()
+		return currentRevision, prevKv, nil
+	case <-ctx.Done():
+		cleanup()
+		return 0, nil, ctx.Err()
+	case <-time.After(30 * time.Second):
+		cleanup()
+		return 0, nil, fmt.Errorf("timeout waiting for Raft commit")
+	}
 }
 
 // putUnlocked applies put operation (called after Raft commit)
@@ -531,6 +588,13 @@ func (r *RocksDB) DeleteRange(ctx context.Context, key, rangeEnd string) (int64,
 	r.pendingOps[seqNum] = waitCh
 	r.pendingMu.Unlock()
 
+	// Cleanup function to remove pending operation on error/timeout
+	cleanup := func() {
+		r.pendingMu.Lock()
+		delete(r.pendingOps, seqNum)
+		r.pendingMu.Unlock()
+	}
+
 	op := RaftOperation{
 		Type:     "DELETE",
 		Key:      key,
@@ -540,18 +604,34 @@ func (r *RocksDB) DeleteRange(ctx context.Context, key, rangeEnd string) (int64,
 
 	data, err := json.Marshal(op)
 	if err != nil {
-		r.pendingMu.Lock()
-		delete(r.pendingOps, seqNum)
-		r.pendingMu.Unlock()
+		cleanup()
 		return 0, nil, 0, err
 	}
 
-	r.proposeC <- string(data)
+	// Use select to handle proposeC with timeout
+	select {
+	case r.proposeC <- string(data):
+		// Successfully sent to Raft
+	case <-ctx.Done():
+		cleanup()
+		return 0, nil, 0, ctx.Err()
+	case <-time.After(30 * time.Second):
+		cleanup()
+		return 0, nil, 0, fmt.Errorf("timeout proposing operation to Raft")
+	}
 
-	// Wait for Raft commit
-	<-waitCh
-
-	return deleted, prevKvs, r.CurrentRevision(), nil
+	// Wait for Raft commit with timeout
+	select {
+	case <-waitCh:
+		// Raft commit completed
+		return deleted, prevKvs, r.CurrentRevision(), nil
+	case <-ctx.Done():
+		cleanup()
+		return 0, nil, 0, ctx.Err()
+	case <-time.After(30 * time.Second):
+		cleanup()
+		return 0, nil, 0, fmt.Errorf("timeout waiting for Raft commit")
+	}
 }
 
 // deleteUnlocked applies delete operation (called after Raft commit)
@@ -665,6 +745,13 @@ func (r *RocksDB) LeaseGrant(ctx context.Context, id int64, ttl int64) (*kvstore
 	r.pendingOps[seqNum] = waitCh
 	r.pendingMu.Unlock()
 
+	// Cleanup function to remove pending operation on error/timeout
+	cleanup := func() {
+		r.pendingMu.Lock()
+		delete(r.pendingOps, seqNum)
+		r.pendingMu.Unlock()
+	}
+
 	op := RaftOperation{
 		Type:    "LEASE_GRANT",
 		LeaseID: id,
@@ -674,19 +761,35 @@ func (r *RocksDB) LeaseGrant(ctx context.Context, id int64, ttl int64) (*kvstore
 
 	data, err := json.Marshal(op)
 	if err != nil {
-		r.pendingMu.Lock()
-		delete(r.pendingOps, seqNum)
-		r.pendingMu.Unlock()
+		cleanup()
 		return nil, err
 	}
 
-	r.proposeC <- string(data)
+	// Use select to handle proposeC with timeout
+	select {
+	case r.proposeC <- string(data):
+		// Successfully sent to Raft
+	case <-ctx.Done():
+		cleanup()
+		return nil, ctx.Err()
+	case <-time.After(30 * time.Second):
+		cleanup()
+		return nil, fmt.Errorf("timeout proposing operation to Raft")
+	}
 
-	// Wait for Raft commit
-	<-waitCh
-
-	// Return lease info
-	return r.getLease(id)
+	// Wait for Raft commit with timeout
+	select {
+	case <-waitCh:
+		// Raft commit completed
+		// Return lease info
+		return r.getLease(id)
+	case <-ctx.Done():
+		cleanup()
+		return nil, ctx.Err()
+	case <-time.After(30 * time.Second):
+		cleanup()
+		return nil, fmt.Errorf("timeout waiting for Raft commit")
+	}
 }
 
 // leaseGrantUnlocked applies lease grant (called after Raft commit)
@@ -721,6 +824,13 @@ func (r *RocksDB) LeaseRevoke(ctx context.Context, id int64) error {
 	r.pendingOps[seqNum] = waitCh
 	r.pendingMu.Unlock()
 
+	// Cleanup function to remove pending operation on error/timeout
+	cleanup := func() {
+		r.pendingMu.Lock()
+		delete(r.pendingOps, seqNum)
+		r.pendingMu.Unlock()
+	}
+
 	op := RaftOperation{
 		Type:    "LEASE_REVOKE",
 		LeaseID: id,
@@ -729,18 +839,34 @@ func (r *RocksDB) LeaseRevoke(ctx context.Context, id int64) error {
 
 	data, err := json.Marshal(op)
 	if err != nil {
-		r.pendingMu.Lock()
-		delete(r.pendingOps, seqNum)
-		r.pendingMu.Unlock()
+		cleanup()
 		return err
 	}
 
-	r.proposeC <- string(data)
+	// Use select to handle proposeC with timeout
+	select {
+	case r.proposeC <- string(data):
+		// Successfully sent to Raft
+	case <-ctx.Done():
+		cleanup()
+		return ctx.Err()
+	case <-time.After(30 * time.Second):
+		cleanup()
+		return fmt.Errorf("timeout proposing operation to Raft")
+	}
 
-	// Wait for Raft commit
-	<-waitCh
-
-	return nil
+	// Wait for Raft commit with timeout
+	select {
+	case <-waitCh:
+		// Raft commit completed
+		return nil
+	case <-ctx.Done():
+		cleanup()
+		return ctx.Err()
+	case <-time.After(30 * time.Second):
+		cleanup()
+		return fmt.Errorf("timeout waiting for Raft commit")
+	}
 }
 
 // leaseRevokeUnlocked applies lease revoke (called after Raft commit)
@@ -757,7 +883,11 @@ func (r *RocksDB) leaseRevokeUnlocked(id int64) error {
 	// Delete all keys associated with this lease
 	for key := range lease.Keys {
 		if err := r.deleteUnlocked(key, ""); err != nil {
-			log.Printf("Failed to delete key %s during lease revoke: %v", key, err)
+			log.Error("Failed to delete key during lease revoke",
+				zap.Error(err),
+				zap.String("key", key),
+				zap.Int64("leaseID", id),
+				zap.String("component", "storage-rocksdb"))
 		}
 	}
 
@@ -825,7 +955,12 @@ func (r *RocksDB) sendHistoricalEvents(sub *watchSubscription, key, rangeEnd str
 	// 使用 Range 查询获取所有匹配的键
 	resp, err := r.Range(context.Background(), key, rangeEnd, 0, 0)
 	if err != nil {
-		log.Printf("Failed to get historical events for watch %d: %v", sub.watchID, err)
+		log.Error("Failed to get historical events for watch",
+			zap.Error(err),
+			zap.Int64("watchID", sub.watchID),
+			zap.String("key", key),
+			zap.String("rangeEnd", rangeEnd),
+			zap.String("component", "storage-rocksdb"))
 		return
 	}
 
@@ -847,7 +982,10 @@ func (r *RocksDB) sendHistoricalEvents(sub *watchSubscription, key, rangeEnd str
 			return
 		default:
 			// Channel 满了，跳过此事件
-			log.Printf("Watch %d channel full, skipping historical event for key %s", sub.watchID, string(kv.Key))
+			log.Warn("Watch channel full, skipping historical event",
+				zap.Int64("watchID", sub.watchID),
+				zap.String("key", string(kv.Key)),
+				zap.String("component", "storage-rocksdb"))
 		}
 	}
 }
@@ -907,8 +1045,11 @@ func (r *RocksDB) Compact(ctx context.Context, revision int64) error {
 		return fmt.Errorf("already compacted to revision %d (requested: %d)", compactedRev, revision)
 	}
 
-	log.Printf("Starting compact: target=%d, current=%d, lastCompacted=%d",
-		revision, currentRev, compactedRev)
+	log.Info("Starting compact operation",
+		zap.Int64("targetRevision", revision),
+		zap.Int64("currentRevision", currentRev),
+		zap.Int64("lastCompacted", compactedRev),
+		zap.String("component", "storage-rocksdb"))
 
 	startTime := time.Now()
 
@@ -930,8 +1071,11 @@ func (r *RocksDB) Compact(ctx context.Context, revision int64) error {
 	cleanedLeases := r.cleanupExpiredLeasesUnlocked()
 
 	duration := time.Since(startTime)
-	log.Printf("Compact completed: revision=%d, duration=%v, cleanedLeases=%d",
-		revision, duration, cleanedLeases)
+	log.Info("Compact operation completed",
+		zap.Int64("revision", revision),
+		zap.Duration("duration", duration),
+		zap.Int("cleanedLeases", cleanedLeases),
+		zap.String("component", "storage-rocksdb"))
 
 	return nil
 }
@@ -977,7 +1121,9 @@ func (r *RocksDB) cleanupExpiredLeasesUnlocked() int {
 		// Decode lease
 		var lease kvstore.Lease
 		if err := gob.NewDecoder(bytes.NewReader(it.Value().Data())).Decode(&lease); err != nil {
-			log.Printf("Warning: failed to decode lease during cleanup: %v", err)
+			log.Warn("Failed to decode lease during cleanup",
+				zap.Error(err),
+				zap.String("component", "storage-rocksdb"))
 			continue
 		}
 
@@ -987,7 +1133,10 @@ func (r *RocksDB) cleanupExpiredLeasesUnlocked() int {
 			// Delete expired lease metadata
 			// Note: Associated keys are already deleted by LeaseManager
 			if err := r.db.Delete(r.wo, it.Key().Data()); err != nil {
-				log.Printf("Warning: failed to delete expired lease %d: %v", lease.ID, err)
+				log.Warn("Failed to delete expired lease",
+					zap.Error(err),
+					zap.Int64("leaseID", lease.ID),
+					zap.String("component", "storage-rocksdb"))
 			} else {
 				cleaned++
 			}
@@ -1080,6 +1229,14 @@ func (r *RocksDB) Txn(ctx context.Context, cmps []kvstore.Compare, thenOps []kvs
 	r.pendingOps[seqNum] = waitCh
 	r.pendingMu.Unlock()
 
+	// Cleanup function to remove pending operation on error/timeout
+	cleanup := func() {
+		r.pendingMu.Lock()
+		delete(r.pendingOps, seqNum)
+		delete(r.pendingTxnResults, seqNum)
+		r.pendingMu.Unlock()
+	}
+
 	op := RaftOperation{
 		Type:     "TXN",
 		Compares: cmps,
@@ -1091,28 +1248,44 @@ func (r *RocksDB) Txn(ctx context.Context, cmps []kvstore.Compare, thenOps []kvs
 	// Serialize and propose
 	data, err := json.Marshal(op)
 	if err != nil {
-		r.pendingMu.Lock()
-		delete(r.pendingOps, seqNum)
-		r.pendingMu.Unlock()
+		cleanup()
 		return nil, err
 	}
 
-	r.proposeC <- string(data)
-
-	// Wait for Raft commit
-	<-waitCh
-
-	// Read transaction result
-	r.pendingMu.Lock()
-	txnResp := r.pendingTxnResults[seqNum]
-	delete(r.pendingTxnResults, seqNum) // Clean up result
-	r.pendingMu.Unlock()
-
-	if txnResp == nil {
-		return nil, fmt.Errorf("transaction result not found")
+	// Use select to handle proposeC with timeout
+	select {
+	case r.proposeC <- string(data):
+		// Successfully sent to Raft
+	case <-ctx.Done():
+		cleanup()
+		return nil, ctx.Err()
+	case <-time.After(30 * time.Second):
+		cleanup()
+		return nil, fmt.Errorf("timeout proposing operation to Raft")
 	}
 
-	return txnResp, nil
+	// Wait for Raft commit with timeout
+	select {
+	case <-waitCh:
+		// Raft commit completed
+		// Read transaction result
+		r.pendingMu.Lock()
+		txnResp := r.pendingTxnResults[seqNum]
+		delete(r.pendingTxnResults, seqNum) // Clean up result
+		r.pendingMu.Unlock()
+
+		if txnResp == nil {
+			return nil, fmt.Errorf("transaction result not found")
+		}
+
+		return txnResp, nil
+	case <-ctx.Done():
+		cleanup()
+		return nil, ctx.Err()
+	case <-time.After(30 * time.Second):
+		cleanup()
+		return nil, fmt.Errorf("timeout waiting for Raft commit")
+	}
 }
 
 // Helper functions
@@ -1302,7 +1475,9 @@ func (r *RocksDB) slowSendEvent(sub *watchSubscription, event kvstore.WatchEvent
 		// Watch cancelled
 	case <-timer.C:
 		// Timeout - force cancel this slow watch
-		log.Printf("Watch %d is too slow, force cancelling", sub.watchID)
+		log.Warn("Watch is too slow, force cancelling",
+			zap.Int64("watchID", sub.watchID),
+			zap.String("component", "storage-rocksdb"))
 		r.CancelWatch(sub.watchID)
 	}
 }

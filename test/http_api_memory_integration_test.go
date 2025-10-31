@@ -226,35 +226,103 @@ func TestHTTPAPIMemoryPutAndGetKeyValue(t *testing.T) {
 
 // TestAddNewNode tests adding new node to the existing cluster.
 func TestHTTPAPIMemoryAddNewNode(t *testing.T) {
+	// Create initial 3-node cluster
 	clus := newCluster(3)
 	defer clus.closeNoErrors(t)
 
-	os.RemoveAll("data/4")
+	// Clean up Node 4 data directory
+	os.RemoveAll("data/memory/4")
 	defer func() {
-		os.RemoveAll("data/4")
+		os.RemoveAll("data/memory/4")
 	}()
 
-	newNodeURL := "http://127.0.0.1:10004"
+	// Step 1: Notify existing cluster about new node
+	t.Log("Step 1: Notifying cluster about new node...")
+	newNodeURL := "http://127.0.0.1:10003"
 	clus.confChangeC[0] <- raftpb.ConfChange{
 		Type:    raftpb.ConfChangeAddNode,
 		NodeID:  4,
 		Context: []byte(newNodeURL),
 	}
 
-	proposeC := make(chan string)
-	defer close(proposeC)
+	// Step 2: Create channels for Node 4
+	t.Log("Step 2: Creating Node 4 channels...")
+	proposeC := make(chan string, 1)
+	confChangeC := make(chan raftpb.ConfChange, 1)
 
-	confChangeC := make(chan raftpb.ConfChange)
-	defer close(confChangeC)
+	// Step 3: Create snapshot function for Node 4
+	fn, _ := getSnapshotFn()
 
-	raft.NewNode(4, append(clus.peers, newNodeURL), true, nil, proposeC, confChangeC, "memory")
+	// Step 4: Start Node 4 with join=true and capture all return values
+	t.Log("Step 3: Starting Node 4 (join mode)...")
+	commitC, errorC, _, _ := raft.NewNode(
+		4,
+		append(clus.peers, newNodeURL),
+		true,  // join=true indicates this node is joining existing cluster
+		fn,
+		proposeC,
+		confChangeC,
+		"memory",
+	)
 
+	// Step 5: Start goroutine to drain commitC (critical for Raft to make progress)
+	t.Log("Step 4: Starting commitC handler...")
+	commitDone := make(chan struct{})
+	go func() {
+		defer close(commitDone)
+		for c := range commitC {
+			// Acknowledge commits to allow Raft to progress
+			close(c.ApplyDoneC)
+		}
+	}()
+
+	// Step 6: Start goroutine to monitor errors
+	go func() {
+		if err := <-errorC; err != nil {
+			t.Errorf("Node 4 error: %v", err)
+		}
+	}()
+
+	// Step 7: Wait for Node 4 to join the cluster
+	t.Log("Step 5: Waiting for Node 4 to join cluster...")
+	time.Sleep(3 * time.Second) // Give time for Raft consensus
+
+	// Step 8: Propose data through Node 4
+	t.Log("Step 6: Proposing data through Node 4...")
 	go func() {
 		proposeC <- "foo"
 	}()
 
-	if c, ok := <-clus.commitC[0]; !ok || c.Data[0] != "foo" {
-		t.Fatalf("Commit failed")
+	// Step 9: Verify the proposal was committed by original cluster
+	t.Log("Step 7: Verifying commit on original cluster...")
+	select {
+	case c, ok := <-clus.commitC[0]:
+		if !ok {
+			t.Fatal("commitC[0] was closed unexpectedly")
+		}
+		if len(c.Data) == 0 {
+			t.Fatal("No data in commit")
+		}
+		if c.Data[0] != "foo" {
+			t.Fatalf("Expected 'foo', got '%s'", c.Data[0])
+		}
+		close(c.ApplyDoneC)
+		t.Log("✅ Node 4 successfully joined and proposed data!")
+	case <-time.After(10 * time.Second):
+		t.Fatal("Timeout waiting for commit - Node 4 may not have joined properly")
+	}
+
+	// Step 10: Clean shutdown
+	t.Log("Step 8: Shutting down Node 4...")
+	close(proposeC)
+	close(confChangeC)
+
+	// Wait for commitC to drain
+	select {
+	case <-commitDone:
+		t.Log("✅ Node 4 shutdown complete")
+	case <-time.After(5 * time.Second):
+		t.Log("⚠️  Timeout waiting for commitC drain (non-fatal)")
 	}
 }
 

@@ -21,13 +21,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"metaStore/internal/kvstore"
+	"metaStore/pkg/log"
 	"strings"
 	"sync"
+	"time"
 
 	"go.etcd.io/etcd/server/v3/etcdserver/api/snap"
 	"go.etcd.io/raft/v3/raftpb"
+	"go.uber.org/zap"
 )
 
 // RaftNode Raft 节点接口，用于获取 Raft 状态和控制
@@ -86,12 +88,15 @@ func NewMemory(snapshotter *snap.Snapshotter, proposeC chan<- string, commitC <-
 	// 从快照恢复
 	snapshot, err := m.loadSnapshot()
 	if err != nil {
-		log.Panic(err)
+		log.Fatal("Failed to load snapshot", zap.Error(err), zap.String("component", "storage-memory"))
 	}
 	if snapshot != nil {
-		log.Printf("Loading snapshot at term %d and index %d", snapshot.Metadata.Term, snapshot.Metadata.Index)
+		log.Info("Loading memory snapshot",
+			zap.Uint64("term", snapshot.Metadata.Term),
+			zap.Uint64("index", snapshot.Metadata.Index),
+			zap.String("component", "storage-memory"))
 		if err := m.recoverFromSnapshot(snapshot.Data); err != nil {
-			log.Panic(err)
+			log.Fatal("Failed to recover from snapshot", zap.Error(err), zap.String("component", "storage-memory"))
 		}
 	}
 
@@ -108,12 +113,15 @@ func (m *Memory) readCommits(commitC <-chan *kvstore.Commit, errorC <-chan error
 			// 重新加载快照
 			snapshot, err := m.loadSnapshot()
 			if err != nil {
-				log.Panic(err)
+				log.Fatal("Failed to reload snapshot", zap.Error(err), zap.String("component", "storage-memory"))
 			}
 			if snapshot != nil {
-				log.Printf("Loading snapshot at term %d and index %d", snapshot.Metadata.Term, snapshot.Metadata.Index)
+				log.Info("Reloading memory snapshot",
+					zap.Uint64("term", snapshot.Metadata.Term),
+					zap.Uint64("index", snapshot.Metadata.Index),
+					zap.String("component", "storage-memory"))
 				if err := m.recoverFromSnapshot(snapshot.Data); err != nil {
-					log.Panic(err)
+					log.Fatal("Failed to recover from reloaded snapshot", zap.Error(err), zap.String("component", "storage-memory"))
 				}
 			}
 			continue
@@ -137,7 +145,7 @@ func (m *Memory) readCommits(commitC <-chan *kvstore.Commit, errorC <-chan error
 	}
 
 	if err, ok := <-errorC; ok {
-		log.Fatal(err)
+		log.Fatal("Raft commit error", zap.Error(err), zap.String("component", "storage-memory"))
 	}
 }
 
@@ -151,14 +159,21 @@ func (m *Memory) applyOperation(op RaftOperation) {
 		// 直接应用 Put（已经通过 Raft 共识）
 		_, _, err := m.MemoryEtcd.putUnlocked(op.Key, op.Value, op.LeaseID)
 		if err != nil {
-			log.Printf("Failed to apply PUT: %v", err)
+			log.Error("Failed to apply PUT operation",
+				zap.Error(err),
+				zap.String("key", op.Key),
+				zap.String("component", "storage-memory"))
 		}
 
 	case "DELETE":
 		// 直接应用 Delete
 		_, _, _, err := m.MemoryEtcd.deleteUnlocked(op.Key, op.RangeEnd)
 		if err != nil {
-			log.Printf("Failed to apply DELETE: %v", err)
+			log.Error("Failed to apply DELETE operation",
+				zap.Error(err),
+				zap.String("key", op.Key),
+				zap.String("rangeEnd", op.RangeEnd),
+				zap.String("component", "storage-memory"))
 		}
 
 	case "LEASE_GRANT":
@@ -192,7 +207,12 @@ func (m *Memory) applyOperation(op RaftOperation) {
 		// 应用 Transaction（使用未加锁版本，因为 MemoryEtcd.mu 已经在外部持有）
 		txnResp, err := m.MemoryEtcd.txnUnlocked(op.Compares, op.ThenOps, op.ElseOps)
 		if err != nil {
-			log.Printf("Failed to apply TXN: %v", err)
+			log.Error("Failed to apply TXN operation",
+				zap.Error(err),
+				zap.Int("compareCount", len(op.Compares)),
+				zap.Int("thenOpsCount", len(op.ThenOps)),
+				zap.Int("elseOpsCount", len(op.ElseOps)),
+				zap.String("component", "storage-memory"))
 		}
 		// 保存事务结果供客户端读取
 		if op.SeqNum != "" && txnResp != nil {
@@ -202,7 +222,9 @@ func (m *Memory) applyOperation(op RaftOperation) {
 		}
 
 	default:
-		log.Printf("Unknown operation type: %s", op.Type)
+		log.Warn("Unknown operation type",
+			zap.String("type", op.Type),
+			zap.String("component", "storage-memory"))
 	}
 
 	// 通知等待的客户端操作已完成
@@ -221,7 +243,9 @@ func (m *Memory) applyLegacyOp(data string) {
 	var dataKv kvstore.KV
 	dec := gob.NewDecoder(bytes.NewBufferString(data))
 	if err := dec.Decode(&dataKv); err != nil {
-		log.Fatalf("Could not decode message: %v", err)
+		log.Fatal("Failed to decode legacy message",
+			zap.Error(err),
+			zap.String("component", "storage-memory"))
 	}
 
 	m.MemoryEtcd.mu.Lock()
@@ -262,10 +286,37 @@ func (m *Memory) PutWithLease(ctx context.Context, key, value string, leaseID in
 		return 0, nil, err
 	}
 
-	m.proposeC <- string(data)
+	// 发送到 proposeC，带超时保护
+	select {
+	case m.proposeC <- string(data):
+		// 成功发送
+	case <-time.After(30 * time.Second):
+		m.pendingMu.Lock()
+		delete(m.pendingOps, seqNum)
+		m.pendingMu.Unlock()
+		return 0, nil, fmt.Errorf("timeout proposing PUT operation")
+	case <-ctx.Done():
+		m.pendingMu.Lock()
+		delete(m.pendingOps, seqNum)
+		m.pendingMu.Unlock()
+		return 0, nil, ctx.Err()
+	}
 
-	// 等待 Raft 提交完成
-	<-waitCh
+	// 等待 Raft 提交完成，带超时保护
+	select {
+	case <-waitCh:
+		// 成功完成
+	case <-time.After(30 * time.Second):
+		m.pendingMu.Lock()
+		delete(m.pendingOps, seqNum)
+		m.pendingMu.Unlock()
+		return 0, nil, fmt.Errorf("timeout waiting for Raft commit (PUT)")
+	case <-ctx.Done():
+		m.pendingMu.Lock()
+		delete(m.pendingOps, seqNum)
+		m.pendingMu.Unlock()
+		return 0, nil, ctx.Err()
+	}
 
 	m.MemoryEtcd.mu.RLock()
 	defer m.MemoryEtcd.mu.RUnlock()
@@ -330,10 +381,37 @@ func (m *Memory) DeleteRange(ctx context.Context, key, rangeEnd string) (int64, 
 		return 0, nil, 0, err
 	}
 
-	m.proposeC <- string(data)
+	// 发送到 proposeC，带超时保护
+	select {
+	case m.proposeC <- string(data):
+		// 成功发送
+	case <-time.After(30 * time.Second):
+		m.pendingMu.Lock()
+		delete(m.pendingOps, seqNum)
+		m.pendingMu.Unlock()
+		return 0, nil, 0, fmt.Errorf("timeout proposing DELETE operation")
+	case <-ctx.Done():
+		m.pendingMu.Lock()
+		delete(m.pendingOps, seqNum)
+		m.pendingMu.Unlock()
+		return 0, nil, 0, ctx.Err()
+	}
 
-	// 等待 Raft 提交完成
-	<-waitCh
+	// 等待 Raft 提交完成，带超时保护
+	select {
+	case <-waitCh:
+		// 成功完成
+	case <-time.After(30 * time.Second):
+		m.pendingMu.Lock()
+		delete(m.pendingOps, seqNum)
+		m.pendingMu.Unlock()
+		return 0, nil, 0, fmt.Errorf("timeout waiting for Raft commit (DELETE)")
+	case <-ctx.Done():
+		m.pendingMu.Lock()
+		delete(m.pendingOps, seqNum)
+		m.pendingMu.Unlock()
+		return 0, nil, 0, ctx.Err()
+	}
 
 	return deleted, prevKvs, m.MemoryEtcd.revision.Load(), nil
 }
@@ -367,10 +445,37 @@ func (m *Memory) LeaseGrant(ctx context.Context, id int64, ttl int64) (*kvstore.
 		return nil, err
 	}
 
-	m.proposeC <- string(data)
+	// 发送到 proposeC，带超时保护
+	select {
+	case m.proposeC <- string(data):
+		// 成功发送
+	case <-time.After(30 * time.Second):
+		m.pendingMu.Lock()
+		delete(m.pendingOps, seqNum)
+		m.pendingMu.Unlock()
+		return nil, fmt.Errorf("timeout proposing LEASE_GRANT operation")
+	case <-ctx.Done():
+		m.pendingMu.Lock()
+		delete(m.pendingOps, seqNum)
+		m.pendingMu.Unlock()
+		return nil, ctx.Err()
+	}
 
-	// 等待 Raft 提交完成
-	<-waitCh
+	// 等待 Raft 提交完成，带超时保护
+	select {
+	case <-waitCh:
+		// 成功完成
+	case <-time.After(30 * time.Second):
+		m.pendingMu.Lock()
+		delete(m.pendingOps, seqNum)
+		m.pendingMu.Unlock()
+		return nil, fmt.Errorf("timeout waiting for Raft commit (LEASE_GRANT)")
+	case <-ctx.Done():
+		m.pendingMu.Lock()
+		delete(m.pendingOps, seqNum)
+		m.pendingMu.Unlock()
+		return nil, ctx.Err()
+	}
 
 	// 返回租约信息
 	lease := &kvstore.Lease{
@@ -411,10 +516,37 @@ func (m *Memory) LeaseRevoke(ctx context.Context, id int64) error {
 		return err
 	}
 
-	m.proposeC <- string(data)
+	// 发送到 proposeC，带超时保护
+	select {
+	case m.proposeC <- string(data):
+		// 成功发送
+	case <-time.After(30 * time.Second):
+		m.pendingMu.Lock()
+		delete(m.pendingOps, seqNum)
+		m.pendingMu.Unlock()
+		return fmt.Errorf("timeout proposing LEASE_REVOKE operation")
+	case <-ctx.Done():
+		m.pendingMu.Lock()
+		delete(m.pendingOps, seqNum)
+		m.pendingMu.Unlock()
+		return ctx.Err()
+	}
 
-	// 等待 Raft 提交完成
-	<-waitCh
+	// 等待 Raft 提交完成，带超时保护
+	select {
+	case <-waitCh:
+		// 成功完成
+	case <-time.After(30 * time.Second):
+		m.pendingMu.Lock()
+		delete(m.pendingOps, seqNum)
+		m.pendingMu.Unlock()
+		return fmt.Errorf("timeout waiting for Raft commit (LEASE_REVOKE)")
+	case <-ctx.Done():
+		m.pendingMu.Lock()
+		delete(m.pendingOps, seqNum)
+		m.pendingMu.Unlock()
+		return ctx.Err()
+	}
 
 	return nil
 }
@@ -450,10 +582,37 @@ func (m *Memory) Txn(ctx context.Context, cmps []kvstore.Compare, thenOps []kvst
 		return nil, err
 	}
 
-	m.proposeC <- string(data)
+	// 发送到 proposeC，带超时保护
+	select {
+	case m.proposeC <- string(data):
+		// 成功发送
+	case <-time.After(30 * time.Second):
+		m.pendingMu.Lock()
+		delete(m.pendingOps, seqNum)
+		m.pendingMu.Unlock()
+		return nil, fmt.Errorf("timeout proposing TXN operation")
+	case <-ctx.Done():
+		m.pendingMu.Lock()
+		delete(m.pendingOps, seqNum)
+		m.pendingMu.Unlock()
+		return nil, ctx.Err()
+	}
 
-	// 等待 Raft 提交完成
-	<-waitCh
+	// 等待 Raft 提交完成，带超时保护
+	select {
+	case <-waitCh:
+		// 成功完成
+	case <-time.After(30 * time.Second):
+		m.pendingMu.Lock()
+		delete(m.pendingOps, seqNum)
+		m.pendingMu.Unlock()
+		return nil, fmt.Errorf("timeout waiting for Raft commit (TXN)")
+	case <-ctx.Done():
+		m.pendingMu.Lock()
+		delete(m.pendingOps, seqNum)
+		m.pendingMu.Unlock()
+		return nil, ctx.Err()
+	}
 
 	// 读取事务结果
 	m.pendingMu.Lock()
@@ -472,7 +631,10 @@ func (m *Memory) Txn(ctx context.Context, cmps []kvstore.Compare, thenOps []kvst
 func (m *Memory) Propose(k string, v string) {
 	var buf strings.Builder
 	if err := gob.NewEncoder(&buf).Encode(kvstore.KV{Key: k, Val: v}); err != nil {
-		log.Fatal(err)
+		log.Fatal("Failed to encode KV for proposal",
+			zap.Error(err),
+			zap.String("key", k),
+			zap.String("component", "storage-memory"))
 	}
 	m.proposeC <- buf.String()
 }

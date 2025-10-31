@@ -15,11 +15,12 @@
 package etcdapi
 
 import (
-	"log"
 	"metaStore/internal/kvstore"
+	"metaStore/pkg/log"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	mvccpb "go.etcd.io/etcd/api/v3/mvccpb"
+	"go.uber.org/zap"
 )
 
 // WatchServer 实现 etcd Watch 服务
@@ -30,6 +31,18 @@ type WatchServer struct {
 
 // Watch 创建 watch 流
 func (s *WatchServer) Watch(stream pb.Watch_WatchServer) error {
+	// 跟踪这个stream创建的所有watchID，用于清理
+	streamWatches := make(map[int64]struct{})
+
+	// 确保在函数返回时清理所有watch，防止goroutine泄漏
+	defer func() {
+		for watchID := range streamWatches {
+			if err := s.server.watchMgr.Cancel(watchID); err != nil {
+				log.Warn("Failed to cancel watch during cleanup", zap.Int64("watch_id", watchID), zap.Error(err), zap.String("component", "etcdapi-watch"))
+			}
+		}
+	}()
+
 	for {
 		req, err := stream.Recv()
 		if err != nil {
@@ -38,8 +51,13 @@ func (s *WatchServer) Watch(stream pb.Watch_WatchServer) error {
 
 		// 处理创建 watch 请求
 		if createReq := req.GetCreateRequest(); createReq != nil {
-			if err := s.handleCreateWatch(stream, createReq); err != nil {
+			watchID, err := s.handleCreateWatch(stream, createReq)
+			if err != nil {
 				return err
+			}
+			// 记录这个watchID属于当前stream
+			if watchID > 0 {
+				streamWatches[watchID] = struct{}{}
 			}
 		}
 
@@ -48,12 +66,14 @@ func (s *WatchServer) Watch(stream pb.Watch_WatchServer) error {
 			if err := s.handleCancelWatch(stream, cancelReq); err != nil {
 				return err
 			}
+			// 从跟踪中移除
+			delete(streamWatches, cancelReq.WatchId)
 		}
 	}
 }
 
-// handleCreateWatch 处理创建 watch 请求
-func (s *WatchServer) handleCreateWatch(stream pb.Watch_WatchServer, req *pb.WatchCreateRequest) error {
+// handleCreateWatch 处理创建 watch 请求，返回watchID和error
+func (s *WatchServer) handleCreateWatch(stream pb.Watch_WatchServer, req *pb.WatchCreateRequest) (int64, error) {
 	key := string(req.Key)
 	rangeEnd := string(req.RangeEnd)
 	startRevision := req.StartRevision
@@ -78,13 +98,14 @@ func (s *WatchServer) handleCreateWatch(stream pb.Watch_WatchServer, req *pb.Wat
 
 	if watchID < 0 {
 		// 创建失败，发送错误响应
-		return stream.Send(&pb.WatchResponse{
+		err := stream.Send(&pb.WatchResponse{
 			Header:  s.server.getResponseHeader(),
 			WatchId: -1,
 			Created: false,
 			Canceled: true,
 			CancelReason: "failed to create watch",
 		})
+		return -1, err
 	}
 
 	// 发送创建成功响应
@@ -93,13 +114,13 @@ func (s *WatchServer) handleCreateWatch(stream pb.Watch_WatchServer, req *pb.Wat
 		WatchId: watchID,
 		Created: true,
 	}); err != nil {
-		return err
+		return watchID, err
 	}
 
 	// 启动 goroutine 发送事件
 	go s.sendEvents(stream, watchID)
 
-	return nil
+	return watchID, nil
 }
 
 // convertFilters converts etcd filters to internal types
@@ -126,7 +147,7 @@ func (s *WatchServer) handleCancelWatch(stream pb.Watch_WatchServer, req *pb.Wat
 
 	// 取消 watch
 	if err := s.server.watchMgr.Cancel(watchID); err != nil {
-		log.Printf("Failed to cancel watch %d: %v", watchID, err)
+		log.Warn("Failed to cancel watch", zap.Int64("watch_id", watchID), zap.Error(err), zap.String("component", "etcdapi-watch"))
 	}
 
 	// 发送取消响应
@@ -196,7 +217,7 @@ func (s *WatchServer) sendEvents(stream pb.Watch_WatchServer, watchID int64) {
 		resp.Header.Revision = event.Revision
 
 		if err := stream.Send(resp); err != nil {
-			log.Printf("Failed to send watch event for watch %d: %v", watchID, err)
+			log.Warn("Failed to send watch event", zap.Int64("watch_id", watchID), zap.Error(err), zap.String("component", "etcdapi-watch"))
 			s.server.watchMgr.Cancel(watchID)
 			return
 		}
