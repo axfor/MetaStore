@@ -21,7 +21,7 @@ A lightweight, high-performance, production-ready distributed metadata managemen
 - **📊 Observability**: Prometheus metrics, structured logging, and health checks
 - **🔧 Production Features**: Graceful shutdown, panic recovery, rate limiting, and input validation
 
-### etcd v3 Compatibility (100%)
+### etcd v3 Compatibility (100% - 38/38 RPCs)
 
 #### ✅ Fully Supported Services
 
@@ -56,12 +56,15 @@ A lightweight, high-performance, production-ready distributed metadata managemen
 - ✅ Defragment - Storage defragmentation (compatibility API)
 - ✅ MoveLeader - Raft leadership transfer
 
-**Cluster Service** (Basic):
-- ✅ MemberList - List cluster members
-- ✅ MemberAdd - Add new member
-- ✅ MemberRemove - Remove member
-- ⚠️ MemberUpdate - Member update (limited)
-- ⚠️ MemberPromote - Learner promotion (not implemented)
+**Cluster Service** (5/5 RPCs):
+- ✅ MemberList - List cluster members with real-time tracking
+  - 3-level fallback mechanism (ClusterManager → clusterPeers → current node)
+  - Real-time cluster membership updates via ConfChangeC
+  - etcdctl compatible output
+- ✅ MemberAdd - Add new member to cluster
+- ✅ MemberRemove - Remove member from cluster
+- ✅ MemberUpdate - Update member peer URLs
+- ✅ MemberPromote - Promote learner to voting member
 
 **Auth Service** (Full):
 - ✅ AuthEnable/AuthDisable - Authentication toggle
@@ -79,10 +82,10 @@ A lightweight, high-performance, production-ready distributed metadata managemen
 | **Watch**       | 1/1   | 100%     | ✅ Production |
 | **Lease**       | 5/5   | 100%     | ✅ Production |
 | **Maintenance** | 7/7   | 100%     | ✅ Production |
-| **Cluster**     | 3/5   | 60%      | ⚠️ Basic      |
+| **Cluster**     | 5/5   | 100%     | ✅ Production |
 | **Auth**        | 13/13 | 100%     | ✅ Full       |
 
-**Overall: 36/38 RPCs (95%) - Production Ready** ⭐⭐⭐⭐⭐
+**Overall: 38/38 RPCs (100%) - Production Ready** ⭐⭐⭐⭐⭐
 
 ### Production-Grade Features
 
@@ -595,9 +598,10 @@ make build
 - Performance benchmarking complete
 - Production deployment guide available
 
-**etcd Compatibility**: 95% (36/38 RPCs)
+**etcd Compatibility**: 100% (38/38 RPCs)
 - All core services fully functional
-- Ready for production use
+- Complete etcd v3 API compatibility
+- Ready for production use as etcd drop-in replacement
 
 ## 📜 License
 
@@ -618,6 +622,7 @@ Inherited from [etcd](https://github.com/etcd-io/etcd).
 - [x] Watch service
 - [x] Lease management
 - [x] Maintenance service (100%)
+- [x] Cluster service (100%)
 - [x] Transaction support
 - [x] Auth/RBAC (full)
 - [x] Structured logging
@@ -627,6 +632,7 @@ Inherited from [etcd](https://github.com/etcd-io/etcd).
 - [x] Graceful shutdown
 - [x] Comprehensive testing (100% coverage)
 - [x] Production deployment guide
+- [x] 100% etcd v3 API compatibility (38/38 RPCs)
 
 ### In Progress 🚧
 - [ ] Performance optimization (ongoing)
