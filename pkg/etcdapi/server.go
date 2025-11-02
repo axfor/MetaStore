@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"metaStore/internal/kvstore"
+	"metaStore/pkg/config"
 	"metaStore/pkg/log"
 	"metaStore/pkg/reliability"
 	"net"
@@ -27,6 +28,7 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/keepalive"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
@@ -64,8 +66,9 @@ type ServerConfig struct {
 	MemberID    uint64                     // 成员 ID
 	ClusterPeers []string                  // 集群所有成员的 peer URLs（用于member list）
 	ConfChangeC chan<- raftpb.ConfChange   // Raft ConfChange 通道（可选）
+	Config      *config.Config             // 完整配置对象（可选，如果提供则优先使用其中的值）
 
-	// 可靠性配置
+	// 可靠性配置（仍保留以便向后兼容，但如果 Config 提供了则会被覆盖）
 	ResourceLimits    *reliability.ResourceLimits  // 资源限制配置（可选）
 	ShutdownTimeout   time.Duration                // 关闭超时时间（可选，默认 30s）
 	EnableCRC         bool                         // 是否启用 CRC 验证（可选，默认 false）
@@ -87,6 +90,29 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		cfg.MemberID = 1 // 默认成员 ID
 	}
 
+	// 如果提供了完整配置，使用配置中的值覆盖
+	if cfg.Config != nil {
+		// 使用配置文件中的可靠性设置
+		if cfg.ShutdownTimeout == 0 {
+			cfg.ShutdownTimeout = cfg.Config.Server.Reliability.ShutdownTimeout
+		}
+		if !cfg.EnableCRC {
+			cfg.EnableCRC = cfg.Config.Server.Reliability.EnableCRC
+		}
+		if !cfg.EnableHealthCheck {
+			cfg.EnableHealthCheck = cfg.Config.Server.Reliability.EnableHealthCheck
+		}
+
+		// 从配置文件构建资源限制
+		if cfg.ResourceLimits == nil {
+			cfg.ResourceLimits = &reliability.ResourceLimits{
+				MaxConnections: int64(cfg.Config.Server.Limits.MaxConnections),
+				MaxRequests:    int64(cfg.Config.Server.Limits.MaxConnections * 10), // 每个连接允许10个并发请求
+				MaxMemoryBytes: cfg.Config.Server.Limits.MaxRequestSize * 1000,      // 粗略估计
+			}
+		}
+	}
+
 	// 设置可靠性配置默认值
 	if cfg.ShutdownTimeout == 0 {
 		cfg.ShutdownTimeout = 30 * time.Second
@@ -103,18 +129,47 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	}
 
 	// 初始化可靠性组件
-	shutdownMgr := reliability.NewGracefulShutdown(cfg.ShutdownTimeout)
+	var shutdownMgr *reliability.GracefulShutdown
+	if cfg.Config != nil {
+		shutdownMgr = reliability.NewGracefulShutdown(cfg.ShutdownTimeout, cfg.Config.Server.Reliability.DrainTimeout)
+	} else {
+		shutdownMgr = reliability.NewGracefulShutdown(cfg.ShutdownTimeout)
+	}
 	resourceMgr := reliability.NewResourceManager(*cfg.ResourceLimits)
 	healthMgr := reliability.NewHealthManager()
 	dataValidator := reliability.NewDataValidator(cfg.EnableCRC)
+
+	// 创建 LeaseManager（使用配置）
+	var leaseMgr *LeaseManager
+	if cfg.Config != nil {
+		leaseMgr = NewLeaseManager(cfg.Store, &cfg.Config.Server.Lease, &cfg.Config.Server.Limits)
+	} else {
+		leaseMgr = NewLeaseManager(cfg.Store, nil, nil)
+	}
+
+	// 创建 WatchManager（使用配置）
+	var watchMgr *WatchManager
+	if cfg.Config != nil {
+		watchMgr = NewWatchManager(cfg.Store, &cfg.Config.Server.Limits)
+	} else {
+		watchMgr = NewWatchManager(cfg.Store)
+	}
+
+	// 创建 AuthManager（使用配置）
+	var authMgr *AuthManager
+	if cfg.Config != nil {
+		authMgr = NewAuthManager(cfg.Store, &cfg.Config.Server.Auth)
+	} else {
+		authMgr = NewAuthManager(cfg.Store)
+	}
 
 	// 创建 Server 实例（需要先创建以便使用其方法）
 	s := &Server{
 		store:         cfg.Store,
 		listener:      listener,
-		watchMgr:      NewWatchManager(cfg.Store),
-		leaseMgr:      NewLeaseManager(cfg.Store),
-		authMgr:       NewAuthManager(cfg.Store),
+		watchMgr:      watchMgr,
+		leaseMgr:      leaseMgr,
+		authMgr:       authMgr,
 		alarmMgr:      NewAlarmManager(),
 		shutdownMgr:   shutdownMgr,
 		resourceMgr:   resourceMgr,
@@ -125,14 +180,62 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		clusterPeers:  cfg.ClusterPeers,
 	}
 
-	// 创建 gRPC server（注册多个拦截器）
-	grpcSrv := grpc.NewServer(
+	// 构建 gRPC 服务器选项
+	grpcOpts := []grpc.ServerOption{
+		// 拦截器链
 		grpc.ChainUnaryInterceptor(
 			s.PanicRecoveryInterceptor,   // Panic 恢复（第一层）
 			resourceMgr.LimitInterceptor, // 资源限制
 			s.AuthInterceptor,            // 认证授权
 		),
-	)
+	}
+
+	// 如果提供了配置，应用 gRPC 配置
+	if cfg.Config != nil {
+		grpcCfg := cfg.Config.Server.GRPC
+
+		// 消息大小限制
+		if grpcCfg.MaxRecvMsgSize > 0 {
+			grpcOpts = append(grpcOpts, grpc.MaxRecvMsgSize(grpcCfg.MaxRecvMsgSize))
+		}
+		if grpcCfg.MaxSendMsgSize > 0 {
+			grpcOpts = append(grpcOpts, grpc.MaxSendMsgSize(grpcCfg.MaxSendMsgSize))
+		}
+
+		// 并发流限制
+		if grpcCfg.MaxConcurrentStreams > 0 {
+			grpcOpts = append(grpcOpts, grpc.MaxConcurrentStreams(grpcCfg.MaxConcurrentStreams))
+		}
+
+		// 流控制窗口大小
+		if grpcCfg.InitialWindowSize > 0 {
+			grpcOpts = append(grpcOpts, grpc.InitialWindowSize(grpcCfg.InitialWindowSize))
+		}
+		if grpcCfg.InitialConnWindowSize > 0 {
+			grpcOpts = append(grpcOpts, grpc.InitialConnWindowSize(grpcCfg.InitialConnWindowSize))
+		}
+
+		// Keepalive 配置
+		if grpcCfg.KeepaliveTime > 0 || grpcCfg.KeepaliveTimeout > 0 {
+			kaPolicy := keepalive.ServerParameters{
+				Time:    grpcCfg.KeepaliveTime,
+				Timeout: grpcCfg.KeepaliveTimeout,
+			}
+			if grpcCfg.MaxConnectionIdle > 0 {
+				kaPolicy.MaxConnectionIdle = grpcCfg.MaxConnectionIdle
+			}
+			if grpcCfg.MaxConnectionAge > 0 {
+				kaPolicy.MaxConnectionAge = grpcCfg.MaxConnectionAge
+			}
+			if grpcCfg.MaxConnectionAgeGrace > 0 {
+				kaPolicy.MaxConnectionAgeGrace = grpcCfg.MaxConnectionAgeGrace
+			}
+			grpcOpts = append(grpcOpts, grpc.KeepaliveParams(kaPolicy))
+		}
+	}
+
+	// 创建 gRPC server
+	grpcSrv := grpc.NewServer(grpcOpts...)
 	s.grpcSrv = grpcSrv
 
 	// 初始化 ClusterManager（如果提供了 ConfChangeC）
@@ -159,7 +262,15 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	pb.RegisterWatchServer(grpcSrv, &WatchServer{server: s})
 	pb.RegisterLeaseServer(grpcSrv, &LeaseServer{server: s})
 
-	maintenanceServer := &MaintenanceServer{server: s}
+	// 创建 Maintenance 服务器（使用配置）
+	snapshotChunkSize := 4 * 1024 * 1024 // 默认 4MB
+	if cfg.Config != nil {
+		snapshotChunkSize = cfg.Config.Server.Maintenance.SnapshotChunkSize
+	}
+	maintenanceServer := &MaintenanceServer{
+		server:            s,
+		snapshotChunkSize: snapshotChunkSize,
+	}
 	pb.RegisterMaintenanceServer(grpcSrv, maintenanceServer)
 	pb.RegisterAuthServer(grpcSrv, &AuthServer{server: s})
 

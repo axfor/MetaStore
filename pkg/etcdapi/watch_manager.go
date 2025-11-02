@@ -17,17 +17,19 @@ package etcdapi
 import (
 	"context"
 	"metaStore/internal/kvstore"
+	"metaStore/pkg/config"
 	"sync"
 	"sync/atomic"
 )
 
 // WatchManager 管理所有的 watch 订阅
 type WatchManager struct {
-	mu       sync.RWMutex
-	store    kvstore.Store
-	watches  map[int64]*watchStream // watchID -> stream
-	nextID   atomic.Int64           // 下一个 watch ID
-	stopped  atomic.Bool            // 是否已停止
+	mu            sync.RWMutex
+	store         kvstore.Store
+	watches       map[int64]*watchStream // watchID -> stream
+	nextID        atomic.Int64           // 下一个 watch ID
+	stopped       atomic.Bool            // 是否已停止
+	maxWatchCount int                    // 最大 Watch 数量限制（0 表示无限制）
 }
 
 // watchStream 表示一个 watch 流
@@ -41,10 +43,17 @@ type watchStream struct {
 }
 
 // NewWatchManager 创建新的 Watch 管理器
-func NewWatchManager(store kvstore.Store) *WatchManager {
+// 可选参数 cfg 用于设置 Watch 数量限制
+func NewWatchManager(store kvstore.Store, cfg ...*config.LimitsConfig) *WatchManager {
+	maxWatches := 0 // 默认无限制
+	if len(cfg) > 0 && cfg[0] != nil {
+		maxWatches = cfg[0].MaxWatchCount
+	}
+
 	return &WatchManager{
-		store:   store,
-		watches: make(map[int64]*watchStream),
+		store:         store,
+		watches:       make(map[int64]*watchStream),
+		maxWatchCount: maxWatches,
 	}
 }
 
@@ -57,6 +66,16 @@ func (wm *WatchManager) Create(key, rangeEnd string, startRevision int64, opts *
 // CreateWithID 使用指定的 watchID 创建 watch
 func (wm *WatchManager) CreateWithID(watchID int64, key, rangeEnd string, startRevision int64, opts *kvstore.WatchOptions) int64 {
 	if wm.stopped.Load() {
+		return -1
+	}
+
+	// Check watch count limit
+	wm.mu.RLock()
+	currentCount := len(wm.watches)
+	wm.mu.RUnlock()
+
+	if wm.maxWatchCount > 0 && currentCount >= wm.maxWatchCount {
+		// Watch limit exceeded
 		return -1
 	}
 

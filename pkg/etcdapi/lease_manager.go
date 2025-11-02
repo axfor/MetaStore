@@ -17,6 +17,7 @@ package etcdapi
 import (
 	"context"
 	"metaStore/internal/kvstore"
+	"metaStore/pkg/config"
 	"metaStore/pkg/log"
 	"sync"
 	"sync/atomic"
@@ -32,14 +33,34 @@ type LeaseManager struct {
 	leases  map[int64]*kvstore.Lease // leaseID -> Lease
 	stopped atomic.Bool               // 是否已停止
 	stopCh  chan struct{}             // 停止信号
+
+	// 配置
+	checkInterval time.Duration // Lease 过期检查间隔
+	defaultTTL    time.Duration // 默认 TTL
+	maxLeaseCount int           // 最大 Lease 数量限制（0 表示无限制）
 }
 
 // NewLeaseManager 创建新的 Lease 管理器
-func NewLeaseManager(store kvstore.Store) *LeaseManager {
+// 参数: store, leaseConfig (可选), limitsConfig (可选)
+func NewLeaseManager(store kvstore.Store, leaseCfg *config.LeaseConfig, limitsCfg *config.LimitsConfig) *LeaseManager {
+	// 使用配置或默认值
+	if leaseCfg == nil {
+		defaultCfg := config.DefaultConfig(1, 1, ":2379")
+		leaseCfg = &defaultCfg.Server.Lease
+	}
+
+	maxLeases := 0 // 默认无限制
+	if limitsCfg != nil {
+		maxLeases = limitsCfg.MaxLeaseCount
+	}
+
 	return &LeaseManager{
-		store:  store,
-		leases: make(map[int64]*kvstore.Lease),
-		stopCh: make(chan struct{}),
+		store:         store,
+		leases:        make(map[int64]*kvstore.Lease),
+		stopCh:        make(chan struct{}),
+		checkInterval: leaseCfg.CheckInterval,
+		defaultTTL:    leaseCfg.DefaultTTL,
+		maxLeaseCount: maxLeases,
 	}
 }
 
@@ -60,6 +81,15 @@ func (lm *LeaseManager) Stop() {
 func (lm *LeaseManager) Grant(id int64, ttl int64) (*kvstore.Lease, error) {
 	if lm.stopped.Load() {
 		return nil, ErrLeaseNotFound
+	}
+
+	// Check lease count limit
+	lm.mu.RLock()
+	currentCount := len(lm.leases)
+	lm.mu.RUnlock()
+
+	if lm.maxLeaseCount > 0 && currentCount >= lm.maxLeaseCount {
+		return nil, ErrTooManyLeases
 	}
 
 	// 委托给 store
@@ -136,14 +166,19 @@ func (lm *LeaseManager) Leases() ([]*kvstore.Lease, error) {
 
 // expiryChecker 定期检查并清理过期的 lease
 func (lm *LeaseManager) expiryChecker() {
-	ticker := time.NewTicker(1 * time.Second)
+	ticker := time.NewTicker(lm.checkInterval) // 使用配置的检查间隔
 	defer ticker.Stop()
+
+	log.Info("Lease expiry checker started",
+		zap.Duration("check_interval", lm.checkInterval),
+		zap.String("component", "lease-manager"))
 
 	for {
 		select {
 		case <-ticker.C:
 			lm.checkExpiredLeases()
 		case <-lm.stopCh:
+			log.Info("Lease expiry checker stopped", zap.String("component", "lease-manager"))
 			return
 		}
 	}

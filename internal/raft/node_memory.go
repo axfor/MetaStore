@@ -315,14 +315,25 @@ func (rc *raftNode) startRaft() {
 	for i := range rpeers {
 		rpeers[i] = raft.Peer{ID: uint64(i + 1)}
 	}
+	// Raft 配置优化 - 基于业界最佳实践（etcd、TiKV、CockroachDB）
 	c := &raft.Config{
-		ID:                        uint64(rc.id),
-		ElectionTick:              10,
-		HeartbeatTick:             1,
-		Storage:                   rc.raftStorage,
-		MaxSizePerMsg:             1024 * 1024,
-		MaxInflightMsgs:           256,
-		MaxUncommittedEntriesSize: 1 << 30,
+		ID:           uint64(rc.id),
+		ElectionTick: 10, // 1s 选举超时 (10 * 100ms)
+		HeartbeatTick: 1,  // 100ms 心跳间隔
+
+		Storage: rc.raftStorage,
+
+		// 性能优化参数
+		MaxSizePerMsg:             4 * 1024 * 1024, // 4MB (支持更大批量消息，TiKV 使用 8MB)
+		MaxInflightMsgs:           512,             // 512 条流水线消息（etcd 默认 256）
+		MaxUncommittedEntriesSize: 1 << 30,         // 1GB 未提交日志上限
+
+		// 稳定性优化
+		PreVote:     true, // 启用 PreVote，减少无意义选举，提升集群稳定性
+		CheckQuorum: true, // Leader 定期检查 quorum，避免脑裂
+
+		// 避免在网络分区时立即降级 leader
+		// DisableProposalForwarding: false, // 允许 follower 转发提案（默认行为）
 	}
 
 	if oldwal || rc.join {
