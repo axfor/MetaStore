@@ -58,6 +58,15 @@ func NewTestConfig(nodeID, clusterID uint64, address string, opts ...func(*confi
 	cfg.Server.RocksDB.MaxBackgroundJobs = 2
 	cfg.Server.RocksDB.BloomFilterBitsPerKey = 10
 
+	// Raft: 测试环境使用优化配置（继承自 DefaultConfig）
+	// 默认值（已优化）：
+	//   - TickInterval: 50ms（快速响应，比 etcd 默认 100ms 快 2x）
+	//   - ElectionTick: 10 (500ms election timeout)
+	//   - HeartbeatTick: 1 (50ms heartbeat)
+	//   - MaxSizePerMsg: 4MB
+	//   - MaxInflightMsgs: 1024（高吞吐，比 etcd 默认 512 提升 2x）
+	// 如需更激进的优化，可使用 WithRaftConfig() 自定义配置
+
 	// 应用自定义选项
 	for _, opt := range opts {
 		opt(cfg)
@@ -136,5 +145,46 @@ func WithProductionLike() func(*config.Config) {
 		cfg.Server.RocksDB.MaxWriteBufferNumber = 3
 		cfg.Server.RocksDB.MaxBackgroundJobs = 4
 		cfg.Server.Maintenance.SnapshotChunkSize = 16 * 1024 * 1024 // 16MB
+	}
+}
+
+// WithFastRaft 快速 Raft 配置（用于加速单元测试）
+// 使用更短的 tick 间隔，适合不需要真实时间行为的测试
+func WithFastRaft() func(*config.Config) {
+	return func(cfg *config.Config) {
+		cfg.Server.Raft.TickInterval = 50 * time.Millisecond  // 50ms tick（比默认 100ms 快 2x）
+		cfg.Server.Raft.ElectionTick = 10  // 500ms election timeout
+		cfg.Server.Raft.HeartbeatTick = 1   // 50ms heartbeat
+		// 其他参数保持默认
+	}
+}
+
+// WithRaftConfig 自定义 Raft 配置（用于性能调优测试）
+func WithRaftConfig(tickInterval time.Duration, electionTick, heartbeatTick int) func(*config.Config) {
+	return func(cfg *config.Config) {
+		cfg.Server.Raft.TickInterval = tickInterval
+		cfg.Server.Raft.ElectionTick = electionTick
+		cfg.Server.Raft.HeartbeatTick = heartbeatTick
+	}
+}
+
+// WithBatchProposal 自定义批量提案配置（用于批量优化测试）
+// 默认情况下批量提案已启用，使用此函数可以自定义批量参数
+func WithBatchProposal(minBatch, maxBatch int, minTimeout, maxTimeout time.Duration, loadThreshold float64) func(*config.Config) {
+	return func(cfg *config.Config) {
+		cfg.Server.Raft.Batch.Enable = true
+		cfg.Server.Raft.Batch.MinBatchSize = minBatch
+		cfg.Server.Raft.Batch.MaxBatchSize = maxBatch
+		cfg.Server.Raft.Batch.MinTimeout = minTimeout
+		cfg.Server.Raft.Batch.MaxTimeout = maxTimeout
+		cfg.Server.Raft.Batch.LoadThreshold = loadThreshold
+	}
+}
+
+// WithoutBatchProposal 禁用批量提案（用于基准测试和性能对比）
+// 使用此函数可以测试不启用批量优化时的性能，作为对比基准
+func WithoutBatchProposal() func(*config.Config) {
+	return func(cfg *config.Config) {
+		cfg.Server.Raft.Batch.Enable = false
 	}
 }
