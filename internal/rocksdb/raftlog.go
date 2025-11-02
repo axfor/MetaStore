@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"sync"
 
+	"metaStore/pkg/config"
 	"metaStore/pkg/log"
 
 	"github.com/linxGnu/grocksdb"
@@ -641,10 +642,22 @@ func binaryReadUint64BigEndian(b []byte) (uint64, error) {
 }
 
 // OpenRocksDB opens a RocksDB database with optimal settings for raft storage
-func Open(path string) (*grocksdb.DB, error) {
+func Open(path string, cfg ...*config.RocksDBConfig) (*grocksdb.DB, error) {
+	// 使用配置或默认值
+	var rocksCfg *config.RocksDBConfig
+	if len(cfg) > 0 && cfg[0] != nil {
+		rocksCfg = cfg[0]
+	} else {
+		// 使用默认配置
+		defaultCfg := config.DefaultConfig(1, 1, ":2379")
+		rocksCfg = &defaultCfg.Server.RocksDB
+	}
+
 	bbto := grocksdb.NewDefaultBlockBasedTableOptions()
-	bbto.SetBlockCache(grocksdb.NewLRUCache(512 << 20)) // 512MB block cache
-	bbto.SetFilterPolicy(grocksdb.NewBloomFilter(10))
+	bbto.SetBlockCache(grocksdb.NewLRUCache(rocksCfg.BlockCacheSize)) // 使用配置的 Block Cache
+	if rocksCfg.BlockBasedTableBloomFilter {
+		bbto.SetFilterPolicy(grocksdb.NewBloomFilter(float64(rocksCfg.BloomFilterBitsPerKey)))
+	}
 	defer bbto.Destroy()
 
 	opts := grocksdb.NewDefaultOptions()
@@ -655,10 +668,22 @@ func Open(path string) (*grocksdb.DB, error) {
 	// Write settings for durability (WAL is enabled by default in RocksDB)
 	opts.SetManualWALFlush(false)
 
-	// Performance settings
-	opts.SetMaxBackgroundJobs(4)
-	opts.SetMaxOpenFiles(1000)
-	opts.SetWriteBufferSize(64 << 20) // 64MB write buffer
+	// Performance settings - 使用配置文件的值
+	opts.SetMaxBackgroundJobs(rocksCfg.MaxBackgroundJobs)
+	opts.SetMaxOpenFiles(rocksCfg.MaxOpenFiles)
+	opts.SetWriteBufferSize(rocksCfg.WriteBufferSize)
+	opts.SetMaxWriteBufferNumber(rocksCfg.MaxWriteBufferNumber)
+	opts.SetMinWriteBufferNumberToMerge(rocksCfg.MinWriteBufferNumberToMerge)
+
+	// Compaction settings - 使用配置文件的值
+	opts.SetLevel0FileNumCompactionTrigger(rocksCfg.Level0FileNumCompactionTrigger)
+	opts.SetLevel0SlowdownWritesTrigger(rocksCfg.Level0SlowdownWritesTrigger)
+	opts.SetLevel0StopWritesTrigger(rocksCfg.Level0StopWritesTrigger)
+
+	// Sync settings - 使用配置文件的值
+	if rocksCfg.BytesPerSync > 0 {
+		opts.SetBytesPerSync(rocksCfg.BytesPerSync)
+	}
 
 	// Compression
 	opts.SetCompression(grocksdb.SnappyCompression)

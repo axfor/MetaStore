@@ -1,0 +1,116 @@
+# MetaStore Configuration File
+# 生产环境配置示例
+
+server:
+  # 集群配置（必须指定，不能为 0）
+  cluster_id: 1
+  member_id: 1
+  listen_address: ":2379"
+
+  # gRPC 配置（基于业界最佳实践优化：etcd、gRPC 官方、TiKV）
+  grpc:
+    # 消息大小限制（与 Raft MaxSizePerMsg 对齐）
+    max_recv_msg_size: 4194304 # 4MB（支持大批量操作，TiKV 推荐 16MB）
+    max_send_msg_size: 4194304 # 4MB
+    max_concurrent_streams: 2048 # 最大并发流（支持更多 Watch/Stream，TiKV 使用 1024-2048）
+
+    # 流控制窗口（优化网络吞吐量）
+    initial_window_size: 8388608 # 8MB（高吞吐场景，TiKV 推荐 2-8MB）
+    initial_conn_window_size: 16777216 # 16MB（连接级流控，gRPC 官方推荐）
+
+    # Keepalive 配置（快速故障检测）
+    keepalive_time: 10s # Keep-alive 时间（快速检测连接健康，TiKV 使用 10s）
+    keepalive_timeout: 10s # Keep-alive 超时（快速故障检测）
+    max_connection_idle: 300s # 最大空闲连接时间（5分钟，避免频繁重连）
+    max_connection_age: 10m # 最大连接存活时间
+    max_connection_age_grace: 10s # 连接关闭宽限期（快速清理）
+
+    # 限流配置 (生产环境建议启用)
+    enable_rate_limit: true # 是否启用限流
+    rate_limit_qps: 1000000 # 每秒请求数限制 (根据实际负载调整)
+    rate_limit_burst: 2000000 # 突发请求令牌桶大小 (通常为 QPS 的 2 倍)
+
+    # 高级性能优化（已经在代码中默认优化）
+    # - HTTP/2 多路复用：自动启用
+    # - 连接复用：通过 max_connection_idle 和 max_connection_age 控制
+    # - 零拷贝传输：gRPC 内部自动优化
+
+  # 资源限制配置
+  limits:
+    max_connections: 1000 # 最大连接数
+    max_watch_count: 10000 # 最大 Watch 数量
+    max_lease_count: 10000 # 最大 Lease 数量
+    max_request_size: 1572864 # 1.5MB 最大请求大小
+
+  # Lease 配置
+  lease:
+    check_interval: 30s # Lease 过期检查间隔
+    default_ttl: 200s # 默认 TTL
+
+  # 认证配置
+  auth:
+    token_ttl: 24h # Token 过期时间
+    token_cleanup_interval: 5m # Token 清理间隔
+    bcrypt_cost: 10 # bcrypt 加密强度 (4-31)
+    enable_audit: false # 是否启用审计日志
+
+  # 维护配置
+  maintenance:
+    snapshot_chunk_size: 4194304 # 4MB Snapshot 分块大小
+
+  # 可靠性配置
+  reliability:
+    shutdown_timeout: 30s # 优雅关闭超时
+    drain_timeout: 10s # 连接耗尽超时
+    enable_crc: false # 是否启用 CRC 校验
+    enable_health_check: true # 是否启用健康检查
+    enable_panic_recovery: true # 是否启用 Panic 恢复
+
+  # 日志配置
+  log:
+    level: info # debug, info, warn, error, dpanic, panic, fatal
+    encoding: json # json 或 console
+    output_paths:
+      - stdout
+      #- /var/log/metastore/app.log
+    error_output_paths:
+      - stderr
+      #- /var/log/metastore/error.log
+
+  # 监控配置
+  monitoring:
+    enable_prometheus: true # 是否启用 Prometheus
+    prometheus_port: 9090 # Prometheus 端口
+    slow_request_threshold: 100ms # 慢查询阈值
+
+  # 性能优化配置
+  performance:
+    # Protobuf 序列化优化（推荐启用，可提升 1.69x-20.6x 性能）
+    enable_protobuf: true # Raft 操作 Protobuf 序列化（3-5x 性能提升）
+    enable_snapshot_protobuf: true # 快照 Protobuf 序列化（1.69x 性能提升）
+    enable_lease_protobuf: true # Lease Protobuf 序列化（20.6x 性能提升）
+
+  # RocksDB 性能配置（仅在使用 RocksDB 存储引擎时生效）
+  rocksdb:
+    # Block Cache 配置（影响读性能）
+    block_cache_size: 268435456 # 256MB（默认），建议设置为可用内存的 1/3
+
+    # Write Buffer 配置（影响写性能）
+    write_buffer_size: 67108864 # 64MB（默认），单个 memtable 大小
+    max_write_buffer_number: 3  # 最大 write buffer 数量
+    min_write_buffer_number_to_merge: 1 # 触发合并的最小 write buffer 数量
+
+    # Compaction 配置
+    max_background_jobs: 4  # 后台 compaction/flush 线程数（建议设置为 CPU 核心数）
+    level0_file_num_compaction_trigger: 4  # Level 0 触发 compaction 的文件数
+    level0_slowdown_writes_trigger: 20     # Level 0 减缓写入的文件数
+    level0_stop_writes_trigger: 36         # Level 0 停止写入的文件数
+
+    # Bloom Filter 配置（优化点查询性能）
+    bloom_filter_bits_per_key: 10  # Bloom filter 每个 key 的 bit 数（10 bits ≈ 1% 误判率）
+    block_based_table_bloom_filter: true  # 启用 Block-based Bloom Filter
+
+    # 其他优化
+    max_open_files: 10000  # 最大打开文件数
+    use_fsync: false       # 是否使用 fsync（false 使用 fdatasync，性能更好）
+    bytes_per_sync: 1048576 # 1MB，后台同步数据到磁盘的间隔

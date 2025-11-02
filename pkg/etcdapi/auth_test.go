@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"metaStore/internal/memory"
+	"metaStore/pkg/config"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/authpb"
@@ -30,12 +31,16 @@ func setupAuthTest(t *testing.T) (*Server, func()) {
 	// 创建内存存储
 	store := memory.NewMemoryEtcd()
 
+	// 创建测试配置
+	testCfg := createAuthTestConfig()
+
 	// 创建服务器配置
 	cfg := ServerConfig{
 		Store:     store,
 		Address:   ":0", // 随机端口
 		ClusterID: 1,
 		MemberID:  1,
+		Config:    testCfg, // 使用配置
 	}
 
 	// 创建服务器（但不启动）
@@ -49,6 +54,30 @@ func setupAuthTest(t *testing.T) (*Server, func()) {
 	}
 
 	return srv, cleanup
+}
+
+// createAuthTestConfig 创建认证测试专用配置
+func createAuthTestConfig() *config.Config {
+	cfg := config.DefaultConfig(1, 1, ":2379")
+
+	// 测试环境优化：使用较低的 bcrypt cost 加快测试速度
+	cfg.Server.Auth.BcryptCost = 4  // 默认 10，测试用 4
+	cfg.Server.Auth.TokenTTL = 10 * time.Minute
+	cfg.Server.Auth.TokenCleanupInterval = 1 * time.Minute
+	cfg.Server.Auth.EnableAudit = false // 测试环境不需要审计日志
+
+	// 配置限制
+	cfg.Server.Limits.MaxWatchCount = 1000
+	cfg.Server.Limits.MaxLeaseCount = 10000
+
+	// 禁用监控避免端口冲突
+	cfg.Server.Monitoring.EnablePrometheus = false
+
+	// 快速超时
+	cfg.Server.Reliability.ShutdownTimeout = 5 * time.Second
+	cfg.Server.Reliability.DrainTimeout = 2 * time.Second
+
+	return cfg
 }
 
 // TestAuthBasicFlow 测试基本认证流程
@@ -255,7 +284,7 @@ func TestRoleManagement(t *testing.T) {
 		_, err := authSrv.RoleGrantPermission(ctx, &pb.AuthRoleGrantPermissionRequest{
 			Name: "admin",
 			Perm: &authpb.Permission{
-				PermType: authpb.Permission_READWRITE,
+				PermType: authpb.Permission_Type(PermissionReadWrite),
 				Key:      []byte("/admin/"),
 				RangeEnd: []byte("/admin0"),
 			},
@@ -407,11 +436,10 @@ func TestTokenExpiration(t *testing.T) {
 	}
 
 	// 手动修改 token 过期时间为过去
-	srv.authMgr.mu.Lock()
-	if tokenInfo, exists := srv.authMgr.tokens[token]; exists {
+	if tokenInfo, exists := srv.authMgr.tokens.Load(token); exists {
 		tokenInfo.ExpiresAt = time.Now().Add(-1 * time.Hour).Unix()
+		srv.authMgr.tokens.Store(token, tokenInfo)
 	}
-	srv.authMgr.mu.Unlock()
 
 	// 验证 token 已过期
 	_, err = srv.authMgr.ValidateToken(token)
