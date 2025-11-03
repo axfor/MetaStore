@@ -39,10 +39,11 @@ type ResourceLimits struct {
 }
 
 // DefaultLimits 默认资源限制
+// 注意：这些默认值应该与 config.DefaultConfig 中的值保持一致
 var DefaultLimits = ResourceLimits{
-	MaxConnections:    10000,
-	MaxRequests:       5000,
-	MaxMemoryBytes:    2 * 1024 * 1024 * 1024, // 2GB
+	MaxConnections:    1000,                    // 默认最大连接数
+	MaxRequests:       5000,                    // 默认最大并发请求数
+	MaxMemoryBytes:    8 * 1024 * 1024 * 1024,  // 8GB，适合性能测试和生产环境
 	MaxRequestSize:    4 * 1024 * 1024,         // 4MB
 	RequestTimeout:    30 * time.Second,
 	ConnectionTimeout: 10 * time.Second,

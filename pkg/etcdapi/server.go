@@ -105,10 +105,14 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 
 		// 从配置文件构建资源限制
 		if cfg.ResourceLimits == nil {
+			maxMemoryBytes := cfg.Config.Server.Limits.MaxMemoryMB * 1024 * 1024 // MB to Bytes
+			if maxMemoryBytes == 0 {
+				maxMemoryBytes = 8 * 1024 * 1024 * 1024 // 默认 8GB
+			}
 			cfg.ResourceLimits = &reliability.ResourceLimits{
 				MaxConnections: int64(cfg.Config.Server.Limits.MaxConnections),
-				MaxRequests:    int64(cfg.Config.Server.Limits.MaxConnections * 10), // 每个连接允许10个并发请求
-				MaxMemoryBytes: cfg.Config.Server.Limits.MaxRequestSize * 1000,      // 粗略估计
+				MaxRequests:    cfg.Config.Server.Limits.MaxRequests,
+				MaxMemoryBytes: maxMemoryBytes,
 			}
 		}
 	}

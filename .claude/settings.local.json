@@ -134,7 +134,10 @@
       "Bash(make test-perf-rocksdb:*)",
       "Bash(protoc-gen-go:*)",
       "Bash(timeout 5 ./metastore:*)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "Bash(CGO_ENABLED=1 CGO_LDFLAGS=\"-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain\" go list:*)",
+      "Bash(CGO_ENABLED=1 CGO_LDFLAGS=\"-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain\" timeout 300 go test:*)",
+      "Bash(CGO_ENABLED=1 CGO_LDFLAGS=\"-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain\" timeout 90 go test:*)"
     ],
     "deny": [],
     "ask": []

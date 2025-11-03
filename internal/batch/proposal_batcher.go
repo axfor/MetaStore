@@ -42,7 +42,7 @@ type ProposalBatcher struct {
 	batchCount    int64         // 总批次数
 
 	// 通道
-	proposeC chan<- []byte // Raft propose 通道
+	proposeC chan []byte   // Raft propose 通道（batcher 拥有并负责关闭）
 	inputC   <-chan string // 输入提案通道
 	stopC    chan struct{} // 停止信号
 
@@ -75,9 +75,9 @@ func DefaultBatchConfig() BatchConfig {
 }
 
 // NewProposalBatcher 创建新的动态批量提案器
+// batcher 拥有并管理输出通道的生命周期，调用者通过 ProposeC() 获取只读通道
 func NewProposalBatcher(
 	config BatchConfig,
-	proposeC chan<- []byte,
 	inputC <-chan string,
 	logger *zap.Logger,
 ) *ProposalBatcher {
@@ -91,7 +91,7 @@ func NewProposalBatcher(
 		minTimeout:       config.MinTimeout,
 		maxTimeout:       config.MaxTimeout,
 		loadThreshold:    config.LoadThreshold,
-		proposeC:         proposeC,
+		proposeC:         make(chan []byte, 256), // batcher 创建并拥有此通道
 		inputC:           inputC,
 		stopC:            make(chan struct{}),
 		buffer:           make([]string, 0, config.MaxBatchSize),
@@ -102,6 +102,11 @@ func NewProposalBatcher(
 	}
 
 	return batcher
+}
+
+// ProposeC 返回输出通道（只读），用于接收批量提案数据
+func (b *ProposalBatcher) ProposeC() <-chan []byte {
+	return b.proposeC
 }
 
 // Start 启动批量提案器
@@ -119,6 +124,12 @@ func (b *ProposalBatcher) run(ctx context.Context) {
 	ticker := time.NewTicker(b.currentTimeout)
 	defer ticker.Stop()
 
+	// 确保在退出时刷新剩余提案并关闭输出通道
+	defer func() {
+		b.flush()
+		close(b.proposeC) // batcher 拥有此通道，负责关闭
+	}()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -130,8 +141,7 @@ func (b *ProposalBatcher) run(ctx context.Context) {
 
 		case proposal, ok := <-b.inputC:
 			if !ok {
-				// 输入通道已关闭，刷新剩余的提案
-				b.flush()
+				// 输入通道已关闭，刷新剩余的提案后返回
 				return
 			}
 

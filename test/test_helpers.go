@@ -25,6 +25,7 @@ import (
 	"metaStore/internal/memory"
 	"metaStore/internal/raft"
 	"metaStore/internal/rocksdb"
+	"metaStore/pkg/config"
 	"metaStore/pkg/etcdapi"
 
 	"github.com/linxGnu/grocksdb"
@@ -50,7 +51,8 @@ type testNode struct {
 
 // startMemoryNode starts a single-node cluster for testing
 // This is a simplified version suitable for performance testing
-func startMemoryNode(t testing.TB, nodeID int) (*testNode, func()) {
+// Accepts optional configuration functions (e.g., WithBatchProposal, WithoutBatchProposal)
+func startMemoryNode(t testing.TB, nodeID int, configOpts ...func(*config.Config)) (*testNode, func()) {
 	// Create data directory
 	dataDir := fmt.Sprintf("data/perf-test/%d", nodeID)
 	os.RemoveAll(dataDir)
@@ -59,6 +61,9 @@ func startMemoryNode(t testing.TB, nodeID int) (*testNode, func()) {
 
 	proposeC := make(chan string, 1)
 	confChangeC := make(chan raftpb.ConfChange, 1)
+
+	// Create test config with optional configuration functions
+	cfg := NewTestConfig(uint64(nodeID), 1, fmt.Sprintf(":900%d", nodeID), configOpts...)
 
 	// Create Raft node
 	var kvs *memory.Memory
@@ -70,7 +75,7 @@ func startMemoryNode(t testing.TB, nodeID int) (*testNode, func()) {
 	}
 
 	commitC, errorC, snapshotterReady, raftNode := raft.NewNode(
-		nodeID, peers, false, getSnapshot, proposeC, confChangeC, dataDir,
+		nodeID, peers, false, getSnapshot, proposeC, confChangeC, dataDir, cfg,
 	)
 
 	// Create KV store
@@ -143,7 +148,15 @@ func startMemoryNode(t testing.TB, nodeID int) (*testNode, func()) {
 			}
 		}()
 		close(proposeC)
-		<-errorC
+
+		// Wait for errorC with timeout
+		select {
+		case <-errorC:
+			// Raft node stopped normally
+		case <-time.After(5 * time.Second):
+			// Timeout: this is an error, Raft should stop cleanly
+			t.Errorf("Timeout waiting for Raft node to stop - this indicates a shutdown issue")
+		}
 
 		// Wait for WAL files to be released before cleanup
 		// This prevents "file already locked" errors in subsequent tests
@@ -166,7 +179,8 @@ type testRocksDBNode struct {
 }
 
 // startRocksDBNode starts a single-node RocksDB cluster for performance testing
-func startRocksDBNode(t testing.TB, nodeID int) (*testRocksDBNode, func()) {
+// Accepts optional configuration functions (e.g., WithBatchProposal, WithoutBatchProposal)
+func startRocksDBNode(t testing.TB, nodeID int, configOpts ...func(*config.Config)) (*testRocksDBNode, func()) {
 	// Create data directory
 	dataDir := fmt.Sprintf("data/perf-test-rocksdb/%d", nodeID)
 	os.RemoveAll(dataDir)
@@ -189,6 +203,9 @@ func startRocksDBNode(t testing.TB, nodeID int) (*testRocksDBNode, func()) {
 	proposeC := make(chan string, 1)
 	confChangeC := make(chan raftpb.ConfChange, 1)
 
+	// Create test config with optional configuration functions
+	cfg := NewTestConfig(uint64(nodeID), 1, fmt.Sprintf(":910%d", nodeID), configOpts...)
+
 	// Create Raft node with RocksDB
 	var kvs *rocksdb.RocksDB
 	getSnapshot := func() ([]byte, error) {
@@ -199,7 +216,7 @@ func startRocksDBNode(t testing.TB, nodeID int) (*testRocksDBNode, func()) {
 	}
 
 	commitC, errorC, snapshotterReady, raftNode := raft.NewNodeRocksDB(
-		nodeID, peers, false, getSnapshot, proposeC, confChangeC, db, dataDir,
+		nodeID, peers, false, getSnapshot, proposeC, confChangeC, db, dataDir, cfg,
 	)
 
 	// Create RocksDB KV store
@@ -279,7 +296,15 @@ func startRocksDBNode(t testing.TB, nodeID int) (*testRocksDBNode, func()) {
 			}
 		}()
 		close(proposeC)
-		<-errorC
+
+		// Wait for errorC with timeout
+		select {
+		case <-errorC:
+			// Raft node stopped normally
+		case <-time.After(5 * time.Second):
+			// Timeout: this is an error, Raft should stop cleanly
+			t.Errorf("Timeout waiting for Raft node to stop - this indicates a shutdown issue")
+		}
 
 		// Close RocksDB
 		if db != nil {

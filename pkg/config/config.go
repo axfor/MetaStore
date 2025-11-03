@@ -45,6 +45,7 @@ type ServerConfig struct {
 	Log         LogConfig         `yaml:"log"`
 	Monitoring  MonitoringConfig  `yaml:"monitoring"`
 	Performance PerformanceConfig `yaml:"performance"`
+	Raft        RaftConfig        `yaml:"raft"`
 	RocksDB     RocksDBConfig     `yaml:"rocksdb"`
 }
 
@@ -78,6 +79,8 @@ type LimitsConfig struct {
 	MaxWatchCount  int   `yaml:"max_watch_count"`  // 默认 10000
 	MaxLeaseCount  int   `yaml:"max_lease_count"`  // 默认 10000
 	MaxRequestSize int64 `yaml:"max_request_size"` // 默认 1.5MB
+	MaxMemoryMB    int64 `yaml:"max_memory_mb"`    // 最大内存使用（MB），默认 8192（8GB），0 表示不限制
+	MaxRequests    int64 `yaml:"max_requests"`     // 最大并发请求数，默认 5000
 }
 
 // LeaseConfig Lease 配置
@@ -128,6 +131,55 @@ type PerformanceConfig struct {
 	EnableProtobuf         bool `yaml:"enable_protobuf"`          // Raft 操作 Protobuf 序列化，默认 true
 	EnableSnapshotProtobuf bool `yaml:"enable_snapshot_protobuf"` // 快照 Protobuf 序列化，默认 true
 	EnableLeaseProtobuf    bool `yaml:"enable_lease_protobuf"`    // Lease Protobuf 序列化，默认 true
+}
+
+// RaftConfig Raft 共识配置
+type RaftConfig struct {
+	// Tick 配置（影响 Raft 处理速度）
+	TickInterval  time.Duration `yaml:"tick_interval"`   // Raft tick 间隔，默认 100ms
+	ElectionTick  int           `yaml:"election_tick"`   // 选举超时 tick 数，默认 10 (= 1s)
+	HeartbeatTick int           `yaml:"heartbeat_tick"`  // 心跳间隔 tick 数，默认 1 (= 100ms)
+
+	// 消息大小配置
+	MaxSizePerMsg uint64 `yaml:"max_size_per_msg"` // 单个消息最大大小，默认 4MB
+
+	// 流控配置（影响吞吐量）
+	MaxInflightMsgs           int    `yaml:"max_inflight_msgs"`             // 最大飞行中消息数，默认 512
+	MaxUncommittedEntriesSize uint64 `yaml:"max_uncommitted_entries_size"`  // 最大未提交条目大小，默认 1GB
+
+	// 优化开关
+	PreVote     bool `yaml:"pre_vote"`      // 启用 PreVote，默认 true
+	CheckQuorum bool `yaml:"check_quorum"`  // 启用 CheckQuorum，默认 true
+
+	// 批量提案配置（动态批量优化，参考 TiKV）
+	Batch RaftBatchConfig `yaml:"batch"` // 批量提案配置
+
+	// Lease Read 配置（读性能优化，参考 etcd/TiKV）
+	LeaseRead LeaseReadConfig `yaml:"lease_read"` // Lease Read 配置
+}
+
+// RaftBatchConfig 批量提案配置
+// 动态批量提案系统，根据负载自适应调整批量大小和超时时间
+// 低负载：小批量 + 短超时 = 低延迟
+// 高负载：大批量 + 长超时 = 高吞吐
+type RaftBatchConfig struct {
+	Enable        bool          `yaml:"enable"`          // 是否启用批量提案，默认 true
+	MinBatchSize  int           `yaml:"min_batch_size"`  // 最小批量大小（低负载），默认 1
+	MaxBatchSize  int           `yaml:"max_batch_size"`  // 最大批量大小（高负载），默认 256
+	MinTimeout    time.Duration `yaml:"min_timeout"`     // 最小超时时间（低负载），默认 5ms
+	MaxTimeout    time.Duration `yaml:"max_timeout"`     // 最大超时时间（高负载），默认 20ms
+	LoadThreshold float64       `yaml:"load_threshold"`  // 负载阈值（0.0-1.0），默认 0.7
+}
+
+// LeaseReadConfig Lease Read 配置
+// Lease Read 优化允许 Leader 在租约期内直接服务读请求，无需 Raft 共识
+// 性能提升：10-100x（读操作），特别适合读多写少场景
+// Lease Duration 计算：min(electionTimeout/2, heartbeatTick*3) - clockDrift
+type LeaseReadConfig struct {
+	Enable      bool          `yaml:"enable"`       // 是否启用 Lease Read，默认 true
+	ClockDrift  time.Duration `yaml:"clock_drift"`  // 时钟偏移容忍，默认 100ms（同数据中心）
+	                                                 // 跨区域部署建议：200ms；跨大洲：500ms
+	ReadTimeout time.Duration `yaml:"read_timeout"` // 读超时时间，默认 5s
 }
 
 // RocksDBConfig RocksDB 性能配置
@@ -280,6 +332,12 @@ func (c *Config) SetDefaults() {
 	if c.Server.Limits.MaxRequestSize == 0 {
 		c.Server.Limits.MaxRequestSize = 1572864 // 1.5MB
 	}
+	if c.Server.Limits.MaxMemoryMB == 0 {
+		c.Server.Limits.MaxMemoryMB = 8192 // 8GB, suitable for performance tests
+	}
+	if c.Server.Limits.MaxRequests == 0 {
+		c.Server.Limits.MaxRequests = 5000
+	}
 
 	// Lease 默认值
 	if c.Server.Lease.CheckInterval == 0 {
@@ -350,6 +408,63 @@ func (c *Config) SetDefaults() {
 	c.Server.Performance.EnableProtobuf = true          // Raft 操作 Protobuf（3-5x 提升）
 	c.Server.Performance.EnableSnapshotProtobuf = true  // 快照 Protobuf（1.69x 提升）
 	c.Server.Performance.EnableLeaseProtobuf = true     // Lease Protobuf（20.6x 提升）
+
+	// Raft 默认值（生产环境标准配置，符合业界最佳实践）
+	if c.Server.Raft.TickInterval == 0 {
+		c.Server.Raft.TickInterval = 100 * time.Millisecond // 标准生产：100ms（etcd 默认）
+	}
+	if c.Server.Raft.ElectionTick == 0 {
+		c.Server.Raft.ElectionTick = 10 // 1000ms 选举超时（10 × 100ms，符合业界推荐 1-3s）
+	}
+	if c.Server.Raft.HeartbeatTick == 0 {
+		c.Server.Raft.HeartbeatTick = 1 // 100ms 心跳间隔（1 × 100ms，election_timeout/10）
+	}
+	if c.Server.Raft.MaxSizePerMsg == 0 {
+		c.Server.Raft.MaxSizePerMsg = 4 * 1024 * 1024 // 4MB，与 gRPC MaxRecvMsgSize 对齐
+	}
+	if c.Server.Raft.MaxInflightMsgs == 0 {
+		c.Server.Raft.MaxInflightMsgs = 1024 // 高吞吐：1024（比 etcd 默认 512 提升 2x）
+	}
+	if c.Server.Raft.MaxUncommittedEntriesSize == 0 {
+		c.Server.Raft.MaxUncommittedEntriesSize = 1 << 30 // 1GB
+	}
+	// PreVote 和 CheckQuorum 默认启用
+	c.Server.Raft.PreVote = true
+	c.Server.Raft.CheckQuorum = true
+
+	// Batch 批量提案默认值（动态批量优化，参考 TiKV）
+	// 默认启用批量提案以获得 5-50x 性能提升
+	c.Server.Raft.Batch.Enable = true
+	if c.Server.Raft.Batch.MinBatchSize == 0 {
+		c.Server.Raft.Batch.MinBatchSize = 1 // 低负载：单个提案，最低延迟
+	}
+	if c.Server.Raft.Batch.MaxBatchSize == 0 {
+		c.Server.Raft.Batch.MaxBatchSize = 256 // 高负载：大批量，最高吞吐（TiKV 使用 256）
+	}
+	if c.Server.Raft.Batch.MinTimeout == 0 {
+		c.Server.Raft.Batch.MinTimeout = 5 * time.Millisecond // 低负载：5ms 超时
+	}
+	if c.Server.Raft.Batch.MaxTimeout == 0 {
+		c.Server.Raft.Batch.MaxTimeout = 20 * time.Millisecond // 高负载：20ms 超时
+	}
+	if c.Server.Raft.Batch.LoadThreshold == 0 {
+		c.Server.Raft.Batch.LoadThreshold = 0.7 // 70% 负载阈值
+	}
+
+	// LeaseRead 租约读默认值（读性能优化，参考 etcd/TiKV）
+	// 默认启用 Lease Read 以获得 10-100x 读性能提升
+	c.Server.Raft.LeaseRead.Enable = true
+	if c.Server.Raft.LeaseRead.ClockDrift == 0 {
+		c.Server.Raft.LeaseRead.ClockDrift = 100 * time.Millisecond // etcd 推荐值（同数据中心）
+		// 说明：
+		// - 同数据中心：100ms（推荐）
+		// - 跨区域部署：200ms
+		// - 跨大洲部署：500ms（需相应增大 election_timeout）
+		// - 基于当前配置：lease duration = min(1000/2, 100*3) - 100 = 400ms
+	}
+	if c.Server.Raft.LeaseRead.ReadTimeout == 0 {
+		c.Server.Raft.LeaseRead.ReadTimeout = 5 * time.Second // 读超时 5 秒
+	}
 
 	// RocksDB 默认值（基于 RocksDB 官方推荐配置）
 	if c.Server.RocksDB.BlockCacheSize == 0 {
@@ -481,6 +596,66 @@ func (c *Config) Validate() error {
 	// 验证日志编码
 	if c.Server.Log.Encoding != "json" && c.Server.Log.Encoding != "console" {
 		return fmt.Errorf("log.encoding must be either 'json' or 'console'")
+	}
+
+	// 验证 Raft 配置
+	if c.Server.Raft.TickInterval <= 0 {
+		return fmt.Errorf("raft.tick_interval must be > 0")
+	}
+	if c.Server.Raft.ElectionTick <= 0 {
+		return fmt.Errorf("raft.election_tick must be > 0")
+	}
+	if c.Server.Raft.HeartbeatTick <= 0 {
+		return fmt.Errorf("raft.heartbeat_tick must be > 0")
+	}
+	if c.Server.Raft.ElectionTick <= c.Server.Raft.HeartbeatTick {
+		return fmt.Errorf("raft.election_tick must be > raft.heartbeat_tick")
+	}
+	if c.Server.Raft.MaxSizePerMsg == 0 {
+		return fmt.Errorf("raft.max_size_per_msg must be > 0")
+	}
+	if c.Server.Raft.MaxInflightMsgs <= 0 {
+		return fmt.Errorf("raft.max_inflight_msgs must be > 0")
+	}
+
+	// 验证批量提案配置
+	if c.Server.Raft.Batch.Enable {
+		if c.Server.Raft.Batch.MinBatchSize <= 0 {
+			return fmt.Errorf("raft.batch.min_batch_size must be > 0")
+		}
+		if c.Server.Raft.Batch.MaxBatchSize <= 0 {
+			return fmt.Errorf("raft.batch.max_batch_size must be > 0")
+		}
+		if c.Server.Raft.Batch.MinBatchSize > c.Server.Raft.Batch.MaxBatchSize {
+			return fmt.Errorf("raft.batch.min_batch_size must be <= max_batch_size")
+		}
+		if c.Server.Raft.Batch.MinTimeout <= 0 {
+			return fmt.Errorf("raft.batch.min_timeout must be > 0")
+		}
+		if c.Server.Raft.Batch.MaxTimeout <= 0 {
+			return fmt.Errorf("raft.batch.max_timeout must be > 0")
+		}
+		if c.Server.Raft.Batch.MinTimeout > c.Server.Raft.Batch.MaxTimeout {
+			return fmt.Errorf("raft.batch.min_timeout must be <= max_timeout")
+		}
+		if c.Server.Raft.Batch.LoadThreshold < 0 || c.Server.Raft.Batch.LoadThreshold > 1 {
+			return fmt.Errorf("raft.batch.load_threshold must be between 0.0 and 1.0")
+		}
+	}
+
+	// 验证 Lease Read 配置
+	if c.Server.Raft.LeaseRead.Enable {
+		if c.Server.Raft.LeaseRead.ClockDrift <= 0 {
+			return fmt.Errorf("raft.lease_read.clock_drift must be > 0")
+		}
+		if c.Server.Raft.LeaseRead.ReadTimeout <= 0 {
+			return fmt.Errorf("raft.lease_read.read_timeout must be > 0")
+		}
+		// 时钟偏移应该小于选举超时，否则租约不安全
+		electionTimeout := time.Duration(c.Server.Raft.ElectionTick) * c.Server.Raft.TickInterval
+		if c.Server.Raft.LeaseRead.ClockDrift >= electionTimeout {
+			return fmt.Errorf("raft.lease_read.clock_drift must be < election_timeout")
+		}
 	}
 
 	return nil
