@@ -37,8 +37,8 @@ type LeaseManager struct {
 	leaseRenewCount  atomic.Int64 // Lease renewal count
 	leaseExpireCount atomic.Int64 // Lease expiration count
 
-	// Smart configuration (支持动态扩缩容)
-	smartConfig *SmartLeaseConfig // nil 表示总是启用
+	// Smart configuration (supports dynamic scaling)
+	smartConfig *SmartLeaseConfig // nil means always enabled
 
 	logger *zap.Logger
 }
@@ -51,7 +51,7 @@ type LeaseConfig struct {
 }
 
 // NewLeaseManager creates a new lease manager
-// smartConfig: 传入 nil 表示总是启用，传入非 nil 则根据智能配置决定
+// smartConfig: passing nil means always enabled, passing non-nil uses smart configuration decision
 func NewLeaseManager(config LeaseConfig, smartConfig *SmartLeaseConfig, logger *zap.Logger) *LeaseManager {
 	// Default clock drift: 500ms
 	clockDrift := config.ClockDrift
@@ -76,9 +76,9 @@ func NewLeaseManager(config LeaseConfig, smartConfig *SmartLeaseConfig, logger *
 // RenewLease attempts to renew the lease after receiving heartbeat acknowledgments
 // Returns true if the lease was successfully renewed
 func (lm *LeaseManager) RenewLease(receivedAcks int, totalNodes int) bool {
-	// 0. 运行时检查：智能配置是否允许启用
+	// 0. Runtime check: whether smart configuration allows enabling
 	if lm.smartConfig != nil && !lm.smartConfig.IsEnabled() {
-		// 单节点或用户禁用，跳过续期
+		// Single node or user disabled, skip renewal
 		return false
 	}
 
@@ -87,12 +87,12 @@ func (lm *LeaseManager) RenewLease(receivedAcks int, totalNodes int) bool {
 		return false
 	}
 
-	// 2. 单节点特殊处理（参考 etcd）
-	// 防御性处理：Progress 为空或单节点时的边界情况
+	// 2. Special handling for single node (reference: etcd)
+	// Defensive handling: edge case when Progress is empty or single node
 	if totalNodes <= 1 {
-		// 单节点场景：自己就是 quorum
+		// Single node scenario: self is the quorum
 		totalNodes = 1
-		receivedAcks = max(receivedAcks, 1) // 确保至少算上自己
+		receivedAcks = max(receivedAcks, 1) // Ensure at least count self
 	}
 
 	// 3. Check if we received majority acknowledgments
@@ -113,11 +113,11 @@ func (lm *LeaseManager) RenewLease(receivedAcks int, totalNodes int) bool {
 	) - lm.clockDrift
 
 	// Ensure lease duration is positive with a minimum floor value
-	// 最小兜底值：50ms (仅用于配置严重不合理的情况)
-	// 注意：
-	// - 业界推荐：etcd 500ms+, Consul 500ms, Chubby 5s+
-	// - 生产环境建议配置：electionTimeout >= 1000ms, clockDrift <= 200ms
-	// - 此最小值仅在配置导致负数或接近0时触发，避免系统完全无法工作
+	// Minimum fallback value: 50ms (only for severely misconfigured scenarios)
+	// Notes:
+	// - Industry recommendations: etcd 500ms+, Consul 500ms, Chubby 5s+
+	// - Production recommended config: electionTimeout >= 1000ms, clockDrift <= 200ms
+	// - This minimum only triggers when config leads to negative or near-zero values, preventing complete system failure
 	const minLeaseDuration = 50 * time.Millisecond
 	if leaseDuration <= 0 {
 		lm.logger.Warn("Invalid lease duration (<=0), using minimum fallback",
