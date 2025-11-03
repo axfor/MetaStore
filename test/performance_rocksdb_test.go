@@ -47,7 +47,7 @@ func TestRocksDBPerformance_LargeScaleLoad(t *testing.T) {
 	defer cli.Close()
 
 	// Test parameters
-	numClients := 50
+	numClients := 100
 	operationsPerClient := 1000
 	totalOperations := numClients * operationsPerClient
 
@@ -104,7 +104,10 @@ func TestRocksDBPerformance_LargeScaleLoad(t *testing.T) {
 	// Calculate metrics
 	successOps := atomic.LoadInt64(&successCount)
 	errorOps := atomic.LoadInt64(&errorCount)
-	avgLatency := time.Duration(atomic.LoadInt64(&totalLatency) / successOps)
+	var avgLatency time.Duration
+	if successOps > 0 {
+		avgLatency = time.Duration(atomic.LoadInt64(&totalLatency) / successOps)
+	}
 	throughput := float64(successOps) / duration.Seconds()
 
 	// Report results
@@ -148,7 +151,7 @@ func TestRocksDBPerformance_SustainedLoad(t *testing.T) {
 	defer cli.Close()
 
 	// Test parameters
-	duration := 5 * time.Minute // 5分钟持续负载测试
+	duration := 10 * time.Minute // 5分钟持续负载测试
 	numClients := 20
 
 	t.Logf("Starting RocksDB sustained load test: %d clients for %v", numClients, duration)
@@ -231,7 +234,7 @@ func TestRocksDBPerformance_MixedWorkload(t *testing.T) {
 	defer cli.Close()
 
 	// Test parameters
-	testDuration := 5 * time.Minute // 5分钟混合负载测试
+	testDuration := 10 * time.Minute // 5分钟混合负载测试
 	numClients := 30
 
 	t.Logf("Starting RocksDB mixed workload test: %d clients for %v", numClients, testDuration)

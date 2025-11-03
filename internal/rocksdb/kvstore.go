@@ -27,6 +27,7 @@ import (
 
 	"metaStore/internal/common"
 	"metaStore/internal/kvstore"
+	"metaStore/internal/lease"
 	"metaStore/pkg/log"
 
 	"github.com/linxGnu/grocksdb"
@@ -46,6 +47,8 @@ const (
 type RaftNode interface {
 	Status() kvstore.RaftStatus
 	TransferLeadership(targetID uint64) error
+	LeaseManager() *lease.LeaseManager
+	ReadIndexManager() *lease.ReadIndexManager
 }
 
 // RocksDB integrates Raft consensus with etcd-compatible RocksDB storage
@@ -480,6 +483,24 @@ func (r *RocksDB) incrementRevision() (int64, error) {
 
 // Range performs range query
 func (r *RocksDB) Range(ctx context.Context, key, rangeEnd string, limit int64, revision int64) (*kvstore.RangeResponse, error) {
+	// Lease Read 优化: 检查是否可以使用快速路径
+	if r.raftNode != nil {
+		leaseManager := r.raftNode.LeaseManager()
+		readIndexManager := r.raftNode.ReadIndexManager()
+
+		if leaseManager != nil && readIndexManager != nil {
+			// Fast Path: Leader 有有效租约
+			if leaseManager.IsLeader() && leaseManager.HasValidLease() {
+				// 记录快速路径读取
+				readIndexManager.RecordFastPathRead()
+				// 继续执行下面的本地读取逻辑（已由租约保证线性一致性）
+			}
+			// Slow Path: 非 Leader 或租约失效
+			// TODO: 实现 ReadIndex 协议或转发给 Leader
+			// 当前简化实现：直接读取（在完整实现前保持向后兼容）
+		}
+	}
+
 	// Pre-allocate slice with estimated capacity
 	estimatedCap := 100
 	if limit > 0 && limit < 100 {

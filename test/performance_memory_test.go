@@ -104,7 +104,10 @@ func TestMemoryPerformance_LargeScaleLoad(t *testing.T) {
 	// Calculate metrics
 	successOps := atomic.LoadInt64(&successCount)
 	errorOps := atomic.LoadInt64(&errorCount)
-	avgLatency := time.Duration(atomic.LoadInt64(&totalLatency) / successOps)
+	var avgLatency time.Duration
+	if successOps > 0 {
+		avgLatency = time.Duration(atomic.LoadInt64(&totalLatency) / successOps)
+	}
 	throughput := float64(successOps) / duration.Seconds()
 
 	// Report results

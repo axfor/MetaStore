@@ -157,7 +157,7 @@ func main() {
 		// Create RocksDB-backed KV store
 		var kvs *rocksdb.RocksDB
 		getSnapshot := func() ([]byte, error) { return kvs.GetSnapshot() }
-		commitC, errorC, snapshotterReady, raftNode := raft.NewNodeRocksDB(*memberID, strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC, db, dbPath)
+		commitC, errorC, snapshotterReady, raftNode := raft.NewNodeRocksDB(*memberID, strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC, db, dbPath, cfg)
 
 		// 使用原始构造函数（不使用 BatchProposer）
 		kvs = rocksdb.NewRocksDB(db, <-snapshotterReady, proposeC, commitC, errorC)
@@ -204,7 +204,7 @@ func main() {
 		log.Info("Starting with memory + WAL storage and etcd gRPC support", zap.String("component", "main"))
 		var kvs *memory.Memory
 		getSnapshot := func() ([]byte, error) { return kvs.GetSnapshot() }
-		commitC, errorC, snapshotterReady, raftNode := raft.NewNode(*memberID, strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC, "memory")
+		commitC, errorC, snapshotterReady, raftNode := raft.NewNode(*memberID, strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC, "memory", cfg)
 
 		// 使用原始构造函数（不使用 BatchProposer）
 		kvs = memory.NewMemory(<-snapshotterReady, proposeC, commitC, errorC)

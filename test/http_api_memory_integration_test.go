@@ -77,7 +77,7 @@ func newCluster(n int) *cluster {
 		clus.confChangeC[i] = make(chan raftpb.ConfChange, 1)
 		fn, snapshotTriggeredC := getSnapshotFn()
 		clus.snapshotTriggeredC[i] = snapshotTriggeredC
-		clus.commitC[i], clus.errorC[i], clus.snapshotterReady[i], _ = raft.NewNode(i+1, clus.peers, false, fn, clus.proposeC[i], clus.confChangeC[i], "memory")
+		clus.commitC[i], clus.errorC[i], clus.snapshotterReady[i], _ = raft.NewNode(i+1, clus.peers, false, fn, clus.proposeC[i], clus.confChangeC[i], "memory", NewTestConfig(1, 1, ":2379"))
 	}
 
 	return clus
@@ -189,7 +189,7 @@ func TestHTTPAPIMemoryPutAndGetKeyValue(t *testing.T) {
 
 	var kvs *memory.Memory
 	getSnapshot := func() ([]byte, error) { return kvs.GetSnapshot() }
-	commitC, errorC, snapshotterReady, _ := raft.NewNode(1, clusters, false, getSnapshot, proposeC, confChangeC, "memory")
+	commitC, errorC, snapshotterReady, _ := raft.NewNode(1, clusters, false, getSnapshot, proposeC, confChangeC, "memory", NewTestConfig(1, 1, ":2379"))
 
 	kvs = memory.NewMemory(<-snapshotterReady, proposeC, commitC, errorC)
 
@@ -253,6 +253,9 @@ func TestHTTPAPIMemoryAddNewNode(t *testing.T) {
 	// Step 3: Create snapshot function for Node 4
 	fn, _ := getSnapshotFn()
 
+	// Step 3.5: Create test config for Node 4
+	cfg := NewTestConfig(4, 1, ":9404")
+
 	// Step 4: Start Node 4 with join=true and capture all return values
 	t.Log("Step 3: Starting Node 4 (join mode)...")
 	commitC, errorC, _, _ := raft.NewNode(
@@ -263,6 +266,7 @@ func TestHTTPAPIMemoryAddNewNode(t *testing.T) {
 		proposeC,
 		confChangeC,
 		"memory",
+		cfg,
 	)
 
 	// Step 5: Start goroutine to drain commitC (critical for Raft to make progress)

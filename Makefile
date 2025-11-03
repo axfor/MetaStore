@@ -64,13 +64,13 @@ test:
 	@echo "$(YELLOW)Testing internal packages...$(NO_COLOR)"
 	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v -timeout=20m ./internal/...
 	@echo "$(YELLOW)Testing integration and system tests...$(NO_COLOR)"
-	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v -timeout=45m ./test/
+	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v -timeout=60m ./test/
 	@echo "$(GREEN)All tests passed!$(NO_COLOR)"
 
 ## test-unit: Run only unit tests (no integration tests)
 test-unit:
 	@echo "$(CYAN)Running unit tests...$(NO_COLOR)"
-	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v -timeout=10m ./internal/...
+	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v -timeout=15m ./internal/...
 
 ## test-integration: Run only integration tests
 test-integration:
@@ -104,22 +104,22 @@ test-quick:
 ## test-perf-memory: Run Memory storage performance tests
 test-perf-memory:
 	@echo "$(CYAN)Running Memory storage performance tests...$(NO_COLOR)"
-	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v -timeout=15m -run="TestMemoryPerformance_" ./test/
+	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v -timeout=20m -run="TestMemoryPerformance_" ./test/
 	@echo "$(GREEN)Memory performance tests completed!$(NO_COLOR)"
 
 ## test-perf-rocksdb: Run RocksDB storage performance tests
 test-perf-rocksdb:
 	@echo "$(CYAN)Running RocksDB storage performance tests...$(NO_COLOR)"
-	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v -timeout=15m -run="TestRocksDBPerformance_" ./test/
+	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v -timeout=20m -run="TestRocksDBPerformance_" ./test/
 	@echo "$(GREEN)RocksDB performance tests completed!$(NO_COLOR)"
 
 ## test-perf: Run all performance tests (Memory + RocksDB)
 test-perf:
 	@echo "$(CYAN)Running all performance tests...$(NO_COLOR)"
 	@echo "$(YELLOW)Testing Memory storage performance...$(NO_COLOR)"
-	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v -timeout=15m -run="TestMemoryPerformance_" ./test/
+	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v -timeout=20m -run="TestMemoryPerformance_" ./test/
 	@echo "$(YELLOW)Testing RocksDB storage performance...$(NO_COLOR)"
-	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v -timeout=15m -run="TestRocksDBPerformance_" ./test/
+	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v -timeout=20m -run="TestRocksDBPerformance_" ./test/
 	@echo "$(GREEN)All performance tests completed!$(NO_COLOR)"
 
 ## deps: Download dependencies
