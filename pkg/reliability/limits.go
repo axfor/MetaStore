@@ -28,45 +28,45 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// ResourceLimits 资源限制配置
+// ResourceLimits resource limits configuration
 type ResourceLimits struct {
-	MaxConnections    int64 // 最大连接数
-	MaxRequests       int64 // 最大并发请求数
-	MaxMemoryBytes    int64 // 最大内存使用（字节）
-	MaxRequestSize    int64 // 最大请求大小（字节）
+	MaxConnections    int64 // Maximum number of connections
+	MaxRequests       int64 // Maximum concurrent requests
+	MaxMemoryBytes    int64 // Maximum memory usage (bytes)
+	MaxRequestSize    int64 // Maximum request size (bytes)
 	RequestTimeout    time.Duration
 	ConnectionTimeout time.Duration
 }
 
-// DefaultLimits 默认资源限制
-// 注意：这些默认值应该与 config.DefaultConfig 中的值保持一致
+// DefaultLimits default resource limits
+// Note: These default values should be consistent with config.DefaultConfig
 var DefaultLimits = ResourceLimits{
-	MaxConnections:    1000,                    // 默认最大连接数
-	MaxRequests:       5000,                    // 默认最大并发请求数
-	MaxMemoryBytes:    8 * 1024 * 1024 * 1024,  // 8GB，适合性能测试和生产环境
+	MaxConnections:    1000,                    // Default max connections
+	MaxRequests:       5000,                    // Default max concurrent requests
+	MaxMemoryBytes:    8 * 1024 * 1024 * 1024,  // 8GB, suitable for performance tests and production
 	MaxRequestSize:    4 * 1024 * 1024,         // 4MB
 	RequestTimeout:    30 * time.Second,
 	ConnectionTimeout: 10 * time.Second,
 }
 
-// ResourceManager 资源管理器
+// ResourceManager resource manager
 type ResourceManager struct {
 	limits ResourceLimits
 
-	// 当前状态
+	// Current state
 	currentConnections int64
 	currentRequests    int64
 
-	// 连接管理
+	// Connection management
 	connMu      sync.RWMutex
 	connections map[string]*Connection
 
-	// 内存监控
+	// Memory monitoring
 	memoryCheckInterval time.Duration
 	memoryCheckStop     chan struct{}
 }
 
-// Connection 连接信息
+// Connection connection information
 type Connection struct {
 	ID         string
 	RemoteAddr string
@@ -74,7 +74,7 @@ type Connection struct {
 	LastActive time.Time
 }
 
-// NewResourceManager 创建资源管理器
+// NewResourceManager creates a resource manager
 func NewResourceManager(limits ResourceLimits) *ResourceManager {
 	rm := &ResourceManager{
 		limits:              limits,
@@ -83,13 +83,13 @@ func NewResourceManager(limits ResourceLimits) *ResourceManager {
 		memoryCheckStop:     make(chan struct{}),
 	}
 
-	// 启动内存监控
+	// Start memory monitoring
 	go rm.monitorMemory()
 
 	return rm
 }
 
-// AcquireConnection 获取连接许可
+// AcquireConnection acquires a connection permit
 func (rm *ResourceManager) AcquireConnection(connID, remoteAddr string) error {
 	current := atomic.AddInt64(&rm.currentConnections, 1)
 	if current > rm.limits.MaxConnections {
@@ -110,7 +110,7 @@ func (rm *ResourceManager) AcquireConnection(connID, remoteAddr string) error {
 	return nil
 }
 
-// ReleaseConnection 释放连接
+// ReleaseConnection releases a connection
 func (rm *ResourceManager) ReleaseConnection(connID string) {
 	rm.connMu.Lock()
 	delete(rm.connections, connID)
@@ -119,7 +119,7 @@ func (rm *ResourceManager) ReleaseConnection(connID string) {
 	atomic.AddInt64(&rm.currentConnections, -1)
 }
 
-// AcquireRequest 获取请求许可
+// AcquireRequest acquires a request permit
 func (rm *ResourceManager) AcquireRequest(ctx context.Context) (func(), error) {
 	current := atomic.AddInt64(&rm.currentRequests, 1)
 	if current > rm.limits.MaxRequests {
@@ -128,7 +128,7 @@ func (rm *ResourceManager) AcquireRequest(ctx context.Context) (func(), error) {
 			"request limit exceeded: %d/%d", current, rm.limits.MaxRequests)
 	}
 
-	// 返回释放函数
+	// Return release function
 	release := func() {
 		atomic.AddInt64(&rm.currentRequests, -1)
 	}
@@ -136,7 +136,7 @@ func (rm *ResourceManager) AcquireRequest(ctx context.Context) (func(), error) {
 	return release, nil
 }
 
-// CheckRequestSize 检查请求大小
+// CheckRequestSize checks request size
 func (rm *ResourceManager) CheckRequestSize(size int64) error {
 	if size > rm.limits.MaxRequestSize {
 		return status.Errorf(codes.InvalidArgument,
@@ -145,7 +145,7 @@ func (rm *ResourceManager) CheckRequestSize(size int64) error {
 	return nil
 }
 
-// CheckMemory 检查内存使用
+// CheckMemory checks memory usage
 func (rm *ResourceManager) CheckMemory() error {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
@@ -159,7 +159,7 @@ func (rm *ResourceManager) CheckMemory() error {
 	return nil
 }
 
-// monitorMemory 监控内存使用
+// monitorMemory monitors memory usage
 func (rm *ResourceManager) monitorMemory() {
 	ticker := time.NewTicker(rm.memoryCheckInterval)
 	defer ticker.Stop()
@@ -172,12 +172,12 @@ func (rm *ResourceManager) monitorMemory() {
 
 			usagePercent := float64(m.Alloc) / float64(rm.limits.MaxMemoryBytes) * 100
 
-			// 当内存使用超过 80% 时触发 GC
+			// Trigger GC when memory usage exceeds 80%
 			if usagePercent > 80 {
 				runtime.GC()
 			}
 
-			// 当内存使用超过 90% 时告警
+			// Alert when memory usage exceeds 90%
 			if usagePercent > 90 {
 				log.Warn("High memory usage",
 					log.String("usage_percent", fmt.Sprintf("%.1f%%", usagePercent)),
@@ -192,7 +192,7 @@ func (rm *ResourceManager) monitorMemory() {
 	}
 }
 
-// UpdateConnectionActivity 更新连接活动时间
+// UpdateConnectionActivity updates connection activity time
 func (rm *ResourceManager) UpdateConnectionActivity(connID string) {
 	rm.connMu.Lock()
 	if conn, exists := rm.connections[connID]; exists {
@@ -201,7 +201,7 @@ func (rm *ResourceManager) UpdateConnectionActivity(connID string) {
 	rm.connMu.Unlock()
 }
 
-// GetStats 获取资源使用统计
+// GetStats gets resource usage statistics
 func (rm *ResourceManager) GetStats() ResourceStats {
 	rm.connMu.RLock()
 	connCount := len(rm.connections)
@@ -221,7 +221,7 @@ func (rm *ResourceManager) GetStats() ResourceStats {
 	}
 }
 
-// ResourceStats 资源使用统计
+// ResourceStats resource usage statistics
 type ResourceStats struct {
 	CurrentConnections int64
 	MaxConnections     int64
@@ -232,37 +232,37 @@ type ResourceStats struct {
 	ActiveConnections  int64
 }
 
-// Close 关闭资源管理器
+// Close closes the resource manager
 func (rm *ResourceManager) Close() {
 	close(rm.memoryCheckStop)
 }
 
-// LimitInterceptor gRPC 拦截器
+// LimitInterceptor gRPC interceptor for resource limits
 func (rm *ResourceManager) LimitInterceptor(
 	ctx context.Context,
 	req interface{},
 	info *grpc.UnaryServerInfo,
 	handler grpc.UnaryHandler,
 ) (interface{}, error) {
-	// 检查内存
+	// Check memory
 	if err := rm.CheckMemory(); err != nil {
 		return nil, err
 	}
 
-	// 获取请求许可
+	// Acquire request permit
 	release, err := rm.AcquireRequest(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer release()
 
-	// 应用请求超时
+	// Apply request timeout
 	if rm.limits.RequestTimeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, rm.limits.RequestTimeout)
 		defer cancel()
 	}
 
-	// 执行处理器
+	// Execute handler
 	return handler(ctx, req)
 }
