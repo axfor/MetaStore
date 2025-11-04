@@ -124,7 +124,11 @@ echo ""
 echo "测试 KV 操作..."
 $pre_dir/../tools/etcdctl  put cluster-key-2025 2025
 $pre_dir/../tools/etcdctl  get cluster-key-2025
-$pre_dir/../tools/etcdctl  get cluster-key-2025 --prefix
+$pre_dir/../tools/etcdctl  put cluster-key-20251 2025
+$pre_dir/../tools/etcdctl  get cluster-key-20251
+$pre_dir/../tools/etcdctl  get cluster --prefix
+$pre_dir/../tools/etcdctl  del cluster-key-20251
+$pre_dir/../tools/etcdctl  get cluster --prefix
 echo "✅ KV 操作测试通过"	
 
 echo "5. 测试 etcd clientv3..."
