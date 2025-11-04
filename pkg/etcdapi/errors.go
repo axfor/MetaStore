@@ -28,6 +28,7 @@ var (
 	ErrFutureRev        = errors.New("required revision is a future revision")
 	ErrLeaseNotFound    = errors.New("lease not found")
 	ErrLeaseExpired     = errors.New("lease expired")
+	ErrTooManyLeases    = errors.New("too many leases")
 	ErrTxnConflict      = errors.New("transaction conflict")
 	ErrPermissionDenied = errors.New("permission denied")
 	ErrAuthFailed       = errors.New("authentication failed")
@@ -42,6 +43,7 @@ var errorCodeMap = map[error]codes.Code{
 	ErrFutureRev:        codes.OutOfRange,
 	ErrLeaseNotFound:    codes.NotFound,
 	ErrLeaseExpired:     codes.NotFound,
+	ErrTooManyLeases:    codes.ResourceExhausted,
 	ErrTxnConflict:      codes.FailedPrecondition,
 	ErrPermissionDenied: codes.PermissionDenied,
 	ErrAuthFailed:       codes.Unauthenticated,

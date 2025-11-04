@@ -336,7 +336,7 @@ func TestHTTPAPIMemorySingleNodeWriteRead(t *testing.T) {
 
 	var kvs *memory.Memory
 	getSnapshot := func() ([]byte, error) { return kvs.GetSnapshot() }
-	commitC, errorC, snapshotterReady, _ := raft.NewNode(1, clusters, false, getSnapshot, proposeC, confChangeC, "memory")
+	commitC, errorC, snapshotterReady, _ := raft.NewNode(1, clusters, false, getSnapshot, proposeC, confChangeC, "memory", NewTestConfig(1, 1, ":2379"))
 
 	kvs = memory.NewMemory(<-snapshotterReady, proposeC, commitC, errorC)
 
@@ -410,7 +410,7 @@ func TestHTTPAPIMemorySingleNodeSequentialWrites(t *testing.T) {
 	var kvs *memory.Memory
 	getSnapshot := func() ([]byte, error) { return kvs.GetSnapshot() }
 
-	commitC, errorC, snapshotterReady, _ := raft.NewNode(1, clusters, false, getSnapshot, proposeC, confChangeC, "memory-seq")
+	commitC, errorC, snapshotterReady, _ := raft.NewNode(1, clusters, false, getSnapshot, proposeC, confChangeC, "memory-seq", NewTestConfig(1, 1, ":2379"))
 
 	kvs = memory.NewMemory(<-snapshotterReady, proposeC, commitC, errorC)
 

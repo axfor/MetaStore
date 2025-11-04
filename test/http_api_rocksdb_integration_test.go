@@ -73,6 +73,9 @@ func newRocksDBCluster(n int) *rocksDBCluster {
 		clus.proposeC[i] = make(chan string, 1)
 		clus.confChangeC[i] = make(chan raftpb.ConfChange, 1)
 
+		// Create test config for this node
+		cfg := NewTestConfig(uint64(i+1), 1, fmt.Sprintf(":940%d", i+1))
+
 		// Use a dummy getSnapshot function
 		getSnapshot := func() ([]byte, error) { return nil, nil }
 		clus.commitC[i], clus.errorC[i], clus.snapshotterReady[i], _ = raft.NewNodeRocksDB(
@@ -84,6 +87,7 @@ func newRocksDBCluster(n int) *rocksDBCluster {
 			clus.confChangeC[i],
 			clus.dbs[i],
 			dataDir,
+			cfg,
 		)
 	}
 

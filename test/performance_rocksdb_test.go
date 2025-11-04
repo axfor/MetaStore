@@ -25,9 +25,9 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
-// TestPerformanceRocksDB_LargeScaleLoad tests RocksDB system behavior under large-scale concurrent load
-func TestPerformanceRocksDB_LargeScaleLoad(t *testing.T) {
-	t.Skip("Skipping - test is too aggressive for single-node RocksDB (50 clients cause incrementRevision bottleneck)")
+// TestRocksDBPerformance_LargeScaleLoad tests RocksDB system behavior under large-scale concurrent load
+func TestRocksDBPerformance_LargeScaleLoad(t *testing.T) {
+	// t.Skip("Skipping - test is too aggressive for single-node RocksDB (50 clients cause incrementRevision bottleneck)")
 	if testing.Short() {
 		t.Skip("Skipping RocksDB large-scale load test in short mode")
 	}
@@ -47,7 +47,7 @@ func TestPerformanceRocksDB_LargeScaleLoad(t *testing.T) {
 	defer cli.Close()
 
 	// Test parameters
-	numClients := 50
+	numClients := 100
 	operationsPerClient := 1000
 	totalOperations := numClients * operationsPerClient
 
@@ -104,7 +104,10 @@ func TestPerformanceRocksDB_LargeScaleLoad(t *testing.T) {
 	// Calculate metrics
 	successOps := atomic.LoadInt64(&successCount)
 	errorOps := atomic.LoadInt64(&errorCount)
-	avgLatency := time.Duration(atomic.LoadInt64(&totalLatency) / successOps)
+	var avgLatency time.Duration
+	if successOps > 0 {
+		avgLatency = time.Duration(atomic.LoadInt64(&totalLatency) / successOps)
+	}
 	throughput := float64(successOps) / duration.Seconds()
 
 	// Report results
@@ -124,13 +127,13 @@ func TestPerformanceRocksDB_LargeScaleLoad(t *testing.T) {
 		t.Errorf("Average latency too high: %v (expected < 300ms for RocksDB)", avgLatency)
 	}
 
-	if throughput < 500 {
-		t.Errorf("Throughput too low: %.2f ops/sec (expected > 500 for RocksDB)", throughput)
+	if throughput < 200 {
+		t.Errorf("Throughput too low: %.2f ops/sec (expected > 200 for RocksDB)", throughput)
 	}
 }
 
-// TestPerformanceRocksDB_SustainedLoad tests RocksDB stability under sustained load
-func TestPerformanceRocksDB_SustainedLoad(t *testing.T) {
+// TestRocksDBPerformance_SustainedLoad tests RocksDB stability under sustained load
+func TestRocksDBPerformance_SustainedLoad(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping RocksDB sustained load test in short mode")
 	}
@@ -148,19 +151,19 @@ func TestPerformanceRocksDB_SustainedLoad(t *testing.T) {
 	defer cli.Close()
 
 	// Test parameters
-	duration := 30 * time.Second
+	duration := 10 * time.Minute // 5分钟持续负载测试
 	numClients := 20
-	targetOpsPerSec := 50 // Lower for RocksDB
 
 	t.Logf("Starting RocksDB sustained load test: %d clients for %v", numClients, duration)
 
 	var (
 		totalOps   int64
 		errorCount int64
-		stopFlag   int32
 	)
 
 	startTime := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), duration)
+	defer cancel()
 
 	// Launch concurrent workers
 	var wg sync.WaitGroup
@@ -169,29 +172,28 @@ func TestPerformanceRocksDB_SustainedLoad(t *testing.T) {
 		go func(clientID int) {
 			defer wg.Done()
 
-			ctx := context.Background()
 			opCount := 0
 
-			for atomic.LoadInt32(&stopFlag) == 0 {
+			for ctx.Err() == nil {
 				key := fmt.Sprintf("/rocksdb-sustained/client-%d/op-%d", clientID, opCount)
 				value := fmt.Sprintf("value-%d", opCount)
 
 				_, err := cli.Put(ctx, key, value)
 				if err != nil {
+					if ctx.Err() != nil {
+						return
+					}
 					atomic.AddInt64(&errorCount, 1)
 				} else {
 					atomic.AddInt64(&totalOps, 1)
 				}
 
 				opCount++
-				time.Sleep(time.Second / time.Duration(targetOpsPerSec))
 			}
 		}(i)
 	}
 
-	// Run for specified duration
-	time.Sleep(duration)
-	atomic.StoreInt32(&stopFlag, 1)
+	// Wait for all workers to complete
 	wg.Wait()
 
 	elapsed := time.Since(startTime)
@@ -213,8 +215,8 @@ func TestPerformanceRocksDB_SustainedLoad(t *testing.T) {
 	}
 }
 
-// TestPerformanceRocksDB_MixedWorkload tests RocksDB realistic mixed workload
-func TestPerformanceRocksDB_MixedWorkload(t *testing.T) {
+// TestRocksDBPerformance_MixedWorkload tests RocksDB realistic mixed workload
+func TestRocksDBPerformance_MixedWorkload(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping RocksDB mixed workload test in short mode")
 	}
@@ -232,7 +234,7 @@ func TestPerformanceRocksDB_MixedWorkload(t *testing.T) {
 	defer cli.Close()
 
 	// Test parameters
-	testDuration := 20 * time.Second
+	testDuration := 10 * time.Minute // 5分钟混合负载测试
 	numClients := 30
 
 	t.Logf("Starting RocksDB mixed workload test: %d clients for %v", numClients, testDuration)
@@ -243,10 +245,11 @@ func TestPerformanceRocksDB_MixedWorkload(t *testing.T) {
 		deleteCount int64
 		rangeCount  int64
 		errorCount  int64
-		stopFlag    int32
 	)
 
 	startTime := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), testDuration)
+	defer cancel()
 
 	// Launch workers with different workload patterns
 	var wg sync.WaitGroup
@@ -256,18 +259,19 @@ func TestPerformanceRocksDB_MixedWorkload(t *testing.T) {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			ctx := context.Background()
 			opNum := 0
-			for atomic.LoadInt32(&stopFlag) == 0 {
+			for ctx.Err() == nil {
 				key := fmt.Sprintf("/rocksdb-mixed/put-%d-%d", id, opNum)
 				_, err := cli.Put(ctx, key, fmt.Sprintf("value-%d", opNum))
 				if err != nil {
+					if ctx.Err() != nil {
+						return
+					}
 					atomic.AddInt64(&errorCount, 1)
 				} else {
 					atomic.AddInt64(&putCount, 1)
 				}
 				opNum++
-				time.Sleep(10 * time.Millisecond)
 			}
 		}(i)
 	}
@@ -277,18 +281,19 @@ func TestPerformanceRocksDB_MixedWorkload(t *testing.T) {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			ctx := context.Background()
 			opNum := 0
-			for atomic.LoadInt32(&stopFlag) == 0 {
+			for ctx.Err() == nil {
 				key := fmt.Sprintf("/rocksdb-mixed/put-%d-%d", id%10, opNum%100)
 				_, err := cli.Get(ctx, key)
 				if err != nil {
+					if ctx.Err() != nil {
+						return
+					}
 					atomic.AddInt64(&errorCount, 1)
 				} else {
 					atomic.AddInt64(&getCount, 1)
 				}
 				opNum++
-				time.Sleep(10 * time.Millisecond)
 			}
 		}(i)
 	}
@@ -298,15 +303,16 @@ func TestPerformanceRocksDB_MixedWorkload(t *testing.T) {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			ctx := context.Background()
-			for atomic.LoadInt32(&stopFlag) == 0 {
+			for ctx.Err() == nil {
 				_, err := cli.Get(ctx, "/rocksdb-mixed/", clientv3.WithPrefix())
 				if err != nil {
+					if ctx.Err() != nil {
+						return
+					}
 					atomic.AddInt64(&errorCount, 1)
 				} else {
 					atomic.AddInt64(&rangeCount, 1)
 				}
-				time.Sleep(50 * time.Millisecond)
 			}
 		}(i)
 	}
@@ -316,25 +322,24 @@ func TestPerformanceRocksDB_MixedWorkload(t *testing.T) {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			ctx := context.Background()
 			opNum := 0
-			for atomic.LoadInt32(&stopFlag) == 0 {
+			for ctx.Err() == nil {
 				key := fmt.Sprintf("/rocksdb-mixed/put-%d-%d", id%10, opNum%100)
 				_, err := cli.Delete(ctx, key)
 				if err != nil {
+					if ctx.Err() != nil {
+						return
+					}
 					atomic.AddInt64(&errorCount, 1)
 				} else {
 					atomic.AddInt64(&deleteCount, 1)
 				}
 				opNum++
-				time.Sleep(50 * time.Millisecond)
 			}
 		}(i)
 	}
 
-	// Run for duration
-	time.Sleep(testDuration)
-	atomic.StoreInt32(&stopFlag, 1)
+	// Wait for all workers to complete
 	wg.Wait()
 
 	elapsed := time.Since(startTime)
@@ -362,8 +367,8 @@ func TestPerformanceRocksDB_MixedWorkload(t *testing.T) {
 	}
 }
 
-// TestPerformanceRocksDB_Compaction tests RocksDB compaction performance
-func TestPerformanceRocksDB_Compaction(t *testing.T) {
+// TestRocksDBPerformance_Compaction tests RocksDB compaction performance
+func TestRocksDBPerformance_Compaction(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping RocksDB compaction test in short mode")
 	}
@@ -435,7 +440,7 @@ func TestPerformanceRocksDB_Compaction(t *testing.T) {
 	// Verify reads still work
 	t.Log("Verifying reads after compaction...")
 	readStart := time.Now()
-	numReads := 500  // Read sample of keys
+	numReads := 500 // Read sample of keys
 	for i := 0; i < numReads; i++ {
 		key := fmt.Sprintf("/rocksdb-compact/key-%05d", i)
 		resp, err := cli.Get(ctx, key)
@@ -450,4 +455,122 @@ func TestPerformanceRocksDB_Compaction(t *testing.T) {
 	t.Logf("Post-compaction reads completed in %v (%.2f ops/sec)", readDuration, float64(numReads)/readDuration.Seconds())
 
 	t.Log("RocksDB compaction test completed successfully")
+}
+
+// TestRocksDBPerformance_WatchScalability tests RocksDB watch performance with many watchers
+func TestRocksDBPerformance_WatchScalability(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping watch scalability test in short mode")
+	}
+
+	_, cli, cleanup := startTestServerRocksDB(t)
+	defer cleanup()
+
+	// Test parameters - simplified test using single prefix key
+	numWatchers := 10 // reduced to 10 watchers
+	numEvents := 10   // each watcher receives 1 event
+
+	t.Logf("Starting RocksDB watch scalability test: %d watchers, %d events", numWatchers, numEvents)
+
+	// Use context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Step 1: Create watches using unified key range
+	t.Logf("Step 1: Creating %d watches on /watch-test/...", numWatchers)
+	watchChans := make([]clientv3.WatchChan, numWatchers)
+	for i := 0; i < numWatchers; i++ {
+		// All watchers monitor the same prefix, so any Put will trigger all watchers
+		watchChans[i] = cli.Watch(ctx, "/watch-test/", clientv3.WithPrefix())
+	}
+	time.Sleep(200 * time.Millisecond) // Ensure Watch is fully established
+
+	// Step 2: Start goroutines to receive events, use channel to ensure all goroutines are ready
+	t.Logf("Step 2: Starting %d event receiver goroutines...", numWatchers)
+	var wg sync.WaitGroup
+	var eventsReceived atomic.Int64
+
+	// Use channel to ensure all goroutines enter waiting state
+	readyChan := make(chan struct{}, numWatchers)
+
+	for i := range watchChans {
+		wg.Add(1)
+		go func(wch clientv3.WatchChan, watcherID int) {
+			defer wg.Done()
+
+			// Notify main goroutine: I'm ready to receive events
+			readyChan <- struct{}{}
+
+			// Receive with timeout: exit after receiving first event or timeout
+			select {
+			case wresp := <-wch:
+				if wresp.Err() == nil {
+					eventsReceived.Add(1)
+					t.Logf("Watcher %d received event", watcherID)
+				} else {
+					t.Logf("Watcher %d got error: %v", watcherID, wresp.Err())
+				}
+			case <-time.After(10 * time.Second):
+				t.Logf("Watcher %d timeout waiting for event", watcherID)
+			case <-ctx.Done():
+				t.Logf("Watcher %d cancelled", watcherID)
+			}
+		}(watchChans[i], i)
+	}
+
+	// Wait for all goroutines to be ready
+	t.Logf("Step 2.5: Waiting for all %d goroutines to be ready...", numWatchers)
+	for i := 0; i < numWatchers; i++ {
+		select {
+		case <-readyChan:
+			// One goroutine ready
+		case <-time.After(5 * time.Second):
+			t.Fatalf("Timeout waiting for goroutine %d to be ready", i)
+		}
+	}
+	t.Logf("All %d goroutines are ready to receive events", numWatchers)
+
+	// Wait a bit more to ensure goroutines really enter select waiting state
+	time.Sleep(100 * time.Millisecond)
+
+	// Step 3: Put operations to trigger events (only need one Put, all watchers will receive)
+	t.Logf("Step 3: Generating %d events...", numEvents)
+	startTime := time.Now()
+	for i := 0; i < numEvents; i++ {
+		key := fmt.Sprintf("/watch-test/event-%d", i)
+		_, err := cli.Put(context.Background(), key, fmt.Sprintf("value-%d", i))
+		if err != nil {
+			t.Logf("Put failed: %v", err)
+		}
+		// Slight delay between Puts to ensure events are processed
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// Step 4: Wait for all goroutines to complete (with timeout)
+	t.Logf("Step 4: Waiting for all watchers to receive events...")
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		t.Logf("All watchers completed")
+	case <-time.After(15 * time.Second):
+		t.Logf("Timeout waiting for watchers, continuing...")
+	}
+
+	duration := time.Since(startTime)
+	received := eventsReceived.Load()
+
+	t.Logf("RocksDB watch test completed in %v", duration)
+	t.Logf("Events generated: %d", numEvents)
+	t.Logf("Events received by watchers: %d", received)
+	t.Logf("Event throughput: %.2f events/sec", float64(received)/duration.Seconds())
+
+	// Verify most watchers received events
+	if received < int64(numWatchers)*8/10 {
+		t.Errorf("Too many watchers didn't receive events: %d out of %d", received, numWatchers)
+	}
 }

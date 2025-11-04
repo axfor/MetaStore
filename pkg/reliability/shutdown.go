@@ -44,24 +44,32 @@ const (
 
 // GracefulShutdown 优雅关闭管理器
 type GracefulShutdown struct {
-	mu      sync.RWMutex
-	hooks   map[ShutdownPhase][]ShutdownHook
-	timeout time.Duration
-	done    chan struct{}
-	signals chan os.Signal
+	mu           sync.RWMutex
+	hooks        map[ShutdownPhase][]ShutdownHook
+	timeout      time.Duration // 总超时时间
+	drainTimeout time.Duration // 排空连接的专用超时
+	done         chan struct{}
+	signals      chan os.Signal
 }
 
 // NewGracefulShutdown 创建优雅关闭管理器
-func NewGracefulShutdown(timeout time.Duration) *GracefulShutdown {
+// timeout: 总关闭超时，drainTimeout: 排空连接的超时（可选）
+func NewGracefulShutdown(timeout time.Duration, drainTimeout ...time.Duration) *GracefulShutdown {
 	if timeout == 0 {
-		timeout = 30 * time.Second // 默认 30 秒超时
+		timeout = 30 * time.Second // 默认 30 秒总超时
+	}
+
+	dt := 5 * time.Second // 默认 5 秒排空超时
+	if len(drainTimeout) > 0 && drainTimeout[0] > 0 {
+		dt = drainTimeout[0]
 	}
 
 	gs := &GracefulShutdown{
-		hooks:   make(map[ShutdownPhase][]ShutdownHook),
-		timeout: timeout,
-		done:    make(chan struct{}),
-		signals: make(chan os.Signal, 1),
+		hooks:        make(map[ShutdownPhase][]ShutdownHook),
+		timeout:      timeout,
+		drainTimeout: dt,
+		done:         make(chan struct{}),
+		signals:      make(chan os.Signal, 1),
 	}
 
 	// 注册系统信号
@@ -121,8 +129,16 @@ func (gs *GracefulShutdown) Shutdown() {
 		hooks := gs.hooks[phase]
 		gs.mu.RUnlock()
 
+		// 为排空连接阶段使用专用超时
+		phaseCtx := ctx
+		if phase == PhaseDrainConnections {
+			var cancel context.CancelFunc
+			phaseCtx, cancel = context.WithTimeout(context.Background(), gs.drainTimeout)
+			defer cancel()
+		}
+
 		// 并发执行同一阶段的所有钩子
-		if err := gs.executeHooks(ctx, hooks, phaseName); err != nil {
+		if err := gs.executeHooks(phaseCtx, hooks, phaseName); err != nil {
 			log.Error("Shutdown phase failed",
 				log.Phase(phaseName),
 				log.Err(err),

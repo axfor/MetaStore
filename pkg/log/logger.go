@@ -18,6 +18,8 @@ import (
 	"os"
 	"sync"
 
+	"metaStore/pkg/config"
+
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -214,6 +216,27 @@ func InitGlobalLogger(cfg *Config) error {
 		globalLogger, err = NewLogger(cfg)
 	})
 	return err
+}
+
+// InitFromConfig 从配置文件初始化全局日志器
+// 将 config.LogConfig 转换为 log.Config 并初始化
+func InitFromConfig(cfg *config.LogConfig) error {
+	if cfg == nil {
+		return InitGlobalLogger(DefaultConfig)
+	}
+
+	logCfg := &Config{
+		Level:             cfg.Level,
+		OutputPaths:       cfg.OutputPaths,
+		ErrorOutputPaths:  cfg.ErrorOutputPaths,
+		Encoding:          cfg.Encoding,
+		Development:       false,
+		DisableCaller:     false,
+		DisableStacktrace: false,
+		EnableColor:       cfg.Encoding == "console", // console 模式启用颜色
+	}
+
+	return InitGlobalLogger(logCfg)
 }
 
 // GetLogger 获取全局日志器

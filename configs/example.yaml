@@ -1,0 +1,87 @@
+# MetaStore 配置示例
+#
+# 使用方法：
+#   1. 不提供配置文件 - 使用推荐默认值:
+#      ./metastore --member-id=1 --cluster-id=1
+#
+#   2. 使用配置文件 - 从文件加载配置:
+#      ./metastore --config=configs/example.yaml
+#
+#   3. 环境变量覆盖（优先级最高）:
+#      export METASTORE_LOG_LEVEL=debug
+#      ./metastore --config=configs/example.yaml
+
+server:
+  # 集群配置
+  cluster_id: 1
+  member_id: 1
+  listen_address: ":2379"
+
+  # gRPC 配置（基于业界最佳实践：etcd、gRPC 官方、TiKV）
+  grpc:
+    # 消息大小限制 (字节) - 与 Raft MaxSizePerMsg 对齐
+    max_recv_msg_size: 4194304      # 4MB（支持大批量操作）
+    max_send_msg_size: 4194304      # 4MB
+    max_concurrent_streams: 2048    # 最大并发流数量（支持更多 Watch/Stream）
+
+    # 流控制窗口大小 (字节) - 优化网络吞吐量
+    initial_window_size: 8388608    # 8MB - 初始流窗口（高吞吐场景）
+    initial_conn_window_size: 16777216  # 16MB - 初始连接窗口（连接级流控）
+
+    # Keepalive 配置 - 快速故障检测
+    keepalive_time: 10s             # 发送 ping 的时间间隔（快速检测连接健康）
+    keepalive_timeout: 10s          # 等待 ping 响应的超时时间（快速故障检测）
+    max_connection_idle: 300s       # 最大空闲连接时间（5分钟，避免频繁重连）
+    max_connection_age: 10m         # 连接最大存活时间
+    max_connection_age_grace: 10s   # 连接关闭宽限期（快速清理）
+
+    # 限流配置
+    enable_rate_limit: false        # 是否启用限流
+    rate_limit_qps: 0               # 每秒请求数限制（0表示不限制）
+    rate_limit_burst: 0             # 突发请求令牌桶大小（0表示不限制）
+
+  # 资源限制配置
+  limits:
+    max_connections: 1000           # 最大连接数
+    max_watch_count: 10000          # 最大 watch 数量
+    max_lease_count: 10000          # 最大 lease 数量
+    max_request_size: 1572864       # 最大请求大小 (1.5MB)
+
+  # Lease 配置
+  lease:
+    check_interval: 1s              # Lease 过期检查间隔
+    default_ttl: 60s                # 默认 TTL
+
+  # 认证配置
+  auth:
+    token_ttl: 24h                  # Token 有效期
+    token_cleanup_interval: 5m      # Token 清理间隔
+    bcrypt_cost: 10                 # Bcrypt 加密成本（4-31）
+    enable_audit: false             # 是否启用审计日志
+
+  # 维护配置
+  maintenance:
+    snapshot_chunk_size: 4194304    # 快照分块大小 (4MB)
+
+  # 可靠性配置
+  reliability:
+    shutdown_timeout: 30s           # 关闭超时时间
+    drain_timeout: 5s               # 连接排空超时时间
+    enable_crc: false               # 是否启用 CRC 校验
+    enable_health_check: true       # 是否启用健康检查
+    enable_panic_recovery: true     # 是否启用 panic 恢复
+
+  # 日志配置
+  log:
+    level: "info"                   # 日志级别: debug, info, warn, error, dpanic, panic, fatal
+    encoding: "json"                # 编码格式: json, console
+    output_paths:
+      - "stdout"                    # 输出路径
+    error_output_paths:
+      - "stderr"                    # 错误输出路径
+
+  # 监控配置
+  monitoring:
+    enable_prometheus: true         # 是否启用 Prometheus 指标
+    prometheus_port: 9090           # Prometheus 指标端口
+    slow_request_threshold: 100ms   # 慢请求阈值
