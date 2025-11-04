@@ -69,10 +69,13 @@ $pre_dir/../tools/etcdctl member list --write-out=table
 echo ""
 
 echo "测试 KV 操作..."
-
-$pre_dir/../tools/etcdctl  put single-key-2025 2025
-$pre_dir/../tools/etcdctl  get single-key-2025
-$pre_dir/../tools/etcdctl  get single-key-2025 --prefix
+$pre_dir/../tools/etcdctl  put cluster-key-2025 2025
+$pre_dir/../tools/etcdctl  get cluster-key-2025
+$pre_dir/../tools/etcdctl  put cluster-key-20251 2025
+$pre_dir/../tools/etcdctl  get cluster-key-20251
+$pre_dir/../tools/etcdctl  get cluster --prefix
+$pre_dir/../tools/etcdctl  del cluster-key-20251
+$pre_dir/../tools/etcdctl  get cluster --prefix
 
 echo "✅ KV 操作测试通过"	
 
