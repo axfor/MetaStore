@@ -19,7 +19,7 @@
 2. **包划分**：
 
    * `pkg/httpapi`：现有 HTTP API 放在单独包并保留（或改造），与兼容层分离。
-   * `pkg/etcdcompat`（或类似命名）：把所有与 etcd API / SDK 兼容的实现放在单独包里。
+   * `pkg/etcdapi`（或类似命名）：把所有与 etcd API / SDK 兼容的实现放在单独包里。
 3. **项目布局**：整个仓库必须遵守 `golang-standards/project-layout` 的目录规范（cmd/, pkg/, internal/, api/, configs/, docs/ 等）。
 4. **质量优先**：实现需采用最佳实践（清晰接口/文档、完善单元与集成测试、CI、可观测性、错误处理、一致性文档），不能偷工减料。
 5. **兼容性声明**：任何无法在当前架构下保证的 etcd 行为/语义须在设计文档中逐条列出并给出替代方案或实现路线（不得模糊带过）。
@@ -67,7 +67,7 @@
 
 1. **参考完整实现路线（推荐用于生产级一致性）**
 
-   * 在 `pkg/etcdcompat` 中实现 etcd v3 gRPC server（与官方 proto 一致），实现所有服务：KV、Auth、Lease、Watch、Maintenance 等。
+   * 在 `pkg/etcdapi` 中实现 etcd v3 gRPC server（与官方 proto 一致），实现所有服务：KV、Auth、Lease、Watch、Maintenance 等。
    * HTTP API 放 `pkg/httpapi`，仅负责 HTTP 客户端路由/兼容层（非 etcd API 的独立接口）。
    * 优点：语义一致、可扩展、客户端透明。缺点：实现复杂，开发/测试成本高。
  
@@ -76,7 +76,7 @@
 
 1. 源代码（遵循 golang-standards/project-layout）
 
-   * `pkg/etcdcompat`：etcd 接口兼容实现（gRPC server、proto、handlers、测试）
+   * `pkg/etcdapi`：etcd 接口兼容实现（gRPC server、proto、handlers、测试）
 
 2. 文档（`docs/`）
 
