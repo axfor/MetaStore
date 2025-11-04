@@ -74,6 +74,9 @@ func newEtcdCluster(t *testing.T, n int) *etcdCluster {
 		clus.proposeC[i] = make(chan string, 1)
 		clus.confChangeC[i] = make(chan raftpb.ConfChange, 1)
 
+		// Create test config for this node
+		cfg := NewTestConfig(uint64(i+1), 1, fmt.Sprintf(":920%d", i+1))
+
 		var kvs *memory.Memory
 		getSnapshot := func() ([]byte, error) {
 			if kvs == nil {
@@ -82,7 +85,7 @@ func newEtcdCluster(t *testing.T, n int) *etcdCluster {
 			return kvs.GetSnapshot()
 		}
 		clus.commitC[i], clus.errorC[i], clus.snapshotterReady[i], _ = raft.NewNode(
-			i+1, clus.peers, false, getSnapshot, clus.proposeC[i], clus.confChangeC[i], "memory",
+			i+1, clus.peers, false, getSnapshot, clus.proposeC[i], clus.confChangeC[i], "memory", cfg,
 		)
 	}
 

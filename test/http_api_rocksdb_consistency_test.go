@@ -341,7 +341,7 @@ func TestHTTPAPIRocksDBSingleNodeWriteRead(t *testing.T) {
 
 	var kvs *rocksdbstore.RocksDB
 	getSnapshot := func() ([]byte, error) { return kvs.GetSnapshot() }
-	commitC, errorC, snapshotterReady, _ := raft.NewNodeRocksDB(1, clusters, false, getSnapshot, proposeC, confChangeC, db, "data/rocksdb/1")
+	commitC, errorC, snapshotterReady, _ := raft.NewNodeRocksDB(1, clusters, false, getSnapshot, proposeC, confChangeC, db, "data/rocksdb/1", NewTestConfig(1, 1, ":2379"))
 
 	snapshotter := <-snapshotterReady
 	kvs = rocksdbstore.NewRocksDB(db, snapshotter, proposeC, commitC, errorC)
@@ -421,7 +421,7 @@ func TestHTTPAPIRocksDBSingleNodeSequentialWrites(t *testing.T) {
 
 	var kvs *rocksdbstore.RocksDB
 	getSnapshot := func() ([]byte, error) { return kvs.GetSnapshot() }
-	commitC, errorC, snapshotterReady, _ := raft.NewNodeRocksDB(1, clusters, false, getSnapshot, proposeC, confChangeC, db, "data/rocksdb/1")
+	commitC, errorC, snapshotterReady, _ := raft.NewNodeRocksDB(1, clusters, false, getSnapshot, proposeC, confChangeC, db, "data/rocksdb/1", NewTestConfig(1, 1, ":2379"))
 
 	snapshotter := <-snapshotterReady
 	kvs = rocksdbstore.NewRocksDB(db, snapshotter, proposeC, commitC, errorC)

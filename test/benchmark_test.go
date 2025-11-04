@@ -438,3 +438,175 @@ func BenchmarkMixedOperations(b *testing.B) {
 		}
 	}
 }
+
+// BenchmarkBatchWrites benchmarks batch write performance (tests batch encoding)
+func BenchmarkBatchWrites(b *testing.B) {
+	node, cleanup := startMemoryNode(b, 1)
+	defer cleanup()
+
+	cli, err := clientv3.New(clientv3.Config{
+		Endpoints:   []string{node.clientAddr},
+		DialTimeout: 5 * time.Second,
+	})
+	if err != nil {
+		b.Fatalf("Failed to create client: %v", err)
+	}
+	defer cli.Close()
+
+	ctx := context.Background()
+	b.ResetTimer()
+
+	// Run parallel to trigger batching
+	b.RunParallel(func(pb *testing.PB) {
+		i := 0
+		for pb.Next() {
+			key := fmt.Sprintf("/bench/batch-%d", i)
+			_, err := cli.Put(ctx, key, "batch-value")
+			if err != nil {
+				b.Fatalf("Put failed: %v", err)
+			}
+			i++
+		}
+	})
+}
+
+// BenchmarkHighConcurrency benchmarks high concurrency scenario
+func BenchmarkHighConcurrency(b *testing.B) {
+	node, cleanup := startMemoryNode(b, 1)
+	defer cleanup()
+
+	cli, err := clientv3.New(clientv3.Config{
+		Endpoints:   []string{node.clientAddr},
+		DialTimeout: 5 * time.Second,
+	})
+	if err != nil {
+		b.Fatalf("Failed to create client: %v", err)
+	}
+	defer cli.Close()
+
+	ctx := context.Background()
+
+	// Pre-populate for reads
+	for i := 0; i < 1000; i++ {
+		key := fmt.Sprintf("/bench/concurrent-%d", i)
+		_, _ = cli.Put(ctx, key, "value")
+	}
+
+	b.ResetTimer()
+
+	// High concurrency mixed workload
+	b.RunParallel(func(pb *testing.PB) {
+		i := 0
+		for pb.Next() {
+			key := fmt.Sprintf("/bench/concurrent-%d", i%1000)
+			op := i % 3
+
+			switch op {
+			case 0: // 33% GET
+				_, _ = cli.Get(ctx, key)
+			case 1: // 33% PUT
+				_, _ = cli.Put(ctx, key, "updated")
+			case 2: // 33% DELETE + PUT
+				_, _ = cli.Delete(ctx, key)
+				_, _ = cli.Put(ctx, key, "value")
+			}
+			i++
+		}
+	})
+}
+
+// BenchmarkRocksDBPut benchmarks RocksDB PUT operations
+func BenchmarkRocksDBPut(b *testing.B) {
+	node, cleanup := startRocksDBNode(b, 1)
+	defer cleanup()
+
+	cli, err := clientv3.New(clientv3.Config{
+		Endpoints:   []string{node.clientAddr},
+		DialTimeout: 5 * time.Second,
+	})
+	if err != nil {
+		b.Fatalf("Failed to create client: %v", err)
+	}
+	defer cli.Close()
+
+	ctx := context.Background()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		key := fmt.Sprintf("/bench/rocksdb-put-%d", i)
+		_, err := cli.Put(ctx, key, "rocksdb-value")
+		if err != nil {
+			b.Fatalf("Put failed: %v", err)
+		}
+	}
+}
+
+// BenchmarkRocksDBPutParallel benchmarks parallel RocksDB PUT operations
+func BenchmarkRocksDBPutParallel(b *testing.B) {
+	node, cleanup := startRocksDBNode(b, 1)
+	defer cleanup()
+
+	cli, err := clientv3.New(clientv3.Config{
+		Endpoints:   []string{node.clientAddr},
+		DialTimeout: 5 * time.Second,
+	})
+	if err != nil {
+		b.Fatalf("Failed to create client: %v", err)
+	}
+	defer cli.Close()
+
+	ctx := context.Background()
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		i := 0
+		for pb.Next() {
+			key := fmt.Sprintf("/bench/rocksdb-parallel-%d", i)
+			_, err := cli.Put(ctx, key, "parallel-rocksdb-value")
+			if err != nil {
+				b.Fatalf("Put failed: %v", err)
+			}
+			i++
+		}
+	})
+}
+
+// BenchmarkRocksDBMixedOperations benchmarks mixed RocksDB workload
+func BenchmarkRocksDBMixedOperations(b *testing.B) {
+	node, cleanup := startRocksDBNode(b, 1)
+	defer cleanup()
+
+	cli, err := clientv3.New(clientv3.Config{
+		Endpoints:   []string{node.clientAddr},
+		DialTimeout: 5 * time.Second,
+	})
+	if err != nil {
+		b.Fatalf("Failed to create client: %v", err)
+	}
+	defer cli.Close()
+
+	ctx := context.Background()
+
+	// Pre-populate some keys
+	for i := 0; i < 100; i++ {
+		key := fmt.Sprintf("/bench/rocksdb-mixed-%d", i)
+		_, _ = cli.Put(ctx, key, "initial-value")
+	}
+
+	b.ResetTimer()
+
+	// Mixed workload: 50% GET, 30% PUT, 20% DELETE
+	for i := 0; i < b.N; i++ {
+		op := i % 10
+		key := fmt.Sprintf("/bench/rocksdb-mixed-%d", i%100)
+
+		switch {
+		case op < 5: // 50% GET
+			_, _ = cli.Get(ctx, key)
+		case op < 8: // 30% PUT
+			_, _ = cli.Put(ctx, key, "updated-value")
+		default: // 20% DELETE
+			_, _ = cli.Delete(ctx, key)
+		}
+	}
+}

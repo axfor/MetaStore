@@ -87,6 +87,9 @@ func newEtcdRocksDBCluster(t *testing.T, n int) *etcdRocksDBCluster {
 		clus.proposeC[i] = make(chan string, 1)
 		clus.confChangeC[i] = make(chan raftpb.ConfChange, 1)
 
+		// Create test config for this node
+		cfg := NewTestConfig(uint64(i+1), 1, fmt.Sprintf(":930%d", i+1))
+
 		var kvs *rocksdb.RocksDB
 		getSnapshot := func() ([]byte, error) {
 			if kvs == nil {
@@ -95,7 +98,7 @@ func newEtcdRocksDBCluster(t *testing.T, n int) *etcdRocksDBCluster {
 			return kvs.GetSnapshot()
 		}
 		clus.commitC[i], clus.errorC[i], clus.snapshotterReady[i], _ = raft.NewNodeRocksDB(
-			i+1, clus.peers, false, getSnapshot, clus.proposeC[i], clus.confChangeC[i], db, fmt.Sprintf("data/rocksdb/%d", i+1),
+			i+1, clus.peers, false, getSnapshot, clus.proposeC[i], clus.confChangeC[i], db, fmt.Sprintf("data/rocksdb/%d", i+1), cfg,
 		)
 	}
 

@@ -23,6 +23,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"metaStore/pkg/config"
+	"metaStore/pkg/log"
+
+	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 	"metaStore/internal/kvstore"
 	"metaStore/pkg/syncmap"
@@ -40,15 +44,37 @@ type AuthManager struct {
 	users   *syncmap.Map[string, *UserInfo]
 	roles   *syncmap.Map[string, *RoleInfo]
 	tokens  *syncmap.Map[string, *TokenInfo]
+
+	// Configuration
+	tokenTTL             time.Duration // Token 有效期
+	tokenCleanupInterval time.Duration // Token 清理间隔
+	bcryptCost           int           // bcrypt 加密强度
+	enableAudit          bool          // 是否启用审计日志
 }
 
 // NewAuthManager creates an Auth manager with concurrent-safe maps
-func NewAuthManager(store kvstore.Store) *AuthManager {
+// 可选参数 cfg 用于配置认证行为
+func NewAuthManager(store kvstore.Store, cfg ...*config.AuthConfig) *AuthManager {
+	// 使用配置或默认值
+	var authCfg *config.AuthConfig
+	if len(cfg) > 0 && cfg[0] != nil {
+		authCfg = cfg[0]
+	} else {
+		defaultCfg := config.DefaultConfig(1, 1, ":2379")
+		authCfg = &defaultCfg.Server.Auth
+	}
+
 	am := &AuthManager{
 		store:  store,
 		users:  syncmap.NewMap[string, *UserInfo](),
 		roles:  syncmap.NewMap[string, *RoleInfo](),
 		tokens: syncmap.NewMap[string, *TokenInfo](),
+
+		// 应用配置
+		tokenTTL:             authCfg.TokenTTL,
+		tokenCleanupInterval: authCfg.TokenCleanupInterval,
+		bcryptCost:           authCfg.BcryptCost,
+		enableAudit:          authCfg.EnableAudit,
 	}
 
 	// Load authentication state from storage
@@ -176,13 +202,22 @@ func (am *AuthManager) Authenticate(username, password string) (string, error) {
 		return "", fmt.Errorf("failed to generate token: %w", err)
 	}
 
-	// 4. Store token info (24 hour TTL)
+	// 4. Store token info (使用配置的 TTL)
 	tokenInfo := &TokenInfo{
 		Token:     token,
 		Username:  username,
-		ExpiresAt: time.Now().Add(24 * time.Hour).Unix(),
+		ExpiresAt: time.Now().Add(am.tokenTTL).Unix(),
 	}
 	am.tokens.Store(token, tokenInfo)
+
+	// 5. 审计日志（如果启用）
+	if am.enableAudit {
+		log.Info("User authenticated",
+			zap.String("username", username),
+			zap.String("token", token[:min(8, len(token))]),
+			zap.Time("expires_at", time.Unix(tokenInfo.ExpiresAt, 0)),
+			zap.String("component", "auth-manager"))
+	}
 
 	// 5. Persist token to storage
 	key := authTokenPrefix + token
@@ -285,8 +320,8 @@ func (am *AuthManager) AddUser(name, password string) error {
 		return fmt.Errorf("user already exists: %s", name)
 	}
 
-	// 2. Hash password
-	passwordHash, err := hashPassword(password)
+	// 2. Hash password (使用配置的 bcrypt cost)
+	passwordHash, err := am.hashPassword(password)
 	if err != nil {
 		return fmt.Errorf("failed to hash password: %w", err)
 	}
@@ -396,8 +431,8 @@ func (am *AuthManager) ChangePassword(name, newPassword string) error {
 		return fmt.Errorf("user not found: %s", name)
 	}
 
-	// 2. Hash new password
-	passwordHash, err := hashPassword(newPassword)
+	// 2. Hash new password (使用配置的 bcrypt cost)
+	passwordHash, err := am.hashPassword(newPassword)
 	if err != nil {
 		return fmt.Errorf("failed to hash password: %w", err)
 	}
@@ -691,6 +726,13 @@ func (am *AuthManager) generateToken() (string, error) {
 }
 
 // hashPassword Hash 密码
+// hashPassword 使用配置的 bcrypt cost 加密密码
+func (am *AuthManager) hashPassword(password string) (string, error) {
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), am.bcryptCost)
+	return string(bytes), err
+}
+
+// hashPassword (全局函数，保持向后兼容) 使用默认 cost
 func hashPassword(password string) (string, error) {
 	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	return string(bytes), err
@@ -704,7 +746,7 @@ func checkPasswordHash(password, hash string) bool {
 
 // cleanupExpiredTokens periodically cleans up expired tokens
 func (am *AuthManager) cleanupExpiredTokens() {
-	ticker := time.NewTicker(5 * time.Minute)
+	ticker := time.NewTicker(am.tokenCleanupInterval)
 	defer ticker.Stop()
 
 	for range ticker.C {

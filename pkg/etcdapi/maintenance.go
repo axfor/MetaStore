@@ -25,7 +25,8 @@ import (
 // MaintenanceServer 实现 etcd Maintenance 服务
 type MaintenanceServer struct {
 	pb.UnimplementedMaintenanceServer
-	server *Server
+	server            *Server
+	snapshotChunkSize int // 快照分块大小（字节）
 }
 
 // Alarm 告警管理
@@ -164,8 +165,8 @@ func (s *MaintenanceServer) Snapshot(req *pb.SnapshotRequest, stream pb.Maintena
 		return toGRPCError(err)
 	}
 
-	// 分块发送快照数据（每块 4MB）
-	chunkSize := 4 * 1024 * 1024
+	// 分块发送快照数据（使用配置的块大小）
+	chunkSize := s.snapshotChunkSize
 	for i := 0; i < len(snapshot); i += chunkSize {
 		end := i + chunkSize
 		if end > len(snapshot) {

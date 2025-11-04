@@ -7,22 +7,25 @@ set -e
 echo "===== Phase 2 测试：Raft + etcd 兼容层 ====="
 echo""
 
+pre_dir=$(pwd)
+
+
 l=$(pkill metastore >/dev/null 2>&1 || true)
 
 # 清理
 rm -rf raft-single-test 
 mkdir -p raft-cluster-test/node1
+
+cd $pre_dir/../
 # 编译
 echo "1. 编译程序..."
-
 make build
-
 echo "✅ 编译成功"
-echo""
+echo "" 
+cd $pre_dir
 
-pre_dir=$(pwd)
 
-cp metaStore raft-cluster-test/
+cp $pre_dir/../metaStore raft-cluster-test/
 cd raft-cluster-test
 mkdir -p data/rocksdb/1
 
@@ -59,17 +62,20 @@ export ETCDCTL_API=3
 export ETCDCTL_ENDPOINTS="localhost:12379"
 
 
-chmod a+x $pre_dir/tools/etcdctl
+chmod a+x $pre_dir/../tools/etcdctl
 
 echo "测试 Cluster 服务..."
-$pre_dir/tools/etcdctl member list --write-out=table
+$pre_dir/../tools/etcdctl member list --write-out=table
 echo ""
 
 echo "测试 KV 操作..."
-
-$pre_dir/tools/etcdctl  put single-key-2025 2025
-$pre_dir/tools/etcdctl  get single-key-2025
-$pre_dir/tools/etcdctl  get single-key-2025 --prefix
+$pre_dir/../tools/etcdctl  put cluster-key-2025 2025
+$pre_dir/../tools/etcdctl  get cluster-key-2025
+$pre_dir/../tools/etcdctl  put cluster-key-20251 2025
+$pre_dir/../tools/etcdctl  get cluster-key-20251
+$pre_dir/../tools/etcdctl  get cluster --prefix
+$pre_dir/../tools/etcdctl  del cluster-key-20251
+$pre_dir/../tools/etcdctl  get cluster --prefix
 
 echo "✅ KV 操作测试通过"	
 
