@@ -19,12 +19,12 @@
 | EnableAudit | bool | false | 是否启用审计日志 |
 
 **当前问题**:
-- `pkg/etcdapi/auth.go` 中使用硬编码值
+- `api/etcd/auth.go` 中使用硬编码值
 - 无法通过配置文件控制认证参数
 
 **实施方案**:
 ```go
-// pkg/etcdapi/auth.go
+// api/etcd/auth.go
 type AuthManager struct {
     // ... 现有字段
     tokenTTL             time.Duration
@@ -64,12 +64,12 @@ func NewAuthManager(store kvstore.Store, cfg ...*config.AuthConfig) *AuthManager
 | SnapshotChunkSize | int | 4MB | 快照分块大小 |
 
 **当前问题**:
-- `pkg/etcdapi/maintenance.go` 中使用硬编码值
+- `api/etcd/maintenance.go` 中使用硬编码值
 - 无法根据网络环境调整快照传输大小
 
 **实施方案**:
 ```go
-// pkg/etcdapi/maintenance.go
+// api/etcd/maintenance.go
 type MaintenanceServer struct {
     // ... 现有字段
     snapshotChunkSize int
@@ -174,7 +174,7 @@ func main() {
 **实施方案**:
 
 ```go
-// pkg/etcdapi/watch_manager.go
+// api/etcd/watch_manager.go
 type WatchManager struct {
     // ... 现有字段
     maxWatchCount int
@@ -204,7 +204,7 @@ func (wm *WatchManager) Watch(req *pb.WatchRequest) error {
     // ...
 }
 
-// pkg/etcdapi/lease_manager.go
+// api/etcd/lease_manager.go
 type LeaseManager struct {
     // ... 现有字段
     maxLeaseCount int
@@ -262,7 +262,7 @@ func (gs *GracefulShutdown) Shutdown(ctx context.Context, server *grpc.Server) e
     // ...
 }
 
-// pkg/etcdapi/server.go
+// api/etcd/server.go
 shutdownMgr := reliability.NewGracefulShutdown(
     cfg.Config.Server.Reliability.ShutdownTimeout,
     cfg.Config.Server.Reliability.DrainTimeout,  // 传递配置
@@ -352,13 +352,13 @@ if cfg.Server.Monitoring.EnablePrometheus {
 **原因**: 防止资源耗尽，保护系统稳定性
 **工时**: 1-2 小时
 **难度**: 简单
-**文件**: pkg/etcdapi/watch_manager.go, pkg/etcdapi/lease_manager.go
+**文件**: api/etcd/watch_manager.go, api/etcd/lease_manager.go
 
 ### 优先级 3: AuthConfig (4 项) 🟡
 **原因**: 安全相关，生产环境需要
 **工时**: 2-3 小时
 **难度**: 中等
-**文件**: pkg/etcdapi/auth.go
+**文件**: api/etcd/auth.go
 
 ### 优先级 4: MonitoringConfig 完善 (1 项) 🟢
 **原因**: 监控配置完整性
@@ -370,7 +370,7 @@ if cfg.Server.Monitoring.EnablePrometheus {
 **原因**: 优化快照传输
 **工时**: 0.5 小时
 **难度**: 简单
-**文件**: pkg/etcdapi/maintenance.go
+**文件**: api/etcd/maintenance.go
 
 ### 优先级 6: ReliabilityConfig 完善 (1 项) 🟢
 **原因**: 完善优雅关闭机制

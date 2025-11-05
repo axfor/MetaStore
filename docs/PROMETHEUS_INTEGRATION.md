@@ -181,7 +181,7 @@ import (
 	"metaStore/pkg/config"
 	grpcserver "metaStore/pkg/grpc"
 	"metaStore/pkg/metrics"
-	"metaStore/pkg/etcdapi"
+	"metaStore/api/etcd"
 )
 
 func main() {

@@ -27,7 +27,7 @@
 - ✅ `kvstore_etcd_watch_lease.go` - Watch & Lease 支持
 - ✅ `kvstore_stubs.go` - 向后兼容桩
 
-#### pkg/httpapi（1个文件）
+#### api/http（1个文件）
 - ✅ `server.go` - HTTP API 独立包
 
 #### 其他
@@ -163,7 +163,7 @@ $ ./etcd-client
 
 ```
 pkg/etcdcompat/     # etcd gRPC 兼容层（独立）
-pkg/httpapi/        # HTTP API（独立）
+api/http/        # HTTP API（独立）
 internal/memory/    # 内存存储实现
 internal/kvstore/   # 存储接口定义
 ```
@@ -267,7 +267,7 @@ if succeeded {
 | 需求 | 状态 | 说明 |
 |------|------|------|
 | **1. 接口兼容性** | ✅ | gRPC API 100% 兼容 etcd v3 |
-| **2. 包划分** | ✅ | pkg/etcdcompat + pkg/httpapi |
+| **2. 包划分** | ✅ | pkg/etcdcompat + api/http |
 | **3. 项目布局** | ✅ | 遵循 golang-standards/project-layout |
 | **4. 质量优先** | ✅ | 完整测试 + 文档 |
 | **5. 兼容性声明** | ✅ | docs/limitations.md |

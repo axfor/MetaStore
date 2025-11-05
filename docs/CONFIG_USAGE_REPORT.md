@@ -26,7 +26,7 @@ All configuration items are now actively used in code logic to control program b
 
 ### 1.3 Server.ListenAddr
 - **Type**: string
-- **Usage**: [cmd/metastore/main.go:60-70](cmd/metastore/main.go#L60-L70), [pkg/etcdapi/server.go:100-110](pkg/etcdapi/server.go#L100-L110)
+- **Usage**: [cmd/metastore/main.go:60-70](cmd/metastore/main.go#L60-L70), [api/etcd/server.go:100-110](api/etcd/server.go#L100-L110)
 - **Purpose**: Address for client connections
 - **Impact**: gRPC server listens on this address
 
@@ -192,43 +192,43 @@ All configuration items are now actively used in code logic to control program b
 
 ### 5.1 Auth.Enabled
 - **Type**: bool
-- **Usage**: [pkg/etcdapi/auth_manager.go:50-60](pkg/etcdapi/auth_manager.go#L50-L60)
+- **Usage**: [api/etcd/auth_manager.go:50-60](api/etcd/auth_manager.go#L50-L60)
 - **Purpose**: Enable/disable authentication
 - **Impact**: Controls whether auth checks are enforced
 
 ### 5.2 Auth.RootPassword
 - **Type**: string
-- **Usage**: [pkg/etcdapi/auth_manager.go:70-90](pkg/etcdapi/auth_manager.go#L70-L90)
+- **Usage**: [api/etcd/auth_manager.go:70-90](api/etcd/auth_manager.go#L70-L90)
 - **Purpose**: Password for root user
 - **Impact**: Initial admin credentials
 
 ### 5.3 Auth.SimpleTokenTTL
 - **Type**: Duration
-- **Usage**: [pkg/etcdapi/auth_manager.go:100-120](pkg/etcdapi/auth_manager.go#L100-L120)
+- **Usage**: [api/etcd/auth_manager.go:100-120](api/etcd/auth_manager.go#L100-L120)
 - **Purpose**: Token validity period
 - **Impact**: How long authentication tokens remain valid
 
 ### 5.4 Auth.TokenTTL ✅ NEW
 - **Type**: Duration
-- **Usage**: [pkg/etcdapi/auth_manager.go:200-220](pkg/etcdapi/auth_manager.go#L200-L220)
+- **Usage**: [api/etcd/auth_manager.go:200-220](api/etcd/auth_manager.go#L200-L220)
 - **Purpose**: Token expiration time
 - **Impact**: Sets token ExpiresAt field in Authenticate()
 
 ### 5.5 Auth.TokenCleanupInterval ✅ NEW
 - **Type**: Duration
-- **Usage**: [pkg/etcdapi/auth_manager.go:450-470](pkg/etcdapi/auth_manager.go#L450-L470)
+- **Usage**: [api/etcd/auth_manager.go:450-470](api/etcd/auth_manager.go#L450-L470)
 - **Purpose**: Cleanup interval for expired tokens
 - **Impact**: Frequency of token garbage collection
 
 ### 5.6 Auth.BcryptCost ✅ NEW
 - **Type**: int
-- **Usage**: [pkg/etcdapi/auth_manager.go:280-290](pkg/etcdapi/auth_manager.go#L280-L290)
+- **Usage**: [api/etcd/auth_manager.go:280-290](api/etcd/auth_manager.go#L280-L290)
 - **Purpose**: bcrypt cost parameter (4-31)
 - **Impact**: Security vs performance trade-off for password hashing
 
 ### 5.7 Auth.EnableAudit ✅ NEW
 - **Type**: bool
-- **Usage**: [pkg/etcdapi/auth_manager.go:200-220](pkg/etcdapi/auth_manager.go#L200-L220)
+- **Usage**: [api/etcd/auth_manager.go:200-220](api/etcd/auth_manager.go#L200-L220)
 - **Purpose**: Enable audit logging
 - **Impact**: Controls whether authentication events are logged
 
@@ -238,37 +238,37 @@ All configuration items are now actively used in code logic to control program b
 
 ### 6.1 Limits.MaxTxnOps
 - **Type**: int
-- **Usage**: [pkg/etcdapi/kv.go:150-170](pkg/etcdapi/kv.go#L150-L170)
+- **Usage**: [api/etcd/kv.go:150-170](api/etcd/kv.go#L150-L170)
 - **Purpose**: Maximum operations in a transaction
 - **Impact**: Prevents overly large transactions
 
 ### 6.2 Limits.MaxRequestBytes
 - **Type**: int64
-- **Usage**: [pkg/etcdapi/server.go:120-140](pkg/etcdapi/server.go#L120-L140)
+- **Usage**: [api/etcd/server.go:120-140](api/etcd/server.go#L120-L140)
 - **Purpose**: Maximum request size
 - **Impact**: Protects against memory exhaustion
 
 ### 6.3 Limits.MaxRangeLimit
 - **Type**: int64
-- **Usage**: [pkg/etcdapi/kv.go:50-70](pkg/etcdapi/kv.go#L50-L70)
+- **Usage**: [api/etcd/kv.go:50-70](api/etcd/kv.go#L50-L70)
 - **Purpose**: Maximum keys returned in Range
 - **Impact**: Prevents excessive range queries
 
 ### 6.4 Limits.MaxLeaseCount ✅ NEW
 - **Type**: int
-- **Usage**: [pkg/etcdapi/lease_manager.go:80-100](pkg/etcdapi/lease_manager.go#L80-L100)
+- **Usage**: [api/etcd/lease_manager.go:80-100](api/etcd/lease_manager.go#L80-L100)
 - **Purpose**: Maximum number of active leases
 - **Impact**: Returns error when creating leases beyond this limit
 
 ### 6.5 Limits.MaxWatchCount ✅ NEW
 - **Type**: int
-- **Usage**: [pkg/etcdapi/watch_manager.go:90-110](pkg/etcdapi/watch_manager.go#L90-L110)
+- **Usage**: [api/etcd/watch_manager.go:90-110](api/etcd/watch_manager.go#L90-L110)
 - **Purpose**: Maximum number of concurrent watches
 - **Impact**: Returns error when creating watches beyond this limit
 
 ### 6.6 Limits.WatchStreamBufSize
 - **Type**: int
-- **Usage**: [pkg/etcdapi/watch_manager.go:50-70](pkg/etcdapi/watch_manager.go#L50-L70)
+- **Usage**: [api/etcd/watch_manager.go:50-70](api/etcd/watch_manager.go#L50-L70)
 - **Purpose**: Watch event buffer size
 - **Impact**: Controls memory per watch stream
 
@@ -278,19 +278,19 @@ All configuration items are now actively used in code logic to control program b
 
 ### 7.1 Performance.ReadPoolSize
 - **Type**: int
-- **Usage**: [pkg/etcdapi/server.go:150-170](pkg/etcdapi/server.go#L150-L170)
+- **Usage**: [api/etcd/server.go:150-170](api/etcd/server.go#L150-L170)
 - **Purpose**: Worker pool for read operations
 - **Impact**: Concurrent read capacity
 
 ### 7.2 Performance.WritePoolSize
 - **Type**: int
-- **Usage**: [pkg/etcdapi/server.go:150-170](pkg/etcdapi/server.go#L150-L170)
+- **Usage**: [api/etcd/server.go:150-170](api/etcd/server.go#L150-L170)
 - **Purpose**: Worker pool for write operations
 - **Impact**: Concurrent write capacity
 
 ### 7.3 Performance.MaxConcurrentStreams
 - **Type**: uint32
-- **Usage**: [pkg/etcdapi/server.go:200-220](pkg/etcdapi/server.go#L200-L220)
+- **Usage**: [api/etcd/server.go:200-220](api/etcd/server.go#L200-L220)
 - **Purpose**: gRPC concurrent stream limit
 - **Impact**: Controls simultaneous client connections
 
@@ -356,19 +356,19 @@ All configuration items are now actively used in code logic to control program b
 
 ### 10.1 Maintenance.CompactionInterval
 - **Type**: Duration
-- **Usage**: [pkg/etcdapi/maintenance.go:50-70](pkg/etcdapi/maintenance.go#L50-L70)
+- **Usage**: [api/etcd/maintenance.go:50-70](api/etcd/maintenance.go#L50-L70)
 - **Purpose**: Interval for automatic compaction
 - **Impact**: Controls MVCC history retention
 
 ### 10.2 Maintenance.CompactionRetention
 - **Type**: int64
-- **Usage**: [pkg/etcdapi/maintenance.go:80-100](pkg/etcdapi/maintenance.go#L80-L100)
+- **Usage**: [api/etcd/maintenance.go:80-100](api/etcd/maintenance.go#L80-L100)
 - **Purpose**: Number of revisions to retain
 - **Impact**: Trade-off between history and storage
 
 ### 10.3 Maintenance.SnapshotChunkSize ✅ NEW
 - **Type**: int (bytes)
-- **Usage**: [pkg/etcdapi/maintenance.go:169-184](pkg/etcdapi/maintenance.go#L169-L184)
+- **Usage**: [api/etcd/maintenance.go:169-184](api/etcd/maintenance.go#L169-L184)
 - **Purpose**: Chunk size for snapshot streaming
 - **Impact**: Controls network transfer behavior for snapshots
 
@@ -384,25 +384,25 @@ All configuration items are now actively used in code logic to control program b
 
 ### 11.1 Lease.DefaultTTL
 - **Type**: Duration
-- **Usage**: [pkg/etcdapi/lease_manager.go:50-70](pkg/etcdapi/lease_manager.go#L50-L70)
+- **Usage**: [api/etcd/lease_manager.go:50-70](api/etcd/lease_manager.go#L50-L70)
 - **Purpose**: Default lease time-to-live
 - **Impact**: Fallback TTL when client doesn't specify
 
 ### 11.2 Lease.MaxTTL
 - **Type**: Duration
-- **Usage**: [pkg/etcdapi/lease_manager.go:50-70](pkg/etcdapi/lease_manager.go#L50-L70)
+- **Usage**: [api/etcd/lease_manager.go:50-70](api/etcd/lease_manager.go#L50-L70)
 - **Purpose**: Maximum allowed lease TTL
 - **Impact**: Prevents excessively long-lived leases
 
 ### 11.3 Lease.MinTTL
 - **Type**: Duration
-- **Usage**: [pkg/etcdapi/lease_manager.go:50-70](pkg/etcdapi/lease_manager.go#L50-L70)
+- **Usage**: [api/etcd/lease_manager.go:50-70](api/etcd/lease_manager.go#L50-L70)
 - **Purpose**: Minimum allowed lease TTL
 - **Impact**: Prevents too-short leases that cause churn
 
 ### 11.4 Lease.CheckpointInterval
 - **Type**: Duration
-- **Usage**: [pkg/etcdapi/lease_manager.go:120-140](pkg/etcdapi/lease_manager.go#L120-L140)
+- **Usage**: [api/etcd/lease_manager.go:120-140](api/etcd/lease_manager.go#L120-L140)
 - **Purpose**: Interval for persisting lease state
 - **Impact**: Controls lease durability vs performance
 

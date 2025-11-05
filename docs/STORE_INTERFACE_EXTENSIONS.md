@@ -434,7 +434,7 @@ func TestRaftStatusInCluster(t *testing.T) {
 - [ ] internal/rocksdb/kvstore.go - 实现 GetRaftStatus
 - [ ] internal/raft/node_memory.go - 实现 Status()
 - [ ] internal/raft/node_rocksdb.go - 实现 Status()
-- [ ] pkg/etcdapi/maintenance.go - 使用 GetRaftStatus
+- [ ] api/etcd/maintenance.go - 使用 GetRaftStatus
 
 ### 8.2 新增的文件
 

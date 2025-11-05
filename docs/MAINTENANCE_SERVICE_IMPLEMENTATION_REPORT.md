@@ -34,7 +34,7 @@
 - [internal/rocksdb/kvstore.go](internal/rocksdb/kvstore.go:1527-1541) - RocksDB 存储实现
 - [internal/memory/store.go](internal/memory/store.go:582-585) - Standalone 模式支持
 - [internal/kvstore/store.go](internal/kvstore/store.go:87-88) - 接口定义
-- [pkg/etcdapi/maintenance.go](pkg/etcdapi/maintenance.go:188-209) - RPC 实现
+- [api/etcd/maintenance.go](api/etcd/maintenance.go:188-209) - RPC 实现
 
 **代码示例**：
 ```go
@@ -68,7 +68,7 @@ func (m *Memory) TransferLeadership(targetID uint64) error {
 
 **代码审查发现**：用户评估称 "RaftTerm/Leader 硬编码"，但实际代码**完全没有硬编码**。
 
-**实现位置**: [pkg/etcdapi/maintenance.go](pkg/etcdapi/maintenance.go:81-102)
+**实现位置**: [api/etcd/maintenance.go](api/etcd/maintenance.go:81-102)
 
 **代码验证**：
 ```go
@@ -94,7 +94,7 @@ return &pb.StatusResponse{
 
 ### 3. Hash - 已完整实现 ✅
 
-**实现位置**: [pkg/etcdapi/maintenance.go](pkg/etcdapi/maintenance.go:116-131)
+**实现位置**: [api/etcd/maintenance.go](api/etcd/maintenance.go:116-131)
 
 **实现方式**: 使用 CRC32 对快照计算哈希
 ```go
@@ -123,7 +123,7 @@ func (s *MaintenanceServer) Hash(ctx context.Context, req *pb.HashRequest) (*pb.
 
 ### 4. HashKV - 已完整实现 ✅
 
-**实现位置**: [pkg/etcdapi/maintenance.go](pkg/etcdapi/maintenance.go:133-157)
+**实现位置**: [api/etcd/maintenance.go](api/etcd/maintenance.go:133-157)
 
 **实现方式**: KV 级别的 CRC32 哈希
 ```go
@@ -154,7 +154,7 @@ func (s *MaintenanceServer) HashKV(ctx context.Context, req *pb.HashKVRequest) (
 
 ### 5. Alarm - 已完整实现 ✅
 
-**AlarmManager 实现**: [pkg/etcdapi/alarm_manager.go](pkg/etcdapi/alarm_manager.go)
+**AlarmManager 实现**: [api/etcd/alarm_manager.go](api/etcd/alarm_manager.go)
 
 **功能完整性**：
 ```go
@@ -172,7 +172,7 @@ type AlarmManager struct {
 - HasAlarm(alarmType pb.AlarmType) bool           // 检查告警存在
 ```
 
-**Alarm RPC 实现**: [pkg/etcdapi/maintenance.go](pkg/etcdapi/maintenance.go:31-79)
+**Alarm RPC 实现**: [api/etcd/maintenance.go](api/etcd/maintenance.go:31-79)
 
 **支持的操作**：
 - ✅ `GET`: 获取告警列表（支持按 MemberID 和 AlarmType 过滤）
@@ -211,7 +211,7 @@ func (am *AlarmManager) CheckStorageQuota(memberID uint64, dbSize int64, quotaBy
 
 ### 6. Snapshot - 已完整实现 ✅
 
-**实现位置**: [pkg/etcdapi/maintenance.go](pkg/etcdapi/maintenance.go:159-186)
+**实现位置**: [api/etcd/maintenance.go](api/etcd/maintenance.go:159-186)
 
 **实现方式**: 流式快照传输
 ```go
@@ -258,7 +258,7 @@ func (s *MaintenanceServer) Snapshot(req *pb.SnapshotRequest, stream pb.Maintena
 
 ### 7. Defragment - 兼容性实现 ✅
 
-**实现位置**: [pkg/etcdapi/maintenance.go](pkg/etcdapi/maintenance.go:104-114)
+**实现位置**: [api/etcd/maintenance.go](api/etcd/maintenance.go:104-114)
 
 **说明**:
 - RocksDB: 存储引擎自动处理压缩（Compaction）
@@ -419,7 +419,7 @@ func (s *MaintenanceServer) Snapshot(req *pb.SnapshotRequest, stream pb.Maintena
 - `internal/rocksdb/kvstore.go` - RocksDB TransferLeadership 实现
 - `internal/memory/store.go` - Standalone 模式支持
 - `internal/kvstore/store.go` - 接口定义更新
-- `pkg/etcdapi/maintenance.go` - MoveLeader RPC 实现
+- `api/etcd/maintenance.go` - MoveLeader RPC 实现
 
 **测试**:
 - `test/maintenance_service_test.go` - 新增综合测试（536行）

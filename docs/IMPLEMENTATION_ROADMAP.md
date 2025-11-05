@@ -323,8 +323,8 @@ Week 5:    阶段 5 (Maintenance) + 阶段 6 (测试文档)
 
 | 功能 | 设计文档 | 代码框架 |
 |------|----------|----------|
-| Auth Service | [AUTH_SERVICE_DESIGN.md](AUTH_SERVICE_DESIGN.md) | ✅ pkg/etcdapi/auth*.go |
-| Cluster Service | [CLUSTER_SERVICE_DESIGN.md](CLUSTER_SERVICE_DESIGN.md) | ✅ pkg/etcdapi/cluster*.go |
+| Auth Service | [AUTH_SERVICE_DESIGN.md](AUTH_SERVICE_DESIGN.md) | ✅ api/etcd/auth*.go |
+| Cluster Service | [CLUSTER_SERVICE_DESIGN.md](CLUSTER_SERVICE_DESIGN.md) | ✅ api/etcd/cluster*.go |
 | Lock/Concurrency | [LOCK_CONCURRENCY_DESIGN.md](LOCK_CONCURRENCY_DESIGN.md) | ✅ pkg/concurrency/*.go |
 | Maintenance | [MAINTENANCE_SERVICE_IMPROVEMENTS.md](MAINTENANCE_SERVICE_IMPROVEMENTS.md) | ✅ 已有文件 |
 | Store 扩展 | [STORE_INTERFACE_EXTENSIONS.md](STORE_INTERFACE_EXTENSIONS.md) | ⏳ 待实现 |
@@ -337,7 +337,7 @@ Week 5:    阶段 5 (Maintenance) + 阶段 6 (测试文档)
 
 #### Auth Service
 ```
-pkg/etcdapi/
+api/etcd/
 ├── auth_types.go         ✅ 数据模型
 ├── auth.go               ✅ gRPC 服务框架
 ├── auth_manager.go       ✅ 认证管理器框架
@@ -346,7 +346,7 @@ pkg/etcdapi/
 
 #### Cluster Service
 ```
-pkg/etcdapi/
+api/etcd/
 ├── cluster_types.go      ✅ 数据模型
 ├── cluster_manager.go    ✅ 集群管理器框架
 └── maintenance.go        ✅ 扩展了 Member* 接口

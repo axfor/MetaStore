@@ -227,7 +227,7 @@ MetaStore 是一个完全兼容 etcd v3 API 的分布式键值存储系统，具
 
 ### 1. 模块化设计
 ```
-pkg/etcdapi/           # etcd 兼容 API 层
+api/etcd/           # etcd 兼容 API 层
 ├── server.go          # gRPC 服务器
 ├── kv.go              # KV 服务
 ├── watch.go           # Watch 管理器

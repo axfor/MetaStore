@@ -13,7 +13,7 @@
    - ✅ 将配置传递给所有组件
    - ✅ 配置参数控制实际行为
 
-2. **测试代码 (test/*_test.go, pkg/etcdapi/auth_test.go)**
+2. **测试代码 (test/*_test.go, api/etcd/auth_test.go)**
    - ❌ ServerConfig 不传递 Config 字段
    - ❌ 组件使用默认配置而非实际配置
    - ❌ 无法验证配置功能是否正常工作
@@ -281,7 +281,7 @@ func TestMaintenanceSnapshotChunkSize(t *testing.T) {
 
 ### P0 - 立即修复（核心功能）
 1. ✅ 创建 `test/test_config.go` 辅助函数
-2. ✅ 更新 `pkg/etcdapi/auth_test.go` 使用配置
+2. ✅ 更新 `api/etcd/auth_test.go` 使用配置
 3. ✅ 更新集成测试使用配置：
    - `test/etcd_memory_integration_test.go`
    - `test/etcd_rocksdb_integration_test.go`
@@ -309,7 +309,7 @@ func TestMaintenanceSnapshotChunkSize(t *testing.T) {
 
 ### Step 2: 批量更新测试文件
 需要更新的文件列表：
-- `pkg/etcdapi/auth_test.go`
+- `api/etcd/auth_test.go`
 - `test/etcd_memory_integration_test.go`
 - `test/etcd_rocksdb_integration_test.go`
 - `test/cross_protocol_integration_test.go`

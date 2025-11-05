@@ -9,7 +9,7 @@
 ### 1.1 高效的数据结构 ✅
 
 ```go
-// pkg/etcdapi/watch_manager.go:24
+// api/etcd/watch_manager.go:24
 type WatchManager struct {
     mu       sync.RWMutex
     nextID   atomic.Int64    // ← 使用 atomic 避免锁竞争
@@ -31,7 +31,7 @@ func (wm *WatchManager) Create(...) int64 {
 ### 1.2 流式传输 ✅
 
 ```go
-// pkg/etcdapi/maintenance.go:160-186
+// api/etcd/maintenance.go:160-186
 func (s *MaintenanceServer) Snapshot(req *pb.SnapshotRequest, stream pb.Maintenance_SnapshotServer) error {
     snapshot, err := s.server.store.GetSnapshot()
     if err != nil {
@@ -69,7 +69,7 @@ func (s *MaintenanceServer) Snapshot(req *pb.SnapshotRequest, stream pb.Maintena
 ### 1.3 读写锁分离 ✅
 
 ```go
-// pkg/etcdapi/auth_manager.go:30
+// api/etcd/auth_manager.go:30
 type AuthManager struct {
     mu    sync.RWMutex  // ← 读写锁
     users map[string]*UserInfo
@@ -104,7 +104,7 @@ func (am *AuthManager) AddUser(...) error {
 #### 问题: AuthManager 全局锁
 
 ```go
-// pkg/etcdapi/auth_manager.go:227
+// api/etcd/auth_manager.go:227
 func (am *AuthManager) CheckPermission(username string, key []byte, permType PermissionType) error {
     am.mu.RLock()  // ← 全局读锁，所有权限检查都要排队
     defer am.mu.RUnlock()
@@ -257,7 +257,7 @@ func (am *AuthManager) CheckPermission(username string, key []byte, permType Per
 #### 问题: KV 转换时大量内存分配
 
 ```go
-// pkg/etcdapi/kv.go:45-55
+// api/etcd/kv.go:45-55
 func (s *KVServer) Range(ctx context.Context, req *pb.RangeRequest) (*pb.RangeResponse, error) {
     resp, err := s.server.store.Range(key, rangeEnd, limit, revision)
     if err != nil {
@@ -351,7 +351,7 @@ func (s *KVServer) Range(ctx context.Context, req *pb.RangeRequest) (*pb.RangeRe
 #### 问题: JSON 序列化较慢
 
 ```go
-// pkg/etcdapi/auth_manager.go:316-321
+// api/etcd/auth_manager.go:316-321
 func (am *AuthManager) AddUser(name, password string) error {
     // ...
 

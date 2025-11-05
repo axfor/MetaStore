@@ -133,7 +133,7 @@ grpcSrv := grpc.NewServer(
 
 **问题 1: WatchManager.CreateWithID**
 
-**位置**: pkg/etcdapi/watch_manager.go:63-68
+**位置**: api/etcd/watch_manager.go:63-68
 
 **当前代码**:
 ```go
@@ -202,7 +202,7 @@ func (wm *WatchManager) CreateWithID(watchID int64, ...) int64 {
 
 **需要修复的地方**:
 ```go
-// pkg/etcdapi/auth_manager.go:59
+// api/etcd/auth_manager.go:59
 func (am *AuthManager) loadState() error  // ❌
 
 // 应该改为
@@ -409,11 +409,11 @@ grafana/
 
 **需要添加的测试**:
 ```
-pkg/etcdapi/auth_manager_test.go
-pkg/etcdapi/lease_manager_test.go
-pkg/etcdapi/watch_manager_test.go
-pkg/etcdapi/cluster_manager_test.go
-pkg/etcdapi/alarm_manager_test.go
+api/etcd/auth_manager_test.go
+api/etcd/lease_manager_test.go
+api/etcd/watch_manager_test.go
+api/etcd/cluster_manager_test.go
+api/etcd/alarm_manager_test.go
 ```
 
 **目标**: 覆盖率 > 70%

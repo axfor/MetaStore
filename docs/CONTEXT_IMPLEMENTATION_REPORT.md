@@ -34,16 +34,16 @@ Successfully completed Context propagation throughout the entire codebase. All S
 **Files Updated**: 7 files
 
 **Context Propagation from gRPC**:
-- `pkg/etcdapi/kv.go` - Passes gRPC `ctx` to storage (5 methods)
-- `pkg/etcdapi/lease.go` - Passes gRPC `ctx` to storage (4 methods)
-- `pkg/etcdapi/watch.go` - Passes gRPC `ctx` to storage (2 methods)
-- `pkg/etcdapi/maintenance.go` - Passes gRPC `ctx` to storage (1 method)
+- `api/etcd/kv.go` - Passes gRPC `ctx` to storage (5 methods)
+- `api/etcd/lease.go` - Passes gRPC `ctx` to storage (4 methods)
+- `api/etcd/watch.go` - Passes gRPC `ctx` to storage (2 methods)
+- `api/etcd/maintenance.go` - Passes gRPC `ctx` to storage (1 method)
 
 **Background Operations** (uses `context.Background()`):
-- `pkg/etcdapi/auth_manager.go` - Auth operations (40+ call sites)
-- `pkg/etcdapi/lease_manager.go` - Lease management (5 call sites)
-- `pkg/etcdapi/watch_manager.go` - Watch management (1 call site)
-- `pkg/httpapi/server.go` - HTTP API (1 call site)
+- `api/etcd/auth_manager.go` - Auth operations (40+ call sites)
+- `api/etcd/lease_manager.go` - Lease management (5 call sites)
+- `api/etcd/watch_manager.go` - Watch management (1 call site)
+- `api/http/server.go` - HTTP API (1 call site)
 
 ### 3. Storage Implementation Layer ✅
 **Files Updated**: 6 files
@@ -101,14 +101,14 @@ resp, err := am.store.Range(context.Background(), authUserPrefix, endKey, 0, 0)
 | File | Lines Changed | Methods Updated | Status |
 |------|---------------|-----------------|--------|
 | `internal/kvstore/store.go` | 15 | 11 (interface) | ✅ |
-| `pkg/etcdapi/kv.go` | 5 | 5 | ✅ |
-| `pkg/etcdapi/lease.go` | 0 | 0 (already had ctx) | ✅ |
-| `pkg/etcdapi/watch.go` | 2 | 1 | ✅ |
-| `pkg/etcdapi/maintenance.go` | 1 | 1 | ✅ |
-| `pkg/etcdapi/auth_manager.go` | 42 | 40+ calls | ✅ |
-| `pkg/etcdapi/lease_manager.go` | 6 | 5 | ✅ |
-| `pkg/etcdapi/watch_manager.go` | 2 | 1 | ✅ |
-| `pkg/httpapi/server.go` | 2 | 1 | ✅ |
+| `api/etcd/kv.go` | 5 | 5 | ✅ |
+| `api/etcd/lease.go` | 0 | 0 (already had ctx) | ✅ |
+| `api/etcd/watch.go` | 2 | 1 | ✅ |
+| `api/etcd/maintenance.go` | 1 | 1 | ✅ |
+| `api/etcd/auth_manager.go` | 42 | 40+ calls | ✅ |
+| `api/etcd/lease_manager.go` | 6 | 5 | ✅ |
+| `api/etcd/watch_manager.go` | 2 | 1 | ✅ |
+| `api/http/server.go` | 2 | 1 | ✅ |
 | `internal/memory/store.go` | 7 | 6 | ✅ |
 | `internal/memory/watch.go` | 6 | 5 | ✅ |
 | `internal/memory/kvstore.go` | 1 | 0 (import only) | ✅ |

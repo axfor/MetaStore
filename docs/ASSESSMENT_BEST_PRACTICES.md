@@ -31,13 +31,13 @@ type Store interface {
 ### 1.2 错误处理 ✅
 
 ```go
-// pkg/etcdapi/kv.go
+// api/etcd/kv.go
 resp, err := s.server.store.Range(key, rangeEnd, limit, revision)
 if err != nil {
     return nil, toGRPCError(err)  // ✅ 不忽略错误
 }
 
-// pkg/etcdapi/auth_manager.go
+// api/etcd/auth_manager.go
 if err := json.Marshal(user); err != nil {
     return fmt.Errorf("failed to marshal user: %w", err)  // ✅ 使用 %w 包装
 }
@@ -59,7 +59,7 @@ if err := json.Marshal(user); err != nil {
 ### 1.3 并发安全 ✅
 
 ```go
-// pkg/etcdapi/watch_manager.go
+// api/etcd/watch_manager.go
 type WatchManager struct {
     mu       sync.RWMutex
     nextID   atomic.Int64    // ✅ 使用 atomic
@@ -135,7 +135,7 @@ func (wm *WatchManager) Create(...) int64 { }
 ### 1.6 资源管理 ✅
 
 ```go
-// pkg/etcdapi/watch_manager.go:132
+// api/etcd/watch_manager.go:132
 func (wm *WatchManager) Stop() {
     if !wm.stopped.CompareAndSwap(false, true) {
         return  // ✅ 防止重复关闭
@@ -202,7 +202,7 @@ pb.RegisterWatchServer(grpcSrv, &WatchServer{server: s})
 ### 2.2 gRPC 服务注册 ✅
 
 ```go
-// pkg/etcdapi/server.go:151-156
+// api/etcd/server.go:151-156
 pb.RegisterKVServer(grpcSrv, &KVServer{server: s})
 pb.RegisterWatchServer(grpcSrv, &WatchServer{server: s})
 pb.RegisterLeaseServer(grpcSrv, &LeaseServer{server: s})
@@ -222,7 +222,7 @@ pb.RegisterAuthServer(grpcSrv, &AuthServer{server: s})
 ### 2.3 ResponseHeader 一致性 ✅
 
 ```go
-// pkg/etcdapi/server.go:303
+// api/etcd/server.go:303
 func (s *Server) getResponseHeader() *pb.ResponseHeader {
     return &pb.ResponseHeader{
         ClusterId: s.clusterID,
@@ -246,7 +246,7 @@ func (s *Server) getResponseHeader() *pb.ResponseHeader {
 ### 2.4 错误码一致性 ✅
 
 ```go
-// pkg/etcdapi/errors.go
+// api/etcd/errors.go
 func toGRPCError(err error) error {
     switch {
     case errors.Is(err, ErrKeyNotFound):
@@ -273,7 +273,7 @@ func toGRPCError(err error) error {
 ### 2.5 事务语义 ✅
 
 ```go
-// pkg/etcdapi/kv.go:137
+// api/etcd/kv.go:137
 func (s *KVServer) Txn(ctx context.Context, req *pb.TxnRequest) (*pb.TxnResponse, error) {
     // ✅ Compare-Then-Else 语义
     cmps := make([]kvstore.Compare, len(req.Compare))
@@ -336,7 +336,7 @@ log.Error("Failed to revoke expired lease",
 ### 3.2 优雅关闭 ✅
 
 ```go
-// pkg/etcdapi/server.go:185-244
+// api/etcd/server.go:185-244
 shutdownMgr.RegisterHook(reliability.PhaseStopAccepting, ...)
 shutdownMgr.RegisterHook(reliability.PhaseDrainConnections, ...)
 shutdownMgr.RegisterHook(reliability.PhasePersistState, ...)
@@ -358,7 +358,7 @@ shutdownMgr.RegisterHook(reliability.PhaseCloseResources, ...)
 ### 3.3 Panic 恢复 ✅
 
 ```go
-// pkg/etcdapi/server.go:312
+// api/etcd/server.go:312
 func (s *Server) PanicRecoveryInterceptor(...) {
     defer func() {
         if r := recover(); r != nil {
@@ -383,7 +383,7 @@ func (s *Server) PanicRecoveryInterceptor(...) {
 ### 3.4 健康检查 ✅
 
 ```go
-// pkg/etcdapi/server.go:160-182
+// api/etcd/server.go:160-182
 healthpb.RegisterHealthServer(grpcSrv, healthMgr.GetServer())
 
 healthMgr.RegisterChecker(reliability.NewStorageHealthChecker("storage", ...))
@@ -446,7 +446,7 @@ func (s *KVServer) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutResponse
 **问题**: 部分方法未传递 context
 
 ```go
-// pkg/etcdapi/auth_manager.go:59
+// api/etcd/auth_manager.go:59
 func (am *AuthManager) loadState() error {
     resp, err := am.store.Range(authEnabledKey, "", 1, 0)  // ❌ 无 context
     // ...
@@ -577,10 +577,10 @@ func (am *AuthManager) AddUser(name, password string) error {
 #### 单元测试
 ```bash
 # 缺失
-pkg/etcdapi/auth_manager_test.go
-pkg/etcdapi/lease_manager_test.go
-pkg/etcdapi/watch_manager_test.go
-pkg/etcdapi/cluster_manager_test.go
+api/etcd/auth_manager_test.go
+api/etcd/lease_manager_test.go
+api/etcd/watch_manager_test.go
+api/etcd/cluster_manager_test.go
 ```
 
 **评分**: 0/10
@@ -612,7 +612,7 @@ test/stress_test.go
 #### Mock 测试
 ```bash
 # 缺失
-pkg/etcdapi/mocks/
+api/etcd/mocks/
 ```
 
 **评分**: 0/10
