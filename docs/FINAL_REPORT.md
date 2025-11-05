@@ -437,7 +437,7 @@ pb.RegisterHealthServer(grpcSrv, healthServer)
 ## 六、代码统计
 
 ```
-pkg/etcdapi/            3,300 行
+api/etcd/            3,300 行
 ├── server.go             150 行
 ├── kv.go                 200 行
 ├── watch.go              250 行

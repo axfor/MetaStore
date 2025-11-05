@@ -178,7 +178,7 @@ type TokenInfo struct {
 
 ### 4.1 gRPC 接口实现
 
-#### 文件：pkg/etcdapi/auth.go
+#### 文件：api/etcd/auth.go
 
 ```go
 package etcdapi
@@ -314,7 +314,7 @@ func (s *AuthServer) RoleRevokePermission(ctx context.Context, req *pb.AuthRoleR
 
 ### 4.2 Auth Manager 实现
 
-#### 文件：pkg/etcdapi/auth_manager.go
+#### 文件：api/etcd/auth_manager.go
 
 ```go
 package etcdapi
@@ -628,7 +628,7 @@ func (am *AuthManager) cleanupExpiredTokens() {
 
 ### 4.3 Auth Interceptor（权限拦截器）
 
-#### 文件：pkg/etcdapi/auth_interceptor.go
+#### 文件：api/etcd/auth_interceptor.go
 
 ```go
 package etcdapi
@@ -1007,7 +1007,7 @@ func TestEtcdClientAuth(t *testing.T) {
 ### 11.1 修改 Server 初始化
 
 ```go
-// pkg/etcdapi/server.go
+// api/etcd/server.go
 
 func NewServer(cfg ServerConfig) (*Server, error) {
     // ... 现有代码 ...
@@ -1082,13 +1082,13 @@ type Server struct {
 ## 13. 待完成清单
 
 ### 代码实现
-- [ ] pkg/etcdapi/auth.go - Auth gRPC 服务
-- [ ] pkg/etcdapi/auth_manager.go - Auth 管理器
-- [ ] pkg/etcdapi/auth_interceptor.go - 认证拦截器
-- [ ] pkg/etcdapi/auth_types.go - 数据模型定义
+- [ ] api/etcd/auth.go - Auth gRPC 服务
+- [ ] api/etcd/auth_manager.go - Auth 管理器
+- [ ] api/etcd/auth_interceptor.go - 认证拦截器
+- [ ] api/etcd/auth_types.go - 数据模型定义
 
 ### 测试
-- [ ] pkg/etcdapi/auth_test.go - 单元测试
+- [ ] api/etcd/auth_test.go - 单元测试
 - [ ] test/auth_integration_test.go - 集成测试
 - [ ] test/auth_etcd_compatibility_test.go - etcd 兼容性测试
 
@@ -1098,7 +1098,7 @@ type Server struct {
 - [ ] examples/auth/ - 示例代码
 
 ### 集成
-- [ ] 修改 pkg/etcdapi/server.go 集成 Auth
+- [ ] 修改 api/etcd/server.go 集成 Auth
 - [ ] 添加 gRPC 拦截器
 - [ ] 首次启动初始化 root 用户
 

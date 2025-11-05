@@ -5,9 +5,32 @@ server:
   # 集群配置（必须指定，不能为 0）
   cluster_id: 1
   member_id: 1
-  listen_address: ":2379"
 
+  # ============================================
+  # 协议配置 (Protocol Configuration)
+  # ============================================
+  # MetaStore 支持三种协议接口，可以同时启用：
+  # 1. etcd - etcd gRPC 协议（用于 etcd 客户端兼容）
+  # 2. http - HTTP REST API（用于简单的 HTTP 访问）
+  # 3. mysql - MySQL 协议（用于 SQL 查询接口）
+
+  # etcd gRPC 协议配置
+  etcd:
+    address: ":2379"  # etcd gRPC 监听地址
+
+  # HTTP REST API 配置
+  http:
+    address: ":9121"  # HTTP API 监听地址
+
+  # MySQL 协议配置
+  mysql:
+    address: ":3306"   # MySQL 协议监听地址
+    username: "root"   # MySQL 认证用户名
+    password: ""       # MySQL 认证密码（生产环境请设置强密码）
+
+  # ============================================
   # gRPC 配置（基于业界最佳实践优化：etcd、gRPC 官方、TiKV）
+  # ============================================
   grpc:
     # 消息大小限制（与 Raft MaxSizePerMsg 对齐）
     max_recv_msg_size: 4194304 # 4MB（支持大批量操作，TiKV 推荐 16MB）

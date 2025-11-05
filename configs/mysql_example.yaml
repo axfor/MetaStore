@@ -1,0 +1,136 @@
+# MetaStore Configuration with MySQL Protocol Support
+#
+# This example configuration enables MySQL protocol access
+# alongside existing HTTP and etcd gRPC protocols
+
+server:
+  # Cluster configuration
+  cluster_id: 1
+  member_id: 1
+
+  # ============================================
+  # Protocol Configuration
+  # ============================================
+  # All three protocols are enabled by default
+
+  # etcd gRPC Protocol
+  etcd:
+    address: ":2379"  # etcd gRPC listen address
+
+  # HTTP REST API
+  http:
+    address: ":9121"  # HTTP API listen address
+
+  # MySQL Protocol
+  mysql:
+    address: ":3306"        # MySQL listen address (standard MySQL port)
+    username: "root"        # Authentication username
+    password: ""            # Authentication password (empty for development)
+                           # For production, set a strong password
+
+  # gRPC Configuration
+  grpc:
+    max_recv_msg_size: 4194304        # 4MB
+    max_send_msg_size: 4194304        # 4MB
+    max_concurrent_streams: 2048
+    initial_window_size: 8388608      # 8MB
+    initial_conn_window_size: 16777216 # 16MB
+    keepalive_time: 10s
+    keepalive_timeout: 10s
+    max_connection_idle: 300s
+    max_connection_age: 10m
+    max_connection_age_grace: 10s
+
+  # Resource Limits
+  limits:
+    max_connections: 1000
+    max_watch_count: 10000
+    max_lease_count: 10000
+    max_request_size: 1572864    # 1.5MB
+    max_memory_mb: 8192          # 8GB
+    max_requests: 5000
+
+  # Lease Configuration
+  lease:
+    check_interval: 1s
+    default_ttl: 60s
+
+  # Authentication
+  auth:
+    token_ttl: 24h
+    token_cleanup_interval: 5m
+    bcrypt_cost: 10
+    enable_audit: false
+
+  # Maintenance
+  maintenance:
+    snapshot_chunk_size: 4194304    # 4MB
+
+  # Reliability
+  reliability:
+    shutdown_timeout: 30s
+    drain_timeout: 5s
+    enable_crc: false
+    enable_health_check: true
+    enable_panic_recovery: true
+
+  # Logging
+  log:
+    level: "info"
+    encoding: "json"
+    output_paths: ["stdout"]
+    error_output_paths: ["stderr"]
+
+  # Monitoring
+  monitoring:
+    enable_prometheus: true
+    prometheus_port: 9090
+    slow_request_threshold: 100ms
+
+  # Performance Optimizations
+  performance:
+    enable_protobuf: true
+    enable_snapshot_protobuf: true
+    enable_lease_protobuf: true
+
+  # Raft Configuration
+  raft:
+    tick_interval: 100ms
+    election_tick: 10
+    heartbeat_tick: 1
+    max_size_per_msg: 4194304       # 4MB
+    max_inflight_msgs: 1024
+    max_uncommitted_entries_size: 1073741824  # 1GB
+    pre_vote: true
+    check_quorum: true
+
+    # Batch Proposal
+    batch:
+      enable: true
+      min_batch_size: 1
+      max_batch_size: 256
+      min_timeout: 5ms
+      max_timeout: 20ms
+      load_threshold: 0.7
+
+    # Lease Read
+    lease_read:
+      enable: true
+      clock_drift: 100ms
+      read_timeout: 5s
+
+  # RocksDB Configuration (for persistent storage)
+  rocksdb:
+    block_cache_size: 268435456        # 256MB
+    write_buffer_size: 67108864        # 64MB
+    max_write_buffer_number: 3
+    min_write_buffer_number_to_merge: 1
+    max_background_jobs: 4
+    level0_file_num_compaction_trigger: 4
+    level0_slowdown_writes_trigger: 20
+    level0_stop_writes_trigger: 36
+    bloom_filter_bits_per_key: 10
+    block_based_table_bloom_filter: true
+    max_open_files: 10000
+    use_fsync: false
+    bytes_per_sync: 1048576            # 1MB

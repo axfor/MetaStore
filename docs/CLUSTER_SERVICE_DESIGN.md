@@ -109,7 +109,7 @@ type MemberInfo struct {
 
 由于 etcd v3 API 将集群管理放在 Maintenance Service 中，我们需要扩展现有的 MaintenanceServer。
 
-#### 文件：pkg/etcdapi/maintenance.go
+#### 文件：api/etcd/maintenance.go
 
 ```go
 // MemberList 列出所有集群成员
@@ -181,7 +181,7 @@ func (s *MaintenanceServer) MemberPromote(ctx context.Context, req *pb.MemberPro
 
 ### 4.2 Cluster Manager 实现
 
-#### 文件：pkg/etcdapi/cluster_manager.go
+#### 文件：api/etcd/cluster_manager.go
 
 ```go
 package etcdapi
@@ -585,17 +585,17 @@ TestClusterIntegration
 ## 12. 待完成清单
 
 ### 代码实现
-- [ ] pkg/etcdapi/cluster_manager.go - Cluster 管理器
-- [ ] 扩展 pkg/etcdapi/maintenance.go - 添加 Member* 接口
+- [ ] api/etcd/cluster_manager.go - Cluster 管理器
+- [ ] 扩展 api/etcd/maintenance.go - 添加 Member* 接口
 - [ ] 修改 internal/raft/node_*.go - 集成 ConfChange
-- [ ] pkg/etcdapi/cluster_types.go - 数据模型
+- [ ] api/etcd/cluster_types.go - 数据模型
 
 ### 测试
-- [ ] pkg/etcdapi/cluster_test.go - 单元测试
+- [ ] api/etcd/cluster_test.go - 单元测试
 - [ ] test/cluster_integration_test.go - 集成测试
 
 ### 集成
-- [ ] 修改 pkg/etcdapi/server.go 集成 ClusterManager
+- [ ] 修改 api/etcd/server.go 集成 ClusterManager
 - [ ] 修改 NewNode 添加 applyConfChange 回调
 
 ---

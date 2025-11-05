@@ -60,7 +60,7 @@
 
 **示例问题代码**：
 ```go
-// pkg/etcdapi/auth_test.go - 审计前
+// api/etcd/auth_test.go - 审计前
 cfg := ServerConfig{
     Store:     store,
     Address:   ":0",
@@ -97,11 +97,11 @@ cfg.RocksDB.CompressionType = "none"    // 测试环境不压缩加快速度
 
 #### 2. 更新测试文件使用配置
 已更新文件：
-- ✅ `pkg/etcdapi/auth_test.go` - 认证测试现在使用配置
+- ✅ `api/etcd/auth_test.go` - 认证测试现在使用配置
 
 **修复后代码**：
 ```go
-// pkg/etcdapi/auth_test.go - 审计后
+// api/etcd/auth_test.go - 审计后
 func setupAuthTest(t *testing.T) (*Server, func()) {
     store := memory.NewMemoryEtcd()
 
@@ -138,14 +138,14 @@ func createAuthTestConfig() *config.Config {
 
 #### Auth配置测试
 ```bash
-$ go test ./pkg/etcdapi -v -timeout=120s
+$ go test ./api/etcd -v -timeout=120s
 PASS: TestAuthBasicFlow (2.01s)
 PASS: TestUserManagement (2.01s)
 PASS: TestRoleManagement (2.00s)
 PASS: TestUserRoleBinding (2.00s)
 PASS: TestTokenExpiration (2.00s)
 PASS: TestPermissionCheck (2.00s)
-ok  	metaStore/pkg/etcdapi	12.532s
+ok  	metaStore/api/etcd	12.532s
 ```
 
 **配置功能证据**：
@@ -192,7 +192,7 @@ ok  	metaStore/pkg/etcdapi	12.532s
 cfg := config.LoadConfig(*configFile)
 authMgr := NewAuthManager(cfg.Store, &cfg.Server.Auth)
 
-// 测试环境 - pkg/etcdapi/auth_test.go
+// 测试环境 - api/etcd/auth_test.go
 testCfg := createAuthTestConfig()
 authMgr := NewAuthManager(cfg.Store, &testCfg.Server.Auth)
 ```
@@ -268,7 +268,7 @@ $ ls -lh metastore
 
 ### 测试验证
 ```bash
-$ go test ./pkg/etcdapi -v -timeout=120s
+$ go test ./api/etcd -v -timeout=120s
 ✅ PASS: All 6 auth tests passed (12.532s)
 
 $ go test ./test -run TestAuthConfig -v
@@ -282,49 +282,49 @@ $ go test ./test -run TestAuthConfig -v
 ### Auth配置
 ```
 Auth.TokenTTL:
-  - pkg/etcdapi/auth_manager.go:209 - 设置token过期时间
-  - pkg/etcdapi/auth_test.go:65 - 测试配置
+  - api/etcd/auth_manager.go:209 - 设置token过期时间
+  - api/etcd/auth_test.go:65 - 测试配置
 
 Auth.BcryptCost:
-  - pkg/etcdapi/auth_manager.go:731 - 密码哈希加密
-  - pkg/etcdapi/auth_test.go:64 - 测试使用cost=4加快速度
+  - api/etcd/auth_manager.go:731 - 密码哈希加密
+  - api/etcd/auth_test.go:64 - 测试使用cost=4加快速度
 
 Auth.EnableAudit:
-  - pkg/etcdapi/auth_manager.go:214 - 条件审计日志
-  - pkg/etcdapi/auth_test.go:67 - 测试禁用审计
+  - api/etcd/auth_manager.go:214 - 条件审计日志
+  - api/etcd/auth_test.go:67 - 测试禁用审计
 
 Auth.TokenCleanupInterval:
-  - pkg/etcdapi/auth_manager.go:749 - 清理定时器
+  - api/etcd/auth_manager.go:749 - 清理定时器
 ```
 
 ### Reliability配置
 ```
 Reliability.DrainTimeout:
   - pkg/reliability/shutdown.go:128 - 排空连接阶段超时
-  - pkg/etcdapi/auth_test.go:78 - 测试配置2秒
+  - api/etcd/auth_test.go:78 - 测试配置2秒
   - 验证：日志显示精确2秒排空时间
 
 Reliability.ShutdownTimeout:
   - pkg/reliability/shutdown.go:112 - 总超时时间
-  - pkg/etcdapi/auth_test.go:77 - 测试配置5秒
+  - api/etcd/auth_test.go:77 - 测试配置5秒
 ```
 
 ### Limits配置
 ```
 Limits.MaxWatchCount:
-  - pkg/etcdapi/watch_manager.go:95 - 限制watch数量
-  - pkg/etcdapi/auth_test.go:70 - 测试配置1000
+  - api/etcd/watch_manager.go:95 - 限制watch数量
+  - api/etcd/auth_test.go:70 - 测试配置1000
 
 Limits.MaxLeaseCount:
-  - pkg/etcdapi/lease_manager.go:85 - 限制lease数量
-  - pkg/etcdapi/auth_test.go:71 - 测试配置10000
+  - api/etcd/lease_manager.go:85 - 限制lease数量
+  - api/etcd/auth_test.go:71 - 测试配置10000
 ```
 
 ### Monitoring配置
 ```
 Monitoring.PrometheusPort:
   - cmd/metastore/main.go:85 - 启动Prometheus HTTP服务器
-  - pkg/etcdapi/auth_test.go:74 - 测试环境禁用避免端口冲突
+  - api/etcd/auth_test.go:74 - 测试环境禁用避免端口冲突
 
 Monitoring.EnablePrometheus:
   - cmd/metastore/main.go:82 - 控制是否启动metrics服务器
@@ -333,8 +333,8 @@ Monitoring.EnablePrometheus:
 ### Maintenance配置
 ```
 Maintenance.SnapshotChunkSize:
-  - pkg/etcdapi/maintenance.go:169 - 控制快照分块大小
-  - pkg/etcdapi/server.go:154 - 从配置传递
+  - api/etcd/maintenance.go:169 - 控制快照分块大小
+  - api/etcd/server.go:154 - 从配置传递
 ```
 
 ---

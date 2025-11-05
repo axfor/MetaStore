@@ -84,7 +84,7 @@ Successfully completed **all critical Phase 1 & Phase 2 tasks**, bringing MetaSt
 **Files Created**:
 - `pkg/pool/kvpool.go` (254 lines)
 - `pkg/pool/kvpool_test.go` (360 lines)
-- `pkg/etcdapi/convert.go` (165 lines)
+- `api/etcd/convert.go` (165 lines)
 
 **Benchmark Results**:
 ```
@@ -292,7 +292,7 @@ All implementations followed the **"Leverage Existing Tools, Don't Reinvent"** p
 8. `pkg/metrics/server.go` (144)
 9. `pkg/pool/kvpool.go` (254)
 10. `pkg/pool/kvpool_test.go` (360)
-11. `pkg/etcdapi/convert.go` (165)
+11. `api/etcd/convert.go` (165)
 12. `pkg/health/health.go` (350)
 13. `pkg/health/disk_unix.go` (45)
 14. `pkg/health/disk_windows.go` (30)
@@ -313,20 +313,20 @@ All implementations followed the **"Leverage Existing Tools, Don't Reinvent"** p
 - `docs/QUICK_START.md` (rewritten, 426 lines)
 
 ### Modified Files (15)
-- `pkg/etcdapi/auth_manager.go` (complete rewrite)
+- `api/etcd/auth_manager.go` (complete rewrite)
 - `internal/kvstore/store.go` (interface update)
-- `pkg/etcdapi/kv.go` (context passing)
-- `pkg/etcdapi/lease.go` (context passing)
-- `pkg/etcdapi/watch.go` (context passing)
-- `pkg/etcdapi/maintenance.go` (context passing)
-- `pkg/etcdapi/auth_manager.go` (context passing)
-- `pkg/etcdapi/lease_manager.go` (context passing)
-- `pkg/etcdapi/watch_manager.go` (context passing)
+- `api/etcd/kv.go` (context passing)
+- `api/etcd/lease.go` (context passing)
+- `api/etcd/watch.go` (context passing)
+- `api/etcd/maintenance.go` (context passing)
+- `api/etcd/auth_manager.go` (context passing)
+- `api/etcd/lease_manager.go` (context passing)
+- `api/etcd/watch_manager.go` (context passing)
 - `internal/memory/store.go` (context + method signatures)
 - `internal/memory/watch.go` (context)
 - `internal/memory/kvstore.go` (context)
 - `internal/rocksdb/kvstore.go` (context + Compact implementation)
-- `pkg/httpapi/server.go` (context)
+- `api/http/server.go` (context)
 - `pkg/grpc/server.go` (metrics integration)
 
 ---

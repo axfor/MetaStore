@@ -1,0 +1,23 @@
+server:
+  cluster_id: 1
+  member_id: 1
+
+  # Protocol configuration
+  etcd:
+    address: ":2379"
+  http:
+    address: ":9121"
+  mysql:
+    address: ":4000"
+    username: "root"
+    password: ""
+
+  limits:
+    max_connections: 1000
+    max_requests: 5000
+    max_memory_mb: 8192
+
+  raft:
+    tick_interval: 100ms
+    election_tick: 10
+    heartbeat_tick: 1

@@ -33,7 +33,11 @@ type ServerConfig struct {
 	// Cluster configuration
 	ClusterID     uint64 `yaml:"cluster_id"`
 	MemberID      uint64 `yaml:"member_id"`
-	ListenAddress string `yaml:"listen_address"`
+
+	// Protocol configurations
+	Etcd  EtcdConfig  `yaml:"etcd"`  // etcd gRPC protocol configuration
+	HTTP  HTTPConfig  `yaml:"http"`  // HTTP REST API configuration
+	MySQL MySQLConfig `yaml:"mysql"` // MySQL protocol configuration
 
 	// Sub-configurations
 	GRPC        GRPCConfig        `yaml:"grpc"`
@@ -47,6 +51,23 @@ type ServerConfig struct {
 	Performance PerformanceConfig `yaml:"performance"`
 	Raft        RaftConfig        `yaml:"raft"`
 	RocksDB     RocksDBConfig     `yaml:"rocksdb"`
+}
+
+// EtcdConfig etcd gRPC protocol configuration
+type EtcdConfig struct {
+	Address string `yaml:"address"` // Listen address for etcd gRPC, default ":2379"
+}
+
+// HTTPConfig HTTP REST API configuration
+type HTTPConfig struct {
+	Address string `yaml:"address"` // Listen address for HTTP API, default ":9121"
+}
+
+// MySQLConfig MySQL protocol configuration
+type MySQLConfig struct {
+	Address  string `yaml:"address"`  // Listen address for MySQL protocol, default ":3306"
+	Username string `yaml:"username"` // Authentication username, default "root"
+	Password string `yaml:"password"` // Authentication password, default ""
 }
 
 // GRPCConfig gRPC configuration
@@ -210,12 +231,14 @@ type RocksDBConfig struct {
 
 // DefaultConfig returns a configuration with recommended default values
 // Use this function to get production-ready defaults when no config file is provided
-func DefaultConfig(clusterID, memberID uint64, listenAddress string) *Config {
+func DefaultConfig(clusterID, memberID uint64, etcdAddress string) *Config {
 	cfg := &Config{
 		Server: ServerConfig{
-			ClusterID:     clusterID,
-			MemberID:      memberID,
-			ListenAddress: listenAddress,
+			ClusterID: clusterID,
+			MemberID:  memberID,
+			Etcd: EtcdConfig{
+				Address: etcdAddress,
+			},
 		},
 	}
 
@@ -253,7 +276,7 @@ func LoadConfig(path string) (*Config, error) {
 
 // LoadConfigOrDefault attempts to load configuration from file, uses defaults if file doesn't exist
 // This allows users to run with recommended defaults when no config file is provided
-func LoadConfigOrDefault(path string, clusterID, memberID uint64, listenAddress string) (*Config, error) {
+func LoadConfigOrDefault(path string, clusterID, memberID uint64, etcdAddress string) (*Config, error) {
 	// Try loading config file
 	if path != "" {
 		cfg, err := LoadConfig(path)
@@ -267,7 +290,7 @@ func LoadConfigOrDefault(path string, clusterID, memberID uint64, listenAddress 
 	}
 
 	// Use default configuration
-	cfg := DefaultConfig(clusterID, memberID, listenAddress)
+	cfg := DefaultConfig(clusterID, memberID, etcdAddress)
 
 	// Override from environment variables
 	cfg.OverrideFromEnv()
@@ -282,9 +305,18 @@ func LoadConfigOrDefault(path string, clusterID, memberID uint64, listenAddress 
 
 // SetDefaults sets default values
 func (c *Config) SetDefaults() {
-	// Server defaults
-	if c.Server.ListenAddress == "" {
-		c.Server.ListenAddress = ":2379"
+	// Protocol defaults
+	if c.Server.Etcd.Address == "" {
+		c.Server.Etcd.Address = ":2379"
+	}
+	if c.Server.HTTP.Address == "" {
+		c.Server.HTTP.Address = ":9121"
+	}
+	if c.Server.MySQL.Address == "" {
+		c.Server.MySQL.Address = ":3306"
+	}
+	if c.Server.MySQL.Username == "" {
+		c.Server.MySQL.Username = "root"
 	}
 
 	// gRPC defaults (based on industry best practices: etcd, gRPC official, TiKV)
@@ -519,8 +551,8 @@ func (c *Config) OverrideFromEnv() {
 			c.Server.MemberID = id
 		}
 	}
-	if listenAddr := os.Getenv("METASTORE_LISTEN_ADDRESS"); listenAddr != "" {
-		c.Server.ListenAddress = listenAddr
+	if etcdAddr := os.Getenv("METASTORE_ETCD_ADDRESS"); etcdAddr != "" {
+		c.Server.Etcd.Address = etcdAddr
 	}
 
 	// Log configuration
@@ -542,9 +574,9 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("member_id is required and must be non-zero")
 	}
 
-	// Validate listen address
-	if c.Server.ListenAddress == "" {
-		return fmt.Errorf("listen_address is required")
+	// Validate protocol addresses
+	if c.Server.Etcd.Address == "" {
+		return fmt.Errorf("etcd.address is required")
 	}
 
 	// Validate gRPC configuration

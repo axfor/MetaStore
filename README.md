@@ -1,6 +1,6 @@
 # MetaStore - Production-Ready Distributed KV Store
 
-A lightweight, high-performance, production-ready distributed metadata management system with **100% etcd v3 API compatibility**. Built on etcd's battle-tested Raft library, MetaStore can replace heavy-resource systems like Zookeeper and etcd while providing better performance and lower resource consumption.
+A lightweight, high-performance, production-ready distributed metadata management system with **100% etcd v3 API compatibility** and **MySQL protocol support**. Built on etcd's battle-tested Raft library, MetaStore provides three protocol interfaces (etcd gRPC, HTTP REST, MySQL) to replace heavy-resource systems while delivering better performance and lower resource consumption.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/Go-1.23%2B-blue.svg)](https://golang.org/)
@@ -13,6 +13,7 @@ A lightweight, high-performance, production-ready distributed metadata managemen
 
 ### Core Capabilities
 - **🎯 100% etcd v3 API Compatible**: Drop-in replacement for etcd with full gRPC API compatibility
+- **🔌 Multi-Protocol Support**: Three protocol interfaces - etcd gRPC, HTTP REST, and MySQL protocol
 - **⚡ High Performance**: Optimized for low latency with object pooling and efficient memory management
 - **🔒 Production Ready**: Comprehensive test coverage (100%), fault injection testing, and performance benchmarking
 - **🏗️ Raft Consensus**: Built on etcd's battle-tested raft library for strong consistency
@@ -86,6 +87,141 @@ A lightweight, high-performance, production-ready distributed metadata managemen
 | **Auth**        | 13/13 | 100%     | ✅ Full       |
 
 **Overall: 38/38 RPCs (100%) - Production Ready** ⭐⭐⭐⭐⭐
+
+### MySQL Protocol Support (SQL Interface)
+
+MetaStore provides a **MySQL wire protocol** interface, allowing you to query the distributed KV store using standard MySQL clients and SQL syntax. This enables easy integration with existing tools and applications that support MySQL.
+
+#### ✅ Supported Operations
+
+**Basic CRUD**:
+- ✅ `INSERT INTO kv (key, value) VALUES (...)` - Insert key-value pairs
+- ✅ `SELECT * FROM kv WHERE key = '...'` - Query by exact key
+- ✅ `SELECT key, value FROM kv WHERE key LIKE 'prefix%'` - Prefix queries
+- ✅ `UPDATE kv SET value = '...' WHERE key = '...'` - Update values
+- ✅ `DELETE FROM kv WHERE key = '...'` - Delete keys
+- ✅ `SELECT * FROM kv LIMIT n` - List all keys with pagination
+
+**Transactions**:
+- ✅ `BEGIN` / `START TRANSACTION` - Start transaction
+- ✅ `COMMIT` - Commit transaction
+- ✅ `ROLLBACK` - Rollback transaction
+- ✅ Autocommit mode support
+- ✅ Read committed isolation level
+
+**Advanced Features**:
+- ✅ Column projection (`SELECT key FROM kv`, `SELECT value FROM kv`)
+- ✅ Pattern matching with LIKE operator
+- ✅ SQL parser with TiDB parser integration
+- ✅ Fallback to simple parser for compatibility
+
+#### 🔌 Using MySQL Client
+
+```bash
+# Connect with mysql command-line client
+mysql -h 127.0.0.1 -P 3306 -u root
+
+# Or with DSN
+mysql -h 127.0.0.1 -P 3306 -u root -D metastore
+```
+
+#### 📝 Example Queries
+
+```sql
+-- Insert data
+INSERT INTO kv (key, value) VALUES ('user:1', 'alice');
+INSERT INTO kv (key, value) VALUES ('user:2', 'bob');
+
+-- Query by exact key
+SELECT * FROM kv WHERE key = 'user:1';
+
+-- Prefix query
+SELECT key, value FROM kv WHERE key LIKE 'user:%';
+
+-- Update
+UPDATE kv SET value = 'alice_updated' WHERE key = 'user:1';
+
+-- Delete
+DELETE FROM kv WHERE key = 'user:2';
+
+-- Transactions
+BEGIN;
+INSERT INTO kv (key, value) VALUES ('order:1', 'pending');
+INSERT INTO kv (key, value) VALUES ('order:2', 'shipped');
+COMMIT;
+
+-- List all keys
+SELECT * FROM kv LIMIT 10;
+```
+
+#### 🔗 Using Go MySQL Driver
+
+```go
+package main
+
+import (
+    "database/sql"
+    "fmt"
+    "log"
+
+    _ "github.com/go-sql-driver/mysql"
+)
+
+func main() {
+    // Connect to MetaStore via MySQL protocol
+    db, err := sql.Open("mysql", "root@tcp(127.0.0.1:3306)/metastore")
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer db.Close()
+
+    // Insert
+    _, err = db.Exec("INSERT INTO kv (key, value) VALUES (?, ?)", "hello", "world")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Query
+    var value string
+    err = db.QueryRow("SELECT value FROM kv WHERE key = ?", "hello").Scan(&value)
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Printf("Value: %s\n", value)
+
+    // Transaction
+    tx, err := db.Begin()
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    _, err = tx.Exec("INSERT INTO kv (key, value) VALUES (?, ?)", "key1", "value1")
+    if err != nil {
+        tx.Rollback()
+        log.Fatal(err)
+    }
+
+    err = tx.Commit()
+    if err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+#### ⚙️ Configuration
+
+Enable MySQL protocol in your configuration:
+
+```yaml
+server:
+  # MySQL Protocol
+  mysql:
+    address: ":3306"        # MySQL listen address
+    username: "root"        # Authentication username
+    password: ""            # Authentication password (empty for development)
+```
+
+See [docs/MYSQL_API_QUICKSTART.md](docs/MYSQL_API_QUICKSTART.md) for complete MySQL protocol documentation.
 
 ### Production-Grade Features
 
@@ -300,6 +436,8 @@ go test -v -run="TestCrossProtocol" ./test
 ### Features & Status
 - ✅ [Production-Ready Features](docs/PRODUCTION_READY_FEATURES.md) - All production features
 - ✅ [etcd Interface Status](docs/ETCD_INTERFACE_STATUS.md) - Complete API compatibility matrix
+- ✅ [MySQL API Documentation](docs/MYSQL_API_QUICKSTART.md) - MySQL protocol quick start guide
+- ✅ [MySQL API Testing Guide](docs/MYSQL_API_TESTING.md) - MySQL protocol testing
 - ✅ [Reliability Implementation](docs/RELIABILITY_IMPLEMENTATION.md) - Reliability features
 - 📊 [Structured Logging](docs/STRUCTURED_LOGGING.md) - Logging architecture
 - 📊 [Prometheus Integration](docs/PROMETHEUS_INTEGRATION.md) - Metrics and monitoring
@@ -422,7 +560,7 @@ See [configs/metastore.yaml](configs/metastore.yaml) for complete configuration 
 - Distributed coordination and locking
 - Metadata management for distributed systems
 - Leader election
-- Replacing Zookeeper/etcd with lower resource usage
+- Replacing MySQL/etcd with lower resource usage
 - Applications requiring strong consistency
 - Microservices configuration management
 
@@ -618,6 +756,8 @@ Apache License 2.0 - See [LICENSE](LICENSE) for details.
 - [x] Cluster service (100%)
 - [x] Transaction support
 - [x] Auth/RBAC (full)
+- [x] MySQL protocol support (SQL interface)
+- [x] Multi-protocol support (etcd gRPC, HTTP REST, MySQL)
 - [x] Structured logging
 - [x] Prometheus metrics
 - [x] Object pooling

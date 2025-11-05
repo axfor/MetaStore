@@ -153,7 +153,7 @@ server:
    - Helper methods: Len, Clear, Keys, Values, Clone
 
 **Files Updated:**
-2. `pkg/etcdapi/auth_manager.go` (~750 lines, comprehensive rewrite)
+2. `api/etcd/auth_manager.go` (~750 lines, comprehensive rewrite)
    - Removed global mutex → 3 concurrent-safe sync.Maps
    - Added atomic.Bool for enabled flag
    - Updated all 25+ methods
@@ -228,15 +228,15 @@ type AuthManager struct {
    - Added `context.Context` as first parameter to all storage methods
    - 13 methods updated: Range, PutWithLease, DeleteRange, Txn, Watch, Compact, LeaseGrant, LeaseRevoke, LeaseRenew, LeaseTimeToLive, Leases
 
-2. `pkg/etcdapi/auth_manager.go` - All storage calls updated
+2. `api/etcd/auth_manager.go` - All storage calls updated
    - Uses `context.Background()` for non-RPC operations
    - 40+ call sites updated
 
-3. `pkg/etcdapi/{kv,lease,watch,maintenance}.go` - Context propagation
+3. `api/etcd/{kv,lease,watch,maintenance}.go` - Context propagation
    - Passes gRPC context to storage layer
    - Enables timeout and cancellation
 
-4. `pkg/httpapi/server.go` - HTTP layer updated
+4. `api/http/server.go` - HTTP layer updated
    - Uses `context.Background()` for HTTP operations
 
 ### Implementation Status
@@ -306,12 +306,12 @@ resp, err := store.Range(ctx, "key", "", 0, 0)
 
 ### Files Modified
 - `internal/kvstore/store.go`: Interface updated (13 methods)
-- `pkg/etcdapi/auth_manager.go`: Complete rewrite (~750 lines)
-- `pkg/etcdapi/kv.go`: Context propagation
-- `pkg/etcdapi/lease.go`: Context propagation
-- `pkg/etcdapi/watch.go`: Context propagation
-- `pkg/etcdapi/maintenance.go`: Context propagation
-- `pkg/httpapi/server.go`: Context propagation
+- `api/etcd/auth_manager.go`: Complete rewrite (~750 lines)
+- `api/etcd/kv.go`: Context propagation
+- `api/etcd/lease.go`: Context propagation
+- `api/etcd/watch.go`: Context propagation
+- `api/etcd/maintenance.go`: Context propagation
+- `api/http/server.go`: Context propagation
 - **Total**: ~2,000 lines modified
 
 ### Compilation Status

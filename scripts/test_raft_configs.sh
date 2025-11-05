@@ -3,6 +3,14 @@
 
 set -e
 
+# Disable proxy to avoid interference with local connections
+unset http_proxy
+unset https_proxy
+unset all_proxy
+unset HTTP_PROXY
+unset HTTPS_PROXY
+unset ALL_PROXY
+
 echo "=========================================="
 echo "Raft 配置性能对比测试"
 echo "=========================================="

@@ -150,7 +150,7 @@ return resp  // gRPC owns lifecycle
 
 ### Conversion Helper Design
 
-**File**: `pkg/etcdapi/convert.go` (created)
+**File**: `api/etcd/convert.go` (created)
 
 **Dual-Strategy Approach**:
 ```go
@@ -222,7 +222,7 @@ Memory churn: Low (pooled objects reused)
 |------|-------|--------|---------|
 | `pkg/pool/kvpool.go` | 254 | ✅ Created | Object pool implementation |
 | `pkg/pool/kvpool_test.go` | 360 | ✅ Created | Unit tests & benchmarks |
-| `pkg/etcdapi/convert.go` | 165 | ✅ Created | Conversion helpers |
+| `api/etcd/convert.go` | 165 | ✅ Created | Conversion helpers |
 | **Total** | **779** | ✅ | **3 files** |
 
 ---

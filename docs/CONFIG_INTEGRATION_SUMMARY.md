@@ -55,7 +55,7 @@ export METASTORE_LOG_LEVEL=debug
 ./metastore --config=configs/example.yaml
 ```
 
-### 3. Enhanced etcd Server ([pkg/etcdapi/server.go](../pkg/etcdapi/server.go))
+### 3. Enhanced etcd Server ([api/etcd/server.go](../api/etcd/server.go))
 
 **Added:**
 - `Config *config.Config` field to `ServerConfig` struct
@@ -189,7 +189,7 @@ export METASTORE_LISTEN_ADDRESS=":2379"
 |------|---------|
 | [pkg/config/config.go](../pkg/config/config.go) | Added DefaultConfig(), LoadConfig(), LoadConfigOrDefault() |
 | [cmd/metastore/main.go](../cmd/metastore/main.go) | Added --config flag, integrated config loading |
-| [pkg/etcdapi/server.go](../pkg/etcdapi/server.go) | Added Config field, applied gRPC options from config |
+| [api/etcd/server.go](../api/etcd/server.go) | Added Config field, applied gRPC options from config |
 
 ## Files Created
 
