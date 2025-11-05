@@ -25,10 +25,11 @@ import (
 	"metaStore/internal/raft"
 	"metaStore/internal/rocksdb"
 	"metaStore/pkg/config"
-	"metaStore/pkg/etcdapi"
-	"metaStore/pkg/httpapi"
+	"metaStore/api/etcd"
+	"metaStore/api/http"
 	"metaStore/pkg/log"
 	"metaStore/pkg/metrics"
+	"metaStore/api/mysql"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"go.etcd.io/raft/v3/raftpb"
@@ -114,14 +115,14 @@ func main() {
 		log.Info("Using default configuration with command-line parameters",
 			zap.Uint64("cluster_id", cfg.Server.ClusterID),
 			zap.Uint64("member_id", cfg.Server.MemberID),
-			zap.String("listen_address", cfg.Server.ListenAddress),
+			zap.String("etcd_address", cfg.Server.Etcd.Address),
 			zap.String("component", "main"))
 	} else {
 		log.Info("Loaded configuration from file",
 			zap.String("config_file", *configFile),
 			zap.Uint64("cluster_id", cfg.Server.ClusterID),
 			zap.Uint64("member_id", cfg.Server.MemberID),
-			zap.String("listen_address", cfg.Server.ListenAddress),
+			zap.String("etcd_address", cfg.Server.Etcd.Address),
 			zap.String("component", "main"))
 	}
 
@@ -169,23 +170,48 @@ func main() {
 		// Start HTTP API server
 		go func() {
 			log.Info("Starting HTTP API", zap.Int("port", *kvport), zap.String("component", "main"))
-			httpapi.ServeHTTPKVAPI(kvs, *kvport, confChangeC, errorC)
+			http.ServeHTTPKVAPI(kvs, *kvport, confChangeC, errorC)
+		}()
+
+		// Start MySQL protocol server
+		mysqlServer, err := mysql.NewServer(mysql.ServerConfig{
+			Store:    kvs,
+			Address:  cfg.Server.MySQL.Address,
+			Username: cfg.Server.MySQL.Username,
+			Password: cfg.Server.MySQL.Password,
+			Config:   cfg,
+		})
+		if err != nil {
+			log.Fatalf("Failed to create MySQL server: %v", err)
+			os.Exit(-1)
+			return
+		}
+
+		go func() {
+			log.Info("Starting MySQL protocol server",
+				zap.String("address", cfg.Server.MySQL.Address),
+				zap.String("component", "main"))
+			if err := mysqlServer.Start(); err != nil {
+				log.Error("MySQL server failed",
+					zap.Error(err),
+					zap.String("component", "main"))
+			}
 		}()
 
 		// Start etcd gRPC server
 		log.Info("Starting etcd gRPC server",
-			zap.String("address", cfg.Server.ListenAddress),
+			zap.String("address", cfg.Server.Etcd.Address),
 			zap.Uint64("cluster_id", cfg.Server.ClusterID),
 			zap.Uint64("member_id", cfg.Server.MemberID),
 			zap.String("component", "main"))
-		etcdServer, err := etcdapi.NewServer(etcdapi.ServerConfig{
+		etcdServer, err := etcd.NewServer(etcd.ServerConfig{
 			Store:        kvs,
-			Address:      cfg.Server.ListenAddress,
+			Address:      cfg.Server.Etcd.Address,
 			ClusterID:    cfg.Server.ClusterID,
 			MemberID:     cfg.Server.MemberID,
 			ClusterPeers: strings.Split(*cluster, ","),
 			ConfChangeC:  confChangeC,
-			Config:       cfg, // 传递完整配置
+			Config:       cfg,
 		})
 		if err != nil {
 			log.Fatalf("Failed to create etcd server: %v", err)
@@ -215,23 +241,48 @@ func main() {
 		// Start HTTP API server
 		go func() {
 			log.Info("Starting HTTP API", zap.Int("port", *kvport), zap.String("component", "main"))
-			httpapi.ServeHTTPKVAPI(kvs, *kvport, confChangeC, errorC)
+			http.ServeHTTPKVAPI(kvs, *kvport, confChangeC, errorC)
+		}()
+
+		// Start MySQL protocol server
+		mysqlServer, err := mysql.NewServer(mysql.ServerConfig{
+			Store:    kvs,
+			Address:  cfg.Server.MySQL.Address,
+			Username: cfg.Server.MySQL.Username,
+			Password: cfg.Server.MySQL.Password,
+			Config:   cfg,
+		})
+		if err != nil {
+			log.Fatalf("Failed to create MySQL server: %v", err)
+			os.Exit(-1)
+			return
+		}
+
+		go func() {
+			log.Info("Starting MySQL protocol server",
+				zap.String("address", cfg.Server.MySQL.Address),
+				zap.String("component", "main"))
+			if err := mysqlServer.Start(); err != nil {
+				log.Error("MySQL server failed",
+					zap.Error(err),
+					zap.String("component", "main"))
+			}
 		}()
 
 		// Start etcd gRPC server
 		log.Info("Starting etcd gRPC server",
-			zap.String("address", cfg.Server.ListenAddress),
+			zap.String("address", cfg.Server.Etcd.Address),
 			zap.Uint64("cluster_id", cfg.Server.ClusterID),
 			zap.Uint64("member_id", cfg.Server.MemberID),
 			zap.String("component", "main"))
-		etcdServer, err := etcdapi.NewServer(etcdapi.ServerConfig{
+		etcdServer, err := etcd.NewServer(etcd.ServerConfig{
 			Store:        kvs,
-			Address:      cfg.Server.ListenAddress,
+			Address:      cfg.Server.Etcd.Address,
 			ClusterID:    cfg.Server.ClusterID,
 			MemberID:     cfg.Server.MemberID,
 			ClusterPeers: strings.Split(*cluster, ","),
 			ConfChangeC:  confChangeC,
-			Config:       cfg, // 传递完整配置
+			Config:       cfg,
 		})
 		if err != nil {
 			log.Fatalf("Failed to create etcd server: %v", err)

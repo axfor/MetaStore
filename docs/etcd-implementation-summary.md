@@ -48,7 +48,7 @@
 
 ### 5. HTTP API 迁移 ✅
 
-- [pkg/httpapi/server.go](pkg/httpapi/server.go) - 独立的 HTTP API 包
+- [api/http/server.go](api/http/server.go) - 独立的 HTTP API 包
 
 ### 6. 演示程序 ✅
 
@@ -181,7 +181,7 @@ func main() {
 
 ### 3. 包与代码结构 ✅
 
-- ✅ HTTP API 在独立的 `pkg/httpapi` 包中
+- ✅ HTTP API 在独立的 `api/http` 包中
 - ✅ etcd 兼容层在独立的 `pkg/etcdcompat` 包中
 - ✅ 遵循 `golang-standards/project-layout` 规范
 - ✅ `go build ./...` 无错误
@@ -267,7 +267,7 @@ cat docs/etcd-compatibility-design.md
 
 1. **源代码** - 遵循 golang-standards/project-layout
    - ✅ pkg/etcdcompat - etcd 兼容实现
-   - ✅ pkg/httpapi - HTTP API
+   - ✅ api/http - HTTP API
    - ✅ internal/memory/kvstore_etcd.go - 存储实现
 
 2. **文档**
@@ -302,7 +302,7 @@ Features:
 
 Architecture:
 - pkg/etcdcompat: gRPC server and service implementations
-- pkg/httpapi: Migrated HTTP API to independent package
+- api/http: Migrated HTTP API to independent package
 - internal/memory: Extended storage with etcd semantics
 
 Demo mode (no Raft, memory-only) for development and testing.

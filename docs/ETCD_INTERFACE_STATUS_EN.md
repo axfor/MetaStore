@@ -6,7 +6,7 @@ This document provides a detailed list of etcd v3 compatible interfaces implemen
 
 **Generated Date**: 2025-10-27
 **Project Path**: `/Users/bast/code/MetaStore`
-**Interface Package Location**: `pkg/etcdapi/`
+**Interface Package Location**: `api/etcd/`
 
 ---
 
@@ -21,7 +21,7 @@ MetaStore currently implements 4 major etcd v3 gRPC services:
 
 ### Registered Services
 
-Services registered in [server.go:87-91](pkg/etcdapi/server.go#L87-L91):
+Services registered in [server.go:87-91](api/etcd/server.go#L87-L91):
 
 ```go
 pb.RegisterKVServer(grpcSrv, &KVServer{server: s})
@@ -34,17 +34,17 @@ pb.RegisterMaintenanceServer(grpcSrv, &MaintenanceServer{server: s})
 
 ## 1. KV Service - Key-Value Storage
 
-**Implementation File**: [pkg/etcdapi/kv.go](pkg/etcdapi/kv.go)
+**Implementation File**: [api/etcd/kv.go](api/etcd/kv.go)
 
 ### 1.1 Implemented Interfaces
 
 | Interface | Status | Location | Description |
 |-----------|--------|----------|-------------|
-| **Range** | ✅ Fully Implemented | [kv.go:32-63](pkg/etcdapi/kv.go#L32-L63) | Single key, range query, limit, revision support |
-| **Put** | ✅ Fully Implemented | [kv.go:66-97](pkg/etcdapi/kv.go#L66-L97) | PrevKv option, Lease binding support |
-| **DeleteRange** | ✅ Fully Implemented | [kv.go:100-134](pkg/etcdapi/kv.go#L100-L134) | Range deletion, PrevKv option support |
-| **Txn** | ✅ Fully Implemented | [kv.go:137-177](pkg/etcdapi/kv.go#L137-L177) | Compare-Then-Else transaction semantics |
-| **Compact** | ⚠️ Implemented | [kv.go:180-189](pkg/etcdapi/kv.go#L180-L189) | Interface implemented, underlying behavior may be simplified |
+| **Range** | ✅ Fully Implemented | [kv.go:32-63](api/etcd/kv.go#L32-L63) | Single key, range query, limit, revision support |
+| **Put** | ✅ Fully Implemented | [kv.go:66-97](api/etcd/kv.go#L66-L97) | PrevKv option, Lease binding support |
+| **DeleteRange** | ✅ Fully Implemented | [kv.go:100-134](api/etcd/kv.go#L100-L134) | Range deletion, PrevKv option support |
+| **Txn** | ✅ Fully Implemented | [kv.go:137-177](api/etcd/kv.go#L137-L177) | Compare-Then-Else transaction semantics |
+| **Compact** | ⚠️ Implemented | [kv.go:180-189](api/etcd/kv.go#L180-L189) | Interface implemented, underlying behavior may be simplified |
 
 ### 1.2 Supported Features
 
@@ -84,16 +84,16 @@ pb.RegisterMaintenanceServer(grpcSrv, &MaintenanceServer{server: s})
 
 ## 2. Watch Service - Event Watching
 
-**Implementation File**: [pkg/etcdapi/watch.go](pkg/etcdapi/watch.go)
+**Implementation File**: [api/etcd/watch.go](api/etcd/watch.go)
 
 ### 2.1 Implemented Interfaces
 
 | Interface | Status | Location | Description |
 |-----------|--------|----------|-------------|
-| **Watch** | ✅ Fully Implemented | [watch.go:32-53](pkg/etcdapi/watch.go#L32-L53) | Streaming watch service |
-| **CreateWatch** | ✅ Fully Implemented | [watch.go:56-103](pkg/etcdapi/watch.go#L56-L103) | Create watch subscription |
-| **CancelWatch** | ✅ Fully Implemented | [watch.go:124-138](pkg/etcdapi/watch.go#L124-L138) | Cancel watch subscription |
-| **SendEvents** | ✅ Fully Implemented | [watch.go:141-204](pkg/etcdapi/watch.go#L141-L204) | Async event delivery |
+| **Watch** | ✅ Fully Implemented | [watch.go:32-53](api/etcd/watch.go#L32-L53) | Streaming watch service |
+| **CreateWatch** | ✅ Fully Implemented | [watch.go:56-103](api/etcd/watch.go#L56-L103) | Create watch subscription |
+| **CancelWatch** | ✅ Fully Implemented | [watch.go:124-138](api/etcd/watch.go#L124-L138) | Cancel watch subscription |
+| **SendEvents** | ✅ Fully Implemented | [watch.go:141-204](api/etcd/watch.go#L141-L204) | Async event delivery |
 
 ### 2.2 Supported Features
 
@@ -118,7 +118,7 @@ pb.RegisterMaintenanceServer(grpcSrv, &MaintenanceServer{server: s})
 
 ### 2.3 Implementation Details
 
-- Uses [WatchManager](pkg/etcdapi/watch_manager.go) for centralized management
+- Uses [WatchManager](api/etcd/watch_manager.go) for centralized management
 - Each watch has independent event channel
 - Async goroutine for event delivery to avoid blocking
 - Automatic watch cancellation on send failure
@@ -127,17 +127,17 @@ pb.RegisterMaintenanceServer(grpcSrv, &MaintenanceServer{server: s})
 
 ## 3. Lease Service - Lease Management
 
-**Implementation File**: [pkg/etcdapi/lease.go](pkg/etcdapi/lease.go)
+**Implementation File**: [api/etcd/lease.go](api/etcd/lease.go)
 
 ### 3.1 Implemented Interfaces
 
 | Interface | Status | Location | Description |
 |-----------|--------|----------|-------------|
-| **LeaseGrant** | ✅ Fully Implemented | [lease.go:30-50](pkg/etcdapi/lease.go#L30-L50) | Create lease |
-| **LeaseRevoke** | ✅ Fully Implemented | [lease.go:53-64](pkg/etcdapi/lease.go#L53-L64) | Revoke lease |
-| **LeaseKeepAlive** | ✅ Fully Implemented | [lease.go:67-92](pkg/etcdapi/lease.go#L67-L92) | Streaming keepalive |
-| **LeaseTimeToLive** | ✅ Fully Implemented | [lease.go:95-120](pkg/etcdapi/lease.go#L95-L120) | Query lease remaining time |
-| **Leases** | ✅ Fully Implemented | [lease.go:123-140](pkg/etcdapi/lease.go#L123-L140) | List all leases |
+| **LeaseGrant** | ✅ Fully Implemented | [lease.go:30-50](api/etcd/lease.go#L30-L50) | Create lease |
+| **LeaseRevoke** | ✅ Fully Implemented | [lease.go:53-64](api/etcd/lease.go#L53-L64) | Revoke lease |
+| **LeaseKeepAlive** | ✅ Fully Implemented | [lease.go:67-92](api/etcd/lease.go#L67-L92) | Streaming keepalive |
+| **LeaseTimeToLive** | ✅ Fully Implemented | [lease.go:95-120](api/etcd/lease.go#L95-L120) | Query lease remaining time |
+| **Leases** | ✅ Fully Implemented | [lease.go:123-140](api/etcd/lease.go#L123-L140) | List all leases |
 
 ### 3.2 Supported Features
 
@@ -154,7 +154,7 @@ pb.RegisterMaintenanceServer(grpcSrv, &MaintenanceServer{server: s})
 
 ### 3.3 Implementation Details
 
-- Uses [LeaseManager](pkg/etcdapi/lease_manager.go) for centralized management
+- Uses [LeaseManager](api/etcd/lease_manager.go) for centralized management
 - Background goroutine checks expired leases periodically (every second)
 - Automatically deletes all associated keys when lease expires
 - Resets GrantTime on renewal
@@ -163,20 +163,20 @@ pb.RegisterMaintenanceServer(grpcSrv, &MaintenanceServer{server: s})
 
 ## 4. Maintenance Service - Maintenance Operations
 
-**Implementation File**: [pkg/etcdapi/maintenance.go](pkg/etcdapi/maintenance.go)
+**Implementation File**: [api/etcd/maintenance.go](api/etcd/maintenance.go)
 
 ### 4.1 Implemented Interfaces
 
 | Interface | Status | Location | Description |
 |-----------|--------|----------|-------------|
-| **Alarm** | ⚠️ Stub | [maintenance.go:30-35](pkg/etcdapi/maintenance.go#L30-L35) | Always returns empty alarm list |
-| **Status** | ⚠️ Simplified | [maintenance.go:38-54](pkg/etcdapi/maintenance.go#L38-L54) | Returns basic status, some fields simplified |
-| **Defragment** | ❌ TODO | [maintenance.go:57-62](pkg/etcdapi/maintenance.go#L57-L62) | Placeholder only |
-| **Hash** | ❌ TODO | [maintenance.go:65-71](pkg/etcdapi/maintenance.go#L65-L71) | Placeholder, returns 0 |
-| **HashKV** | ❌ TODO | [maintenance.go:74-80](pkg/etcdapi/maintenance.go#L74-L80) | Placeholder, returns 0 |
-| **Snapshot** | ✅ Fully Implemented | [maintenance.go:83-109](pkg/etcdapi/maintenance.go#L83-L109) | Streaming snapshot support |
-| **MoveLeader** | ❌ TODO | [maintenance.go:112-117](pkg/etcdapi/maintenance.go#L112-L117) | Placeholder only |
-| **Downgrade** | ❌ TODO | [maintenance.go:120-125](pkg/etcdapi/maintenance.go#L120-L125) | Placeholder only |
+| **Alarm** | ⚠️ Stub | [maintenance.go:30-35](api/etcd/maintenance.go#L30-L35) | Always returns empty alarm list |
+| **Status** | ⚠️ Simplified | [maintenance.go:38-54](api/etcd/maintenance.go#L38-L54) | Returns basic status, some fields simplified |
+| **Defragment** | ❌ TODO | [maintenance.go:57-62](api/etcd/maintenance.go#L57-L62) | Placeholder only |
+| **Hash** | ❌ TODO | [maintenance.go:65-71](api/etcd/maintenance.go#L65-L71) | Placeholder, returns 0 |
+| **HashKV** | ❌ TODO | [maintenance.go:74-80](api/etcd/maintenance.go#L74-L80) | Placeholder, returns 0 |
+| **Snapshot** | ✅ Fully Implemented | [maintenance.go:83-109](api/etcd/maintenance.go#L83-L109) | Streaming snapshot support |
+| **MoveLeader** | ❌ TODO | [maintenance.go:112-117](api/etcd/maintenance.go#L112-L117) | Placeholder only |
+| **Downgrade** | ❌ TODO | [maintenance.go:120-125](api/etcd/maintenance.go#L120-L125) | Placeholder only |
 
 ### 4.2 Status Response Fields
 
@@ -260,7 +260,7 @@ According to requirements in [prompt/add_etcd_api_compatible_interface.md](promp
 ### 1. Architectural Simplifications
 
 #### 1.1 Hardcoded RaftTerm
-**Location**: [server.go:140](pkg/etcdapi/server.go#L140)
+**Location**: [server.go:140](api/etcd/server.go#L140)
 
 ```go
 RaftTerm:  0, // TODO: Get term from Raft
@@ -276,7 +276,7 @@ RaftTerm:  0, // TODO: Get term from Raft
 - May affect client logic depending on RaftTerm
 
 #### 1.2 Simplified Leader Assumption
-**Location**: [maintenance.go:50](pkg/etcdapi/maintenance.go#L50)
+**Location**: [maintenance.go:50](api/etcd/maintenance.go#L50)
 
 ```go
 Leader:    s.server.memberID,  // Simplified: assumes current node is leader
@@ -293,7 +293,7 @@ Leader:    s.server.memberID,  // Simplified: assumes current node is leader
 ### 2. Incomplete Maintenance APIs
 
 #### 2.1 Defragment - Not Implemented
-**Location**: [maintenance.go:57-62](pkg/etcdapi/maintenance.go#L57-L62)
+**Location**: [maintenance.go:57-62](api/etcd/maintenance.go#L57-L62)
 
 ```go
 func (s *MaintenanceServer) Defragment(...) (*pb.DefragmentResponse, error) {
@@ -309,7 +309,7 @@ func (s *MaintenanceServer) Defragment(...) (*pb.DefragmentResponse, error) {
 - Cannot optimize storage space usage
 
 #### 2.2 Hash / HashKV - Not Implemented
-**Location**: [maintenance.go:65-80](pkg/etcdapi/maintenance.go#L65-L80)
+**Location**: [maintenance.go:65-80](api/etcd/maintenance.go#L65-L80)
 
 ```go
 Hash:   0, // Placeholder
@@ -322,7 +322,7 @@ Hash:   0, // Placeholder
 - Cannot compare data hash between cluster nodes
 
 #### 2.3 MoveLeader - Not Implemented
-**Location**: [maintenance.go:112-117](pkg/etcdapi/maintenance.go#L112-L117)
+**Location**: [maintenance.go:112-117](api/etcd/maintenance.go#L112-L117)
 
 **Issue**: Placeholder only
 
@@ -331,7 +331,7 @@ Hash:   0, // Placeholder
 - Limited operations scenarios (e.g., upgrades, maintenance)
 
 #### 2.4 Alarm - Stub Implementation
-**Location**: [maintenance.go:30-35](pkg/etcdapi/maintenance.go#L30-L35)
+**Location**: [maintenance.go:30-35](api/etcd/maintenance.go#L30-L35)
 
 **Issue**: Always returns empty alarm list
 
@@ -342,7 +342,7 @@ Hash:   0, // Placeholder
 ### 3. Error Handling and Semantic Consistency
 
 #### 3.1 Error Code Mapping
-**Location**: [errors.go](pkg/etcdapi/errors.go)
+**Location**: [errors.go](api/etcd/errors.go)
 
 Need to verify all error codes match etcd client expectations:
 - codes.NotFound
@@ -441,7 +441,7 @@ Current implementation:
 | 10 API use cases with automated tests | ✅ Compliant | Complete integration tests in test/ directory |
 | Txn semantic consistency | ✅ Compliant | Compare-Then-Else atomicity verified |
 | Lease expiration deletes keys | ✅ Compliant | Implemented and tested |
-| HTTP API and etcd layer in separate packages | ✅ Compliant | pkg/httpapi vs pkg/etcdapi separated |
+| HTTP API and etcd layer in separate packages | ✅ Compliant | api/http vs api/etcd separated |
 | Runnable example code | ⚠️ Partial | Test cases can serve as examples, missing standalone examples/ directory |
 
 ---

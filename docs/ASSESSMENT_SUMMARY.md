@@ -1,7 +1,7 @@
 # ETCD 接口兼容性评估 - 快速参考
 
 > **评估日期**: 2025-10-28
-> **评估范围**: pkg/etcdapi 包对 etcd v3 API 的兼容性实现
+> **评估范围**: api/etcd 包对 etcd v3 API 的兼容性实现
 > **综合评分**: **89/100 (B+)**
 > **生产就绪度**: **85%**
 
@@ -63,7 +63,7 @@
 
 ✅ **清晰的分层架构**
 ```
-pkg/etcdapi/      → etcd 兼容 API 层
+api/etcd/      → etcd 兼容 API 层
 internal/kvstore/ → 存储接口层
 internal/memory/  → 内存实现
 internal/rocksdb/ → RocksDB 实现
@@ -179,10 +179,10 @@ for i, kv := range resp.Kvs {
 ❌ **单元测试覆盖率低**
 ```bash
 # 缺失的测试文件
-pkg/etcdapi/auth_manager_test.go    ❌
-pkg/etcdapi/lease_manager_test.go   ❌
-pkg/etcdapi/watch_manager_test.go   ❌
-pkg/etcdapi/cluster_manager_test.go ❌
+api/etcd/auth_manager_test.go    ❌
+api/etcd/lease_manager_test.go   ❌
+api/etcd/watch_manager_test.go   ❌
+api/etcd/cluster_manager_test.go ❌
 ```
 
 **影响**: 高 - 代码质量和可维护性
@@ -360,12 +360,12 @@ wm.mu.Unlock()
 
 ```
 核心服务:
-├── pkg/etcdapi/server.go           - gRPC 服务器
-├── pkg/etcdapi/kv.go               - KV 服务
-├── pkg/etcdapi/watch_manager.go    - Watch 管理
-├── pkg/etcdapi/lease_manager.go    - Lease 管理
-├── pkg/etcdapi/auth_manager.go     - Auth 管理
-└── pkg/etcdapi/maintenance.go      - 维护服务
+├── api/etcd/server.go           - gRPC 服务器
+├── api/etcd/kv.go               - KV 服务
+├── api/etcd/watch_manager.go    - Watch 管理
+├── api/etcd/lease_manager.go    - Lease 管理
+├── api/etcd/auth_manager.go     - Auth 管理
+└── api/etcd/maintenance.go      - 维护服务
 
 分布式协调:
 ├── pkg/concurrency/session.go      - 会话管理

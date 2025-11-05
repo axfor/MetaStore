@@ -63,6 +63,11 @@ func newRocksDBCluster(n int) *rocksDBCluster {
 		dataDir := fmt.Sprintf("data/rocksdb/%d", i+1)
 		os.RemoveAll(dataDir)
 
+		// Create directory for RocksDB
+		if err := os.MkdirAll(dataDir, 0755); err != nil {
+			panic(fmt.Sprintf("failed to create directory for node %d: %v", i+1, err))
+		}
+
 		// Open RocksDB - use the standard data/rocksdb/{id} directory to match raft's expectations
 		db, err := rocksdbstore.Open(dataDir)
 		if err != nil {

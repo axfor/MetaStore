@@ -10,7 +10,7 @@
 
 #### 1. Lease 过期检查间隔
 
-**位置**: [pkg/etcdapi/lease_manager.go:136](../pkg/etcdapi/lease_manager.go#L136)
+**位置**: [api/etcd/lease_manager.go:136](../api/etcd/lease_manager.go#L136)
 
 ```go
 func (lm *LeaseManager) expiryChecker() {
@@ -66,7 +66,7 @@ func (lm *LeaseManager) expiryChecker() {
 
 #### 2. Token 过期时间
 
-**位置**: [pkg/etcdapi/auth_manager.go:188](../pkg/etcdapi/auth_manager.go#L188)
+**位置**: [api/etcd/auth_manager.go:188](../api/etcd/auth_manager.go#L188)
 
 ```go
 func (am *AuthManager) Authenticate(username, password string) (string, error) {
@@ -128,7 +128,7 @@ func (am *AuthManager) Authenticate(username, password string) (string, error) {
 
 #### 3. Token 清理间隔
 
-**位置**: [pkg/etcdapi/auth_manager.go:744](../pkg/etcdapi/auth_manager.go#L744)
+**位置**: [api/etcd/auth_manager.go:744](../api/etcd/auth_manager.go#L744)
 
 ```go
 func (am *AuthManager) cleanupExpiredTokens() {
@@ -174,7 +174,7 @@ func (am *AuthManager) cleanupExpiredTokens() {
 
 #### 4. Snapshot 分块大小
 
-**位置**: [pkg/etcdapi/maintenance.go:168](../pkg/etcdapi/maintenance.go#L168)
+**位置**: [api/etcd/maintenance.go:168](../api/etcd/maintenance.go#L168)
 
 ```go
 func (s *MaintenanceServer) Snapshot(req *pb.SnapshotRequest, stream pb.Maintenance_SnapshotServer) error {
@@ -225,7 +225,7 @@ func (s *MaintenanceServer) Snapshot(req *pb.SnapshotRequest, stream pb.Maintena
 
 #### 5. 默认集群 ID 和成员 ID
 
-**位置**: [pkg/etcdapi/server.go:82-86](../pkg/etcdapi/server.go#L82-L86)
+**位置**: [api/etcd/server.go:82-86](../api/etcd/server.go#L82-L86)
 
 ```go
 func NewServer(cfg ServerConfig) (*Server, error) {
@@ -277,7 +277,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 
 #### 6. 优雅关闭超时
 
-**位置**: [pkg/etcdapi/server.go:89-91](../pkg/etcdapi/server.go#L89-L91)
+**位置**: [api/etcd/server.go:89-91](../api/etcd/server.go#L89-L91)
 
 ```go
 func NewServer(cfg ServerConfig) (*Server, error) {
@@ -298,7 +298,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 
 #### 7. 等待连接耗尽时间
 
-**位置**: [pkg/etcdapi/server.go:200-202](../pkg/etcdapi/server.go#L200-L202)
+**位置**: [api/etcd/server.go:200-202](../api/etcd/server.go#L200-L202)
 
 ```go
 shutdownMgr.RegisterHook(reliability.PhaseDrainConnections, func(ctx context.Context) error {
@@ -354,7 +354,7 @@ shutdownMgr.RegisterHook(reliability.PhaseDrainConnections, func(ctx context.Con
 
 #### 8. bcrypt Cost
 
-**位置**: [pkg/etcdapi/auth_manager.go:732](../pkg/etcdapi/auth_manager.go#L732)
+**位置**: [api/etcd/auth_manager.go:732](../api/etcd/auth_manager.go#L732)
 
 ```go
 func hashPassword(password string) (string, error) {
@@ -395,7 +395,7 @@ func hashPassword(password string, cost int) (string, error) {
 
 #### 9. 版本号
 
-**位置**: [pkg/etcdapi/maintenance.go:96](../pkg/etcdapi/maintenance.go#L96)
+**位置**: [api/etcd/maintenance.go:96](../api/etcd/maintenance.go#L96)
 
 ```go
 func (s *MaintenanceServer) Status(ctx context.Context, req *pb.StatusRequest) (*pb.StatusResponse, error) {
@@ -432,7 +432,7 @@ var (
 
 #### 10. gRPC 日志前缀
 
-**位置**: [pkg/etcdapi/server.go:321](../pkg/etcdapi/server.go#L321)
+**位置**: [api/etcd/server.go:321](../api/etcd/server.go#L321)
 
 ```go
 func (s *Server) PanicRecoveryInterceptor(...) {

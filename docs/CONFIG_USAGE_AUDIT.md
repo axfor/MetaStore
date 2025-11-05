@@ -10,12 +10,12 @@
 
 | 配置模块 | 配置项数量 | 使用状态 | 使用位置 |
 |---------|-----------|---------|---------|
-| GRPCConfig | 13 | ✅ **完全使用** | pkg/etcdapi/server.go, pkg/grpc/server.go |
-| LimitsConfig | 4 | ✅ **部分使用** | pkg/etcdapi/server.go, pkg/grpc/server.go |
+| GRPCConfig | 13 | ✅ **完全使用** | api/etcd/server.go, pkg/grpc/server.go |
+| LimitsConfig | 4 | ✅ **部分使用** | api/etcd/server.go, pkg/grpc/server.go |
 | LeaseConfig | 2 | ❌ **未使用** | - |
 | AuthConfig | 4 | ❌ **未使用** | - |
 | MaintenanceConfig | 1 | ❌ **未使用** | - |
-| ReliabilityConfig | 5 | ✅ **部分使用** | pkg/etcdapi/server.go, pkg/grpc/server.go |
+| ReliabilityConfig | 5 | ✅ **部分使用** | api/etcd/server.go, pkg/grpc/server.go |
 | LogConfig | 4 | ❌ **未使用** | - |
 | MonitoringConfig | 3 | ✅ **部分使用** | pkg/grpc/server.go |
 | PerformanceConfig | 3 | ✅ **完全使用** | pkg/config/performance.go, internal/memory/*, internal/common/* |
@@ -38,23 +38,23 @@
 
 | 配置项 | 类型 | 默认值 | 使用位置 | 状态 |
 |--------|------|--------|---------|------|
-| MaxRecvMsgSize | int | 4MB | pkg/etcdapi/server.go:169-171 | ✅ |
-| MaxSendMsgSize | int | 4MB | pkg/etcdapi/server.go:172-174 | ✅ |
-| MaxConcurrentStreams | uint32 | 2048 | pkg/etcdapi/server.go:177-179 | ✅ |
-| InitialWindowSize | int32 | 8MB | pkg/etcdapi/server.go:182-184 | ✅ |
-| InitialConnWindowSize | int32 | 16MB | pkg/etcdapi/server.go:185-187 | ✅ |
-| KeepaliveTime | time.Duration | 10s | pkg/etcdapi/server.go:192 | ✅ |
-| KeepaliveTimeout | time.Duration | 10s | pkg/etcdapi/server.go:193 | ✅ |
-| MaxConnectionIdle | time.Duration | 300s | pkg/etcdapi/server.go:195-197 | ✅ |
-| MaxConnectionAge | time.Duration | 10m | pkg/etcdapi/server.go:198-200 | ✅ |
-| MaxConnectionAgeGrace | time.Duration | 10s | pkg/etcdapi/server.go:201-203 | ✅ |
+| MaxRecvMsgSize | int | 4MB | api/etcd/server.go:169-171 | ✅ |
+| MaxSendMsgSize | int | 4MB | api/etcd/server.go:172-174 | ✅ |
+| MaxConcurrentStreams | uint32 | 2048 | api/etcd/server.go:177-179 | ✅ |
+| InitialWindowSize | int32 | 8MB | api/etcd/server.go:182-184 | ✅ |
+| InitialConnWindowSize | int32 | 16MB | api/etcd/server.go:185-187 | ✅ |
+| KeepaliveTime | time.Duration | 10s | api/etcd/server.go:192 | ✅ |
+| KeepaliveTimeout | time.Duration | 10s | api/etcd/server.go:193 | ✅ |
+| MaxConnectionIdle | time.Duration | 300s | api/etcd/server.go:195-197 | ✅ |
+| MaxConnectionAge | time.Duration | 10m | api/etcd/server.go:198-200 | ✅ |
+| MaxConnectionAgeGrace | time.Duration | 10s | api/etcd/server.go:201-203 | ✅ |
 | EnableRateLimit | bool | true | pkg/grpc/server.go:123 | ✅ |
 | RateLimitQPS | int | 1000000 | pkg/grpc/server.go:127 | ✅ |
 | RateLimitBurst | int | 2000000 | pkg/grpc/server.go:128 | ✅ |
 
 **使用详情**:
 ```go
-// pkg/etcdapi/server.go:165-206
+// api/etcd/server.go:165-206
 if cfg.Config != nil {
     grpcCfg := cfg.Config.Server.GRPC
 
@@ -75,14 +75,14 @@ if cfg.Config != nil {
 
 | 配置项 | 类型 | 默认值 | 使用位置 | 状态 |
 |--------|------|--------|---------|------|
-| MaxConnections | int | 1000 | pkg/etcdapi/server.go:109, pkg/grpc/server.go:117-119 | ✅ |
+| MaxConnections | int | 1000 | api/etcd/server.go:109, pkg/grpc/server.go:117-119 | ✅ |
 | MaxWatchCount | int | 10000 | - | ❌ |
 | MaxLeaseCount | int | 10000 | - | ❌ |
-| MaxRequestSize | int64 | 1.5MB | pkg/etcdapi/server.go:111 | ✅ |
+| MaxRequestSize | int64 | 1.5MB | api/etcd/server.go:111 | ✅ |
 
 **使用详情**:
 ```go
-// pkg/etcdapi/server.go:108-112
+// api/etcd/server.go:108-112
 cfg.ResourceLimits = &reliability.ResourceLimits{
     MaxConnections: int64(cfg.Config.Server.Limits.MaxConnections),
     MaxRequests:    int64(cfg.Config.Server.Limits.MaxConnections * 10),
@@ -107,7 +107,7 @@ cfg.ResourceLimits = &reliability.ResourceLimits{
 - Lease 管理器使用硬编码的检查间隔
 - 默认 TTL 未被配置文件控制
 
-**建议**: 在 `pkg/etcdapi/lease_manager.go` 中使用这些配置
+**建议**: 在 `api/etcd/lease_manager.go` 中使用这些配置
 
 ---
 
@@ -126,7 +126,7 @@ cfg.ResourceLimits = &reliability.ResourceLimits{
 - 认证模块使用硬编码的配置
 - Token 管理和审计功能未配置化
 
-**建议**: 在 `pkg/etcdapi/auth.go` 中使用这些配置
+**建议**: 在 `api/etcd/auth.go` 中使用这些配置
 
 ---
 
@@ -142,7 +142,7 @@ cfg.ResourceLimits = &reliability.ResourceLimits{
 - 快照传输使用硬编码的分块大小
 - 无法根据网络环境调整
 
-**建议**: 在 `pkg/etcdapi/maintenance.go` 中使用此配置
+**建议**: 在 `api/etcd/maintenance.go` 中使用此配置
 
 ---
 
@@ -152,15 +152,15 @@ cfg.ResourceLimits = &reliability.ResourceLimits{
 
 | 配置项 | 类型 | 默认值 | 使用位置 | 状态 |
 |--------|------|--------|---------|------|
-| ShutdownTimeout | time.Duration | 30s | pkg/etcdapi/server.go:97 | ✅ |
+| ShutdownTimeout | time.Duration | 30s | api/etcd/server.go:97 | ✅ |
 | DrainTimeout | time.Duration | 5s | - | ❌ |
-| EnableCRC | bool | false | pkg/etcdapi/server.go:100 | ✅ |
-| EnableHealthCheck | bool | true | pkg/etcdapi/server.go:103 | ✅ |
+| EnableCRC | bool | false | api/etcd/server.go:100 | ✅ |
+| EnableHealthCheck | bool | true | api/etcd/server.go:103 | ✅ |
 | EnablePanicRecovery | bool | true | pkg/grpc/server.go:105 | ✅ |
 
 **使用详情**:
 ```go
-// pkg/etcdapi/server.go:96-104
+// api/etcd/server.go:96-104
 if cfg.ShutdownTimeout == 0 {
     cfg.ShutdownTimeout = cfg.Config.Server.Reliability.ShutdownTimeout
 }
@@ -430,9 +430,9 @@ db, err := rocksdb.Open(dbPath, &cfg.Server.RocksDB)
 
 **建议**:
 
-1. **LeaseConfig**: 在 `pkg/etcdapi/lease_manager.go` 初始化时使用
-2. **AuthConfig**: 在 `pkg/etcdapi/auth.go` 初始化时使用
-3. **MaintenanceConfig**: 在 `pkg/etcdapi/maintenance.go` 使用
+1. **LeaseConfig**: 在 `api/etcd/lease_manager.go` 初始化时使用
+2. **AuthConfig**: 在 `api/etcd/auth.go` 初始化时使用
+3. **MaintenanceConfig**: 在 `api/etcd/maintenance.go` 使用
 4. **LogConfig**: 在 `pkg/log/log.go` 或 `cmd/metastore/main.go` 初始化时使用
 
 ---

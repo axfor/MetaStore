@@ -172,7 +172,7 @@
 
 #### 1.1 HTTP/2 连接复用优化
 
-**当前状态** ([pkg/etcdapi/server.go:155-200](../pkg/etcdapi/server.go#L155-L200)):
+**当前状态** ([api/etcd/server.go:155-200](../api/etcd/server.go#L155-L200)):
 ```go
 // 默认 gRPC 配置
 grpcOpts := []grpc.ServerOption{

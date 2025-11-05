@@ -25,7 +25,7 @@ import (
 	"metaStore/internal/kvstore"
 	"metaStore/internal/raft"
 	"metaStore/internal/rocksdb"
-	"metaStore/pkg/etcdapi"
+	etcdapi "metaStore/api/etcd"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/server/v3/etcdserver/api/snap"

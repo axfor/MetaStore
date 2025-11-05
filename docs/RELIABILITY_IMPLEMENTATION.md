@@ -683,7 +683,7 @@ package main
 
 import (
     "log"
-    "metaStore/pkg/etcdapi"
+    "metaStore/api/etcd"
     "time"
 )
 
@@ -979,7 +979,7 @@ groups:
 
 | 文件路径 | 修改内容 |
 |---------|---------|
-| `pkg/etcdapi/server.go` | 添加可靠性组件集成（+150 行） |
+| `api/etcd/server.go` | 添加可靠性组件集成（+150 行） |
 
 ---
 

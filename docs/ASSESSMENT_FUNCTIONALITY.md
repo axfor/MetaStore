@@ -9,7 +9,7 @@
 ### 已实现功能 ✅
 
 #### 1. Range (范围查询)
-**位置**: [pkg/etcdapi/kv.go:32](../pkg/etcdapi/kv.go#L32)
+**位置**: [api/etcd/kv.go:32](../api/etcd/kv.go#L32)
 
 **功能**:
 - ✅ 单键查询
@@ -36,7 +36,7 @@ for i, kv := range resp.Kvs {
 ```
 
 #### 2. Put (写入)
-**位置**: [pkg/etcdapi/kv.go:66](../pkg/etcdapi/kv.go#L66)
+**位置**: [api/etcd/kv.go:66](../api/etcd/kv.go#L66)
 
 **功能**:
 - ✅ 写入键值对
@@ -47,7 +47,7 @@ for i, kv := range resp.Kvs {
 **代码质量**: 优秀
 
 #### 3. DeleteRange (范围删除)
-**位置**: [pkg/etcdapi/kv.go:100](../pkg/etcdapi/kv.go#L100)
+**位置**: [api/etcd/kv.go:100](../api/etcd/kv.go#L100)
 
 **功能**:
 - ✅ 单键删除
@@ -58,7 +58,7 @@ for i, kv := range resp.Kvs {
 **代码质量**: 优秀
 
 #### 4. Txn (事务)
-**位置**: [pkg/etcdapi/kv.go:137](../pkg/etcdapi/kv.go#L137)
+**位置**: [api/etcd/kv.go:137](../api/etcd/kv.go#L137)
 
 **功能**:
 - ✅ Compare-Then-Else 语义
@@ -77,7 +77,7 @@ for i, cmp := range req.Compare {
 ```
 
 #### 5. Compact (压缩)
-**位置**: [pkg/etcdapi/kv.go:180](../pkg/etcdapi/kv.go#L180)
+**位置**: [api/etcd/kv.go:180](../api/etcd/kv.go#L180)
 
 **功能**:
 - ✅ API 兼容
@@ -92,7 +92,7 @@ for i, cmp := range req.Compare {
 ### 已实现功能 ✅
 
 #### Watch (流式监听)
-**位置**: [pkg/etcdapi/watch.go](../pkg/etcdapi/watch.go)
+**位置**: [api/etcd/watch.go](../api/etcd/watch.go)
 
 **功能**:
 - ✅ 创建 Watch
@@ -103,7 +103,7 @@ for i, cmp := range req.Compare {
 - ✅ 流式传输事件
 
 **WatchManager 实现**:
-**位置**: [pkg/etcdapi/watch_manager.go:24](../pkg/etcdapi/watch_manager.go#L24)
+**位置**: [api/etcd/watch_manager.go:24](../api/etcd/watch_manager.go#L24)
 
 **优点**:
 - ✅ 使用 atomic.Int64 生成唯一 watchID
@@ -133,7 +133,7 @@ for i, cmp := range req.Compare {
 ### 已实现功能 ✅
 
 #### 1. LeaseGrant (创建租约)
-**位置**: [pkg/etcdapi/lease.go](../pkg/etcdapi/lease.go)
+**位置**: [api/etcd/lease.go](../api/etcd/lease.go)
 
 **功能**:
 - ✅ 创建指定 ID 的租约
@@ -162,7 +162,7 @@ for i, cmp := range req.Compare {
 - ✅ 返回所有活跃的租约
 
 ### LeaseManager 实现
-**位置**: [pkg/etcdapi/lease_manager.go:25](../pkg/etcdapi/lease_manager.go#L25)
+**位置**: [api/etcd/lease_manager.go:25](../api/etcd/lease_manager.go#L25)
 
 **优点**:
 - ✅ 自动过期检查（1秒间隔）
@@ -176,7 +176,7 @@ for i, cmp := range req.Compare {
 
 #### LeaseTimeToLive 高级特性 (1%)
 ```go
-// pkg/etcdapi/lease.go
+// api/etcd/lease.go
 func (s *LeaseServer) LeaseTimeToLive(ctx context.Context, req *pb.LeaseTimeToLiveRequest) (*pb.LeaseTimeToLiveResponse, error) {
     // req.Keys 参数未实现
     // 应该返回该租约关联的所有 keys
@@ -193,7 +193,7 @@ func (s *LeaseServer) LeaseTimeToLive(ctx context.Context, req *pb.LeaseTimeToLi
 ### 已实现功能 ✅
 
 #### 1. AuthEnable/Disable (3个 API)
-**位置**: [pkg/etcdapi/auth.go](../pkg/etcdapi/auth.go)
+**位置**: [api/etcd/auth.go](../api/etcd/auth.go)
 
 **功能**:
 - ✅ AuthEnable - 启用认证（检查 root 用户存在）
@@ -228,7 +228,7 @@ func (s *LeaseServer) LeaseTimeToLive(ctx context.Context, req *pb.LeaseTimeToLi
 - ✅ RoleRevokePermission - 撤销权限
 
 ### AuthManager 实现
-**位置**: [pkg/etcdapi/auth_manager.go:30](../pkg/etcdapi/auth_manager.go#L30)
+**位置**: [api/etcd/auth_manager.go:30](../api/etcd/auth_manager.go#L30)
 
 **优点**:
 - ✅ 内存缓存（users/roles/tokens）
@@ -251,7 +251,7 @@ func (s *LeaseServer) LeaseTimeToLive(ctx context.Context, req *pb.LeaseTimeToLi
 - ⚠️  全局锁（高并发下可能成为瓶颈）
 
 ### Auth Interceptor
-**位置**: [pkg/etcdapi/auth_interceptor.go](../pkg/etcdapi/auth_interceptor.go)
+**位置**: [api/etcd/auth_interceptor.go](../api/etcd/auth_interceptor.go)
 
 **功能**:
 - ✅ gRPC 拦截器
@@ -282,7 +282,7 @@ func (s *LeaseServer) LeaseTimeToLive(ctx context.Context, req *pb.LeaseTimeToLi
 ### 已实现功能 ✅
 
 #### 1. Status (状态查询)
-**位置**: [pkg/etcdapi/maintenance.go:82](../pkg/etcdapi/maintenance.go#L82)
+**位置**: [api/etcd/maintenance.go:82](../api/etcd/maintenance.go#L82)
 
 **功能**:
 - ✅ 返回版本号
@@ -294,7 +294,7 @@ func (s *LeaseServer) LeaseTimeToLive(ctx context.Context, req *pb.LeaseTimeToLi
 **代码质量**: 优秀（已修复硬编码问题）
 
 #### 2. Alarm (告警管理)
-**位置**: [pkg/etcdapi/maintenance.go:32](../pkg/etcdapi/maintenance.go#L32)
+**位置**: [api/etcd/maintenance.go:32](../api/etcd/maintenance.go#L32)
 
 **功能**:
 - ✅ GET - 获取告警列表（支持过滤）
@@ -303,14 +303,14 @@ func (s *LeaseServer) LeaseTimeToLive(ctx context.Context, req *pb.LeaseTimeToLi
 - ✅ NOSPACE 告警支持
 - ✅ 存储配额检查
 
-**AlarmManager**: [pkg/etcdapi/alarm_manager.go](../pkg/etcdapi/alarm_manager.go)
+**AlarmManager**: [api/etcd/alarm_manager.go](../api/etcd/alarm_manager.go)
 - ✅ 线程安全
 - ✅ 自动告警触发/清除
 
 **代码质量**: 优秀
 
 #### 3. Hash/HashKV (一致性检查)
-**位置**: [pkg/etcdapi/maintenance.go:117](../pkg/etcdapi/maintenance.go#L117)
+**位置**: [api/etcd/maintenance.go:117](../api/etcd/maintenance.go#L117)
 
 **功能**:
 - ✅ Hash - 计算整个数据库的 CRC32 哈希
@@ -320,7 +320,7 @@ func (s *LeaseServer) LeaseTimeToLive(ctx context.Context, req *pb.LeaseTimeToLi
 **代码质量**: 优秀
 
 #### 4. Snapshot (快照)
-**位置**: [pkg/etcdapi/maintenance.go:160](../pkg/etcdapi/maintenance.go#L160)
+**位置**: [api/etcd/maintenance.go:160](../api/etcd/maintenance.go#L160)
 
 **功能**:
 - ✅ 流式传输快照
@@ -330,7 +330,7 @@ func (s *LeaseServer) LeaseTimeToLive(ctx context.Context, req *pb.LeaseTimeToLi
 **代码质量**: 优秀
 
 #### 5. Defragment (碎片整理)
-**位置**: [pkg/etcdapi/maintenance.go:105](../pkg/etcdapi/maintenance.go#L105)
+**位置**: [api/etcd/maintenance.go:105](../api/etcd/maintenance.go#L105)
 
 **功能**:
 - ✅ API 兼容
@@ -340,7 +340,7 @@ func (s *LeaseServer) LeaseTimeToLive(ctx context.Context, req *pb.LeaseTimeToLi
 **代码质量**: 良好（符合设计）
 
 #### 6. MoveLeader (Leader 转移)
-**位置**: [pkg/etcdapi/maintenance.go:189](../pkg/etcdapi/maintenance.go#L189)
+**位置**: [api/etcd/maintenance.go:189](../api/etcd/maintenance.go#L189)
 
 **功能**:
 - ✅ 检查当前是否是 Leader
@@ -357,7 +357,7 @@ func (s *LeaseServer) LeaseTimeToLive(ctx context.Context, req *pb.LeaseTimeToLi
 - ✅ MemberUpdate - 更新成员信息
 - ✅ MemberPromote - 提升 Learner 为 Voter
 
-**ClusterManager**: [pkg/etcdapi/cluster_manager.go](../pkg/etcdapi/cluster_manager.go)
+**ClusterManager**: [api/etcd/cluster_manager.go](../api/etcd/cluster_manager.go)
 - ✅ 通过 ConfChange 通道与 Raft 交互
 - ✅ 并发安全
 
