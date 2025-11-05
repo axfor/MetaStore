@@ -26,7 +26,7 @@ import (
 	"metaStore/internal/memory"
 	"metaStore/internal/raft"
 	"metaStore/internal/rocksdb"
-	"metaStore/pkg/etcdapi"
+	etcdapi "metaStore/api/etcd"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 	mvccpb "go.etcd.io/etcd/api/v3/mvccpb"

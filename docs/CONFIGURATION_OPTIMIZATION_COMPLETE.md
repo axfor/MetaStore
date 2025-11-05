@@ -175,7 +175,7 @@ go build -o metastore ./cmd/metastore
 
 ### 分析结果
 
-经过详细分析 `pkg/etcdapi/server.go` 中的 gRPC 配置，发现**现有配置已经达到业界最佳实践水平**。
+经过详细分析 `api/etcd/server.go` 中的 gRPC 配置，发现**现有配置已经达到业界最佳实践水平**。
 
 #### 2.1 现有配置评估
 

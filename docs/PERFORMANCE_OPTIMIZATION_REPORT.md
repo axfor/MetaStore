@@ -151,7 +151,7 @@ kvs := make([]*kvstore.KeyValue, 0, estimatedCap)
    - Full map iteration
    - **Solution**: B-tree or skip list
 
-3. **Lease Expiry** (pkg/etcdapi/lease_manager.go:153):
+3. **Lease Expiry** (api/etcd/lease_manager.go:153):
    - O(N) scan every second
    - **Solution**: Priority queue by expiry time
 

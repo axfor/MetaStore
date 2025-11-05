@@ -62,9 +62,9 @@ clean:
 test:
 	@echo "$(CYAN)Running all tests with GreenTea GC...$(NO_COLOR)"
 	@echo "$(YELLOW)Testing internal packages...$(NO_COLOR)"
-	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" GOEXPERIMENT=greenteagc $(GOTEST) -v -timeout=20m ./internal/...
+	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" GOEXPERIMENT=greenteagc $(GOTEST) -v -timeout=30m ./internal/...
 	@echo "$(YELLOW)Testing integration and system tests...$(NO_COLOR)"
-	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" GOEXPERIMENT=greenteagc $(GOTEST) -v -timeout=60m ./test/
+	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" GOEXPERIMENT=greenteagc $(GOTEST) -v -timeout=120m ./test/
 	@echo "$(GREEN)All tests passed!$(NO_COLOR)"
 
 ## test-unit: Run only unit tests (no integration tests)

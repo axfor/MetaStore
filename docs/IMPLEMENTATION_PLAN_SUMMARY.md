@@ -36,10 +36,10 @@
 
 ### 2.1 Auth Service
 
-**路径**: `pkg/etcdapi/`
+**路径**: `api/etcd/`
 
 ```
-pkg/etcdapi/
+api/etcd/
 ├── auth_types.go         (62 行)  - 数据模型定义
 ├── auth.go               (166 行) - 15 个 gRPC 接口框架
 ├── auth_manager.go       (230 行) - 认证管理器框架
@@ -57,10 +57,10 @@ pkg/etcdapi/
 
 ### 2.2 Cluster Service
 
-**路径**: `pkg/etcdapi/`
+**路径**: `api/etcd/`
 
 ```
-pkg/etcdapi/
+api/etcd/
 ├── cluster_types.go      (24 行)  - MemberInfo 数据模型
 ├── cluster_manager.go    (119 行) - 集群管理器框架
 └── maintenance.go        (扩展)   - 添加 5 个 Member* 接口
@@ -323,7 +323,7 @@ docs/
 
 ### 代码框架（9 个）
 ```
-pkg/etcdapi/
+api/etcd/
 ├── auth_types.go                           (62 行)
 ├── auth.go                                 (166 行)
 ├── auth_manager.go                         (230 行)

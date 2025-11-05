@@ -41,7 +41,7 @@
 原有的 HTTP DELETE 方法仅支持 Raft 集群节点删除，不支持 key-value 对删除，导致跨协议删除测试失败。
 
 #### 解决方案
-修改 `/Users/bast/code/MetaStore/pkg/httpapi/server.go`:
+修改 `/Users/bast/code/MetaStore/api/http/server.go`:
 
 1. **智能路由判断**：
    - 在 `ServeHTTP` 方法中添加 `isClusterOp` 判断逻辑
@@ -129,7 +129,7 @@ TestCrossProtocolRocksDBDataInteroperability (30.14s)
 ## 文件变更清单
 
 1. `test/cross_protocol_integration_test.go` - 新增 4 个测试用例，添加辅助函数
-2. `pkg/httpapi/server.go` - 增强 DELETE 方法支持 key-value 删除
+2. `api/http/server.go` - 增强 DELETE 方法支持 key-value 删除
 3. `docs/CROSS_PROTOCOL_TEST_ENHANCEMENT.md` - 本文档
 
 ## 后续建议

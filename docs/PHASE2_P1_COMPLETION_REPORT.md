@@ -68,7 +68,7 @@ Successfully completed all Phase 2 - P1 (Important) tasks, focusing on **product
 **Files Created**:
 - `pkg/pool/kvpool.go` (254 lines)
 - `pkg/pool/kvpool_test.go` (360 lines)
-- `pkg/etcdapi/convert.go` (165 lines)
+- `api/etcd/convert.go` (165 lines)
 
 **Benchmark Results**:
 ```
@@ -390,7 +390,7 @@ Improvement:  99.7% memory, 99% allocations
 3. `pkg/metrics/server.go` (144 lines)
 4. `pkg/pool/kvpool.go` (254 lines)
 5. `pkg/pool/kvpool_test.go` (360 lines)
-6. `pkg/etcdapi/convert.go` (165 lines)
+6. `api/etcd/convert.go` (165 lines)
 7. `internal/rocksdb/compact_test.go` (258 lines)
 8. `docs/PROMETHEUS_INTEGRATION.md` (450 lines)
 9. `docs/PROMETHEUS_COMPLETION_REPORT.md` (370 lines)

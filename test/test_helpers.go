@@ -26,7 +26,7 @@ import (
 	"metaStore/internal/raft"
 	"metaStore/internal/rocksdb"
 	"metaStore/pkg/config"
-	"metaStore/pkg/etcdapi"
+	etcdapi "metaStore/api/etcd"
 
 	"github.com/linxGnu/grocksdb"
 	"go.etcd.io/etcd/server/v3/etcdserver/api/snap"

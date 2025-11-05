@@ -16,7 +16,7 @@
 
 **当前状态**: ❌ 仅占位实现
 
-**位置**: [maintenance.go:57-62](../pkg/etcdapi/maintenance.go#L57-L62)
+**位置**: [maintenance.go:57-62](../api/etcd/maintenance.go#L57-L62)
 
 **实现方案**:
 
@@ -53,7 +53,7 @@ return &pb.DefragmentResponse{
 
 **当前状态**: ❌ 返回 0
 
-**位置**: [maintenance.go:65-71](../pkg/etcdapi/maintenance.go#L65-L71)
+**位置**: [maintenance.go:65-71](../api/etcd/maintenance.go#L65-L71)
 
 **实现方案**:
 
@@ -90,7 +90,7 @@ func (s *MaintenanceServer) Hash(ctx context.Context, req *pb.HashRequest) (*pb.
 
 **当前状态**: ❌ 返回 0
 
-**位置**: [maintenance.go:74-80](../pkg/etcdapi/maintenance.go#L74-L80)
+**位置**: [maintenance.go:74-80](../api/etcd/maintenance.go#L74-L80)
 
 **实现方案**:
 
@@ -147,7 +147,7 @@ func (s *MaintenanceServer) HashKV(ctx context.Context, req *pb.HashKVRequest) (
 
 **当前状态**: ❌ 仅占位实现
 
-**位置**: [maintenance.go:112-117](../pkg/etcdapi/maintenance.go#L112-L117)
+**位置**: [maintenance.go:112-117](../api/etcd/maintenance.go#L112-L117)
 
 **实现方案**:
 
@@ -186,7 +186,7 @@ func (s *MaintenanceServer) MoveLeader(ctx context.Context, req *pb.MoveLeaderRe
 
 **当前状态**: ⚠️ 空实现，总是返回空列表
 
-**位置**: [maintenance.go:30-35](../pkg/etcdapi/maintenance.go#L30-L35)
+**位置**: [maintenance.go:30-35](../api/etcd/maintenance.go#L30-L35)
 
 **实现方案**:
 
@@ -299,7 +299,7 @@ func (s *Server) monitorAlarms() {
 
 **当前状态**: ⚠️ RaftTerm 硬编码为 1，Leader 假设为当前节点
 
-**位置**: [maintenance.go:38-54](../pkg/etcdapi/maintenance.go#L38-L54)
+**位置**: [maintenance.go:38-54](../api/etcd/maintenance.go#L38-L54)
 
 **需要修复**:
 
@@ -448,7 +448,7 @@ func (m *Memory) GetRaftStatus() kvstore.RaftStatus {
 - [ ] 实现 Memory.GetRaftStatus
 - [ ] 实现 RocksDB.GetRaftStatus
 - [ ] 完善 maintenance.go 中的 TODO 方法
-- [ ] 创建 pkg/etcdapi/alarm_manager.go
+- [ ] 创建 api/etcd/alarm_manager.go
 
 ### 测试
 - [ ] test/maintenance_test.go - 单元测试

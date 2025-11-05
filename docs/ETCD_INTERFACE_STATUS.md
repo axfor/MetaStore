@@ -6,7 +6,7 @@
 
 **生成日期**: 2025-10-27
 **项目路径**: `/Users/bast/code/MetaStore`
-**接口包位置**: `pkg/etcdapi/`
+**接口包位置**: `api/etcd/`
 
 ---
 
@@ -21,7 +21,7 @@ MetaStore 当前实现了 4 个主要的 etcd v3 gRPC 服务：
 
 ### 注册的服务
 
-在 [server.go:87-91](pkg/etcdapi/server.go#L87-L91) 中注册的服务：
+在 [server.go:87-91](api/etcd/server.go#L87-L91) 中注册的服务：
 
 ```go
 pb.RegisterKVServer(grpcSrv, &KVServer{server: s})
@@ -34,17 +34,17 @@ pb.RegisterMaintenanceServer(grpcSrv, &MaintenanceServer{server: s})
 
 ## 1. KV Service - 键值存储服务
 
-**实现文件**: [pkg/etcdapi/kv.go](pkg/etcdapi/kv.go)
+**实现文件**: [api/etcd/kv.go](api/etcd/kv.go)
 
 ### 1.1 已实现的接口
 
 | 接口 | 状态 | 实现位置 | 说明 |
 |------|------|----------|------|
-| **Range** | ✅ 完全实现 | [kv.go:32-63](pkg/etcdapi/kv.go#L32-L63) | 支持单键查询、范围查询、limit、revision |
-| **Put** | ✅ 完全实现 | [kv.go:66-97](pkg/etcdapi/kv.go#L66-L97) | 支持 PrevKv 选项、Lease 绑定 |
-| **DeleteRange** | ✅ 完全实现 | [kv.go:100-134](pkg/etcdapi/kv.go#L100-L134) | 支持范围删除、PrevKv 选项 |
-| **Txn** | ✅ 完全实现 | [kv.go:137-177](pkg/etcdapi/kv.go#L137-L177) | 支持 Compare-Then-Else 事务语义 |
-| **Compact** | ⚠️ 已实现 | [kv.go:180-189](pkg/etcdapi/kv.go#L180-L189) | 接口已实现，底层行为可能简化 |
+| **Range** | ✅ 完全实现 | [kv.go:32-63](api/etcd/kv.go#L32-L63) | 支持单键查询、范围查询、limit、revision |
+| **Put** | ✅ 完全实现 | [kv.go:66-97](api/etcd/kv.go#L66-L97) | 支持 PrevKv 选项、Lease 绑定 |
+| **DeleteRange** | ✅ 完全实现 | [kv.go:100-134](api/etcd/kv.go#L100-L134) | 支持范围删除、PrevKv 选项 |
+| **Txn** | ✅ 完全实现 | [kv.go:137-177](api/etcd/kv.go#L137-L177) | 支持 Compare-Then-Else 事务语义 |
+| **Compact** | ⚠️ 已实现 | [kv.go:180-189](api/etcd/kv.go#L180-L189) | 接口已实现，底层行为可能简化 |
 
 ### 1.2 支持的特性
 
@@ -84,16 +84,16 @@ pb.RegisterMaintenanceServer(grpcSrv, &MaintenanceServer{server: s})
 
 ## 2. Watch Service - 监听服务
 
-**实现文件**: [pkg/etcdapi/watch.go](pkg/etcdapi/watch.go)
+**实现文件**: [api/etcd/watch.go](api/etcd/watch.go)
 
 ### 2.1 已实现的接口
 
 | 接口 | 状态 | 实现位置 | 说明 |
 |------|------|----------|------|
-| **Watch** | ✅ 完全实现 | [watch.go:32-53](pkg/etcdapi/watch.go#L32-L53) | 流式 Watch 服务 |
-| **CreateWatch** | ✅ 完全实现 | [watch.go:56-103](pkg/etcdapi/watch.go#L56-L103) | 创建 watch 订阅 |
-| **CancelWatch** | ✅ 完全实现 | [watch.go:124-138](pkg/etcdapi/watch.go#L124-L138) | 取消 watch 订阅 |
-| **SendEvents** | ✅ 完全实现 | [watch.go:141-204](pkg/etcdapi/watch.go#L141-L204) | 异步发送事件 |
+| **Watch** | ✅ 完全实现 | [watch.go:32-53](api/etcd/watch.go#L32-L53) | 流式 Watch 服务 |
+| **CreateWatch** | ✅ 完全实现 | [watch.go:56-103](api/etcd/watch.go#L56-L103) | 创建 watch 订阅 |
+| **CancelWatch** | ✅ 完全实现 | [watch.go:124-138](api/etcd/watch.go#L124-L138) | 取消 watch 订阅 |
+| **SendEvents** | ✅ 完全实现 | [watch.go:141-204](api/etcd/watch.go#L141-L204) | 异步发送事件 |
 
 ### 2.2 支持的特性
 
@@ -118,7 +118,7 @@ pb.RegisterMaintenanceServer(grpcSrv, &MaintenanceServer{server: s})
 
 ### 2.3 实现细节
 
-- 使用 [WatchManager](pkg/etcdapi/watch_manager.go) 统一管理所有 watch
+- 使用 [WatchManager](api/etcd/watch_manager.go) 统一管理所有 watch
 - 每个 watch 有独立的事件通道
 - 异步 goroutine 发送事件，避免阻塞
 - 发送失败自动取消 watch
@@ -127,17 +127,17 @@ pb.RegisterMaintenanceServer(grpcSrv, &MaintenanceServer{server: s})
 
 ## 3. Lease Service - 租约服务
 
-**实现文件**: [pkg/etcdapi/lease.go](pkg/etcdapi/lease.go)
+**实现文件**: [api/etcd/lease.go](api/etcd/lease.go)
 
 ### 3.1 已实现的接口
 
 | 接口 | 状态 | 实现位置 | 说明 |
 |------|------|----------|------|
-| **LeaseGrant** | ✅ 完全实现 | [lease.go:30-50](pkg/etcdapi/lease.go#L30-L50) | 创建租约 |
-| **LeaseRevoke** | ✅ 完全实现 | [lease.go:53-64](pkg/etcdapi/lease.go#L53-L64) | 撤销租约 |
-| **LeaseKeepAlive** | ✅ 完全实现 | [lease.go:67-92](pkg/etcdapi/lease.go#L67-L92) | 流式续约 |
-| **LeaseTimeToLive** | ✅ 完全实现 | [lease.go:95-120](pkg/etcdapi/lease.go#L95-L120) | 查询租约剩余时间 |
-| **Leases** | ✅ 完全实现 | [lease.go:123-140](pkg/etcdapi/lease.go#L123-L140) | 列出所有租约 |
+| **LeaseGrant** | ✅ 完全实现 | [lease.go:30-50](api/etcd/lease.go#L30-L50) | 创建租约 |
+| **LeaseRevoke** | ✅ 完全实现 | [lease.go:53-64](api/etcd/lease.go#L53-L64) | 撤销租约 |
+| **LeaseKeepAlive** | ✅ 完全实现 | [lease.go:67-92](api/etcd/lease.go#L67-L92) | 流式续约 |
+| **LeaseTimeToLive** | ✅ 完全实现 | [lease.go:95-120](api/etcd/lease.go#L95-L120) | 查询租约剩余时间 |
+| **Leases** | ✅ 完全实现 | [lease.go:123-140](api/etcd/lease.go#L123-L140) | 列出所有租约 |
 
 ### 3.2 支持的特性
 
@@ -154,7 +154,7 @@ pb.RegisterMaintenanceServer(grpcSrv, &MaintenanceServer{server: s})
 
 ### 3.3 实现细节
 
-- 使用 [LeaseManager](pkg/etcdapi/lease_manager.go) 统一管理
+- 使用 [LeaseManager](api/etcd/lease_manager.go) 统一管理
 - 后台 goroutine 定期检查过期租约（每秒）
 - 租约过期时自动删除所有关联的键
 - 续约时重置 GrantTime
@@ -163,20 +163,20 @@ pb.RegisterMaintenanceServer(grpcSrv, &MaintenanceServer{server: s})
 
 ## 4. Maintenance Service - 维护服务
 
-**实现文件**: [pkg/etcdapi/maintenance.go](pkg/etcdapi/maintenance.go)
+**实现文件**: [api/etcd/maintenance.go](api/etcd/maintenance.go)
 
 ### 4.1 已实现的接口
 
 | 接口 | 状态 | 实现位置 | 说明 |
 |------|------|----------|------|
-| **Alarm** | ⚠️ 空实现 | [maintenance.go:30-35](pkg/etcdapi/maintenance.go#L30-L35) | 总是返回空告警列表 |
-| **Status** | ⚠️ 简化实现 | [maintenance.go:38-54](pkg/etcdapi/maintenance.go#L38-L54) | 返回基本状态，部分字段简化 |
-| **Defragment** | ❌ TODO | [maintenance.go:57-62](pkg/etcdapi/maintenance.go#L57-L62) | 仅占位实现 |
-| **Hash** | ❌ TODO | [maintenance.go:65-71](pkg/etcdapi/maintenance.go#L65-L71) | 仅占位实现，返回 0 |
-| **HashKV** | ❌ TODO | [maintenance.go:74-80](pkg/etcdapi/maintenance.go#L74-L80) | 仅占位实现，返回 0 |
-| **Snapshot** | ✅ 完全实现 | [maintenance.go:83-109](pkg/etcdapi/maintenance.go#L83-L109) | 支持流式快照传输 |
-| **MoveLeader** | ❌ TODO | [maintenance.go:112-117](pkg/etcdapi/maintenance.go#L112-L117) | 仅占位实现 |
-| **Downgrade** | ❌ TODO | [maintenance.go:120-125](pkg/etcdapi/maintenance.go#L120-L125) | 仅占位实现 |
+| **Alarm** | ⚠️ 空实现 | [maintenance.go:30-35](api/etcd/maintenance.go#L30-L35) | 总是返回空告警列表 |
+| **Status** | ⚠️ 简化实现 | [maintenance.go:38-54](api/etcd/maintenance.go#L38-L54) | 返回基本状态，部分字段简化 |
+| **Defragment** | ❌ TODO | [maintenance.go:57-62](api/etcd/maintenance.go#L57-L62) | 仅占位实现 |
+| **Hash** | ❌ TODO | [maintenance.go:65-71](api/etcd/maintenance.go#L65-L71) | 仅占位实现，返回 0 |
+| **HashKV** | ❌ TODO | [maintenance.go:74-80](api/etcd/maintenance.go#L74-L80) | 仅占位实现，返回 0 |
+| **Snapshot** | ✅ 完全实现 | [maintenance.go:83-109](api/etcd/maintenance.go#L83-L109) | 支持流式快照传输 |
+| **MoveLeader** | ❌ TODO | [maintenance.go:112-117](api/etcd/maintenance.go#L112-L117) | 仅占位实现 |
+| **Downgrade** | ❌ TODO | [maintenance.go:120-125](api/etcd/maintenance.go#L120-L125) | 仅占位实现 |
 
 ### 4.2 Status 返回字段
 
@@ -260,7 +260,7 @@ RaftTerm:  1                   // ⚠️ 简化：固定返回 1
 ### 1. 架构层面的简化
 
 #### 1.1 RaftTerm 硬编码
-**位置**: [server.go:140](pkg/etcdapi/server.go#L140)
+**位置**: [server.go:140](api/etcd/server.go#L140)
 
 ```go
 RaftTerm:  0, // TODO: 从 Raft 获取 term
@@ -276,7 +276,7 @@ RaftTerm:  0, // TODO: 从 Raft 获取 term
 - 可能影响某些依赖 RaftTerm 的客户端逻辑
 
 #### 1.2 Leader 假设简化
-**位置**: [maintenance.go:50](pkg/etcdapi/maintenance.go#L50)
+**位置**: [maintenance.go:50](api/etcd/maintenance.go#L50)
 
 ```go
 Leader:    s.server.memberID,  // 简化：当前节点就是 leader
@@ -293,7 +293,7 @@ Leader:    s.server.memberID,  // 简化：当前节点就是 leader
 ### 2. Maintenance API 不完整
 
 #### 2.1 Defragment - 未实现
-**位置**: [maintenance.go:57-62](pkg/etcdapi/maintenance.go#L57-L62)
+**位置**: [maintenance.go:57-62](api/etcd/maintenance.go#L57-L62)
 
 ```go
 func (s *MaintenanceServer) Defragment(...) (*pb.DefragmentResponse, error) {
@@ -309,7 +309,7 @@ func (s *MaintenanceServer) Defragment(...) (*pb.DefragmentResponse, error) {
 - 无法优化存储空间使用
 
 #### 2.2 Hash / HashKV - 未实现
-**位置**: [maintenance.go:65-80](pkg/etcdapi/maintenance.go#L65-L80)
+**位置**: [maintenance.go:65-80](api/etcd/maintenance.go#L65-L80)
 
 ```go
 Hash:   0, // 占位
@@ -322,7 +322,7 @@ Hash:   0, // 占位
 - 集群节点间无法比对数据哈希
 
 #### 2.3 MoveLeader - 未实现
-**位置**: [maintenance.go:112-117](pkg/etcdapi/maintenance.go#L112-L117)
+**位置**: [maintenance.go:112-117](api/etcd/maintenance.go#L112-L117)
 
 **问题**: 仅占位实现
 
@@ -331,7 +331,7 @@ Hash:   0, // 占位
 - 运维场景受限（如升级、维护）
 
 #### 2.4 Alarm - 空实现
-**位置**: [maintenance.go:30-35](pkg/etcdapi/maintenance.go#L30-L35)
+**位置**: [maintenance.go:30-35](api/etcd/maintenance.go#L30-L35)
 
 **问题**: 总是返回空告警列表
 
@@ -342,7 +342,7 @@ Hash:   0, // 占位
 ### 3. 错误处理和语义一致性
 
 #### 3.1 错误码映射
-**位置**: [errors.go](pkg/etcdapi/errors.go)
+**位置**: [errors.go](api/etcd/errors.go)
 
 需要验证所有错误码是否与 etcd 客户端预期一致：
 - codes.NotFound
@@ -441,7 +441,7 @@ Hash:   0, // 占位
 | 10 个 API 用例自动化测试 | ✅ 符合 | test/ 目录下有完整集成测试 |
 | txn 语义一致性 | ✅ 符合 | Compare-Then-Else 原子性已验证 |
 | lease 到期删除 key | ✅ 符合 | 已实现并测试 |
-| HTTP API 与 etcd 兼容层独立包 | ✅ 符合 | pkg/httpapi vs pkg/etcdapi 分离 |
+| HTTP API 与 etcd 兼容层独立包 | ✅ 符合 | api/http vs api/etcd 分离 |
 | 示例代码可运行 | ⚠️ 部分符合 | 测试用例可作为示例，缺少独立 examples/ 目录 |
 
 ---

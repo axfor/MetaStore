@@ -76,9 +76,9 @@ pkg/etcdcompat/
 └── errors.go              # 错误码映射
 ```
 
-#### pkg/httpapi - HTTP API 独立包
+#### api/http - HTTP API 独立包
 ```
-pkg/httpapi/
+api/http/
 ├── server.go              # HTTP server
 ├── handler.go             # HTTP 请求处理器
 └── middleware.go          # 中间件（日志、认证等）
@@ -365,7 +365,7 @@ func TestEtcdCompatibility(t *testing.T) {
 ## 7. 实施计划
 
 ### Phase 1: 基础架构（1-2周）
-- [ ] 创建 pkg/etcdcompat 和 pkg/httpapi 包结构
+- [ ] 创建 pkg/etcdcompat 和 api/http 包结构
 - [ ] 集成 etcd v3 proto 定义
 - [ ] 实现 gRPC server 框架
 - [ ] 扩展 kvstore 接口

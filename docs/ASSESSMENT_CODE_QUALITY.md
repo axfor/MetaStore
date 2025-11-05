@@ -10,7 +10,7 @@
 
 ```
 应用层（Application Layer）
-├── pkg/etcdapi/              ← etcd 兼容 API 层
+├── api/etcd/              ← etcd 兼容 API 层
 │   ├── server.go             ← gRPC 服务器
 │   ├── kv.go                 ← KV 服务
 │   ├── watch_manager.go      ← Watch 管理
@@ -49,7 +49,7 @@
 ### 1.2 依赖注入 ✅
 
 ```go
-// pkg/etcdapi/server.go:34
+// api/etcd/server.go:34
 type Server struct {
     mu       sync.RWMutex
     store    kvstore.Store    // ← 依赖接口，非具体实现
@@ -152,7 +152,7 @@ type Store interface {
 
 #### 示例 1: WatchManager
 ```go
-// pkg/etcdapi/watch_manager.go:24
+// api/etcd/watch_manager.go:24
 type WatchManager struct {
     mu       sync.RWMutex
     store    kvstore.Store
@@ -176,7 +176,7 @@ func (wm *WatchManager) Create(key, rangeEnd string, startRevision int64, opts *
 
 #### 示例 2: LeaseManager
 ```go
-// pkg/etcdapi/lease_manager.go:25
+// api/etcd/lease_manager.go:25
 type LeaseManager struct {
     mu      sync.RWMutex
     store   kvstore.Store
@@ -213,7 +213,7 @@ func (lm *LeaseManager) Grant(id int64, ttl int64) (*kvstore.Lease, error) {
 ### 2.2 安全的状态管理 ✅
 
 ```go
-// pkg/etcdapi/watch_manager.go:132
+// api/etcd/watch_manager.go:132
 func (wm *WatchManager) Stop() {
     if !wm.stopped.CompareAndSwap(false, true) {  // ← 原子 CAS
         return  // ← 防止重复关闭
@@ -241,7 +241,7 @@ func (wm *WatchManager) Stop() {
 #### 问题 1: 潜在的竞态条件
 
 ```go
-// pkg/etcdapi/watch_manager.go:63-68
+// api/etcd/watch_manager.go:63-68
 func (wm *WatchManager) CreateWithID(watchID int64, ...) int64 {
     wm.mu.Lock()
     if _, exists := wm.watches[watchID]; exists {
@@ -289,7 +289,7 @@ func (wm *WatchManager) CreateWithID(watchID int64, ...) int64 {
 #### 问题 2: AuthManager 锁粒度过粗
 
 ```go
-// pkg/etcdapi/auth_manager.go:227
+// api/etcd/auth_manager.go:227
 func (am *AuthManager) CheckPermission(username string, key []byte, permType PermissionType) error {
     am.mu.RLock()  // ← 全局读锁
     defer am.mu.RUnlock()
@@ -354,7 +354,7 @@ func (am *AuthManager) CheckPermission(username string, key []byte, permType Per
 ### 3.1 正确的错误传播 ✅
 
 ```go
-// pkg/etcdapi/kv.go:38-42
+// api/etcd/kv.go:38-42
 resp, err := s.server.store.Range(key, rangeEnd, limit, revision)
 if err != nil {
     return nil, toGRPCError(err)  // ← 转换为 gRPC 错误
@@ -371,7 +371,7 @@ if err != nil {
 ### 3.2 标准化的错误码 ✅
 
 ```go
-// pkg/etcdapi/errors.go
+// api/etcd/errors.go
 func toGRPCError(err error) error {
     if err == nil {
         return nil
@@ -416,7 +416,7 @@ return nil, toGRPCError(fmt.Errorf("failed to range keys [%s, %s): %w", key, ran
 #### 问题 2: 部分错误未记录日志
 
 ```go
-// pkg/etcdapi/auth_manager.go:753
+// api/etcd/auth_manager.go:753
 for token, info := range am.tokens {
     if info.ExpiresAt < now {
         delete(am.tokens, token)
@@ -440,10 +440,10 @@ for token, info := range am.tokens {
 #### 问题 3: 错误没有使用 %w 包装
 
 ```go
-// pkg/etcdapi/auth_manager.go:302
+// api/etcd/auth_manager.go:302
 return fmt.Errorf("failed to hash password: %w", err)  // ← 正确 ✅
 
-// pkg/etcdapi/auth_manager.go:196
+// api/etcd/auth_manager.go:196
 return "", fmt.Errorf("failed to marshal token: %w", err)  // ← 正确 ✅
 
 // 但有些地方未使用 %w
@@ -468,7 +468,7 @@ return fmt.Errorf("invalid password")  // ← 可以改进
 ### 4.1 优雅关闭 ✅
 
 ```go
-// pkg/etcdapi/server.go:185-244
+// api/etcd/server.go:185-244
 shutdownMgr.RegisterHook(reliability.PhaseStopAccepting, func(ctx context.Context) error {
     log.Info("Shutdown phase: Stop accepting new connections")
     if cfg.EnableHealthCheck {
@@ -524,7 +524,7 @@ shutdownMgr.RegisterHook(reliability.PhaseCloseResources, func(ctx context.Conte
 ### 4.2 Panic 恢复 ✅
 
 ```go
-// pkg/etcdapi/server.go:312-327
+// api/etcd/server.go:312-327
 func (s *Server) PanicRecoveryInterceptor(
     ctx context.Context,
     req interface{},
@@ -553,7 +553,7 @@ func (s *Server) PanicRecoveryInterceptor(
 ### 4.3 资源清理 ✅
 
 ```go
-// pkg/etcdapi/watch_manager.go:132
+// api/etcd/watch_manager.go:132
 func (wm *WatchManager) Stop() {
     if !wm.stopped.CompareAndSwap(false, true) {
         return
@@ -582,7 +582,7 @@ func (wm *WatchManager) Stop() {
 #### 问题: 缺少连接数限制
 
 ```go
-// pkg/etcdapi/server.go:126
+// api/etcd/server.go:126
 grpcSrv := grpc.NewServer(
     grpc.ChainUnaryInterceptor(
         s.PanicRecoveryInterceptor,
@@ -634,7 +634,7 @@ log.Error("Failed to revoke expired lease",
 ### 5.2 健康检查 ✅
 
 ```go
-// pkg/etcdapi/server.go:160-182
+// api/etcd/server.go:160-182
 healthpb.RegisterHealthServer(grpcSrv, healthMgr.GetServer())
 
 healthMgr.RegisterChecker(reliability.NewStorageHealthChecker("storage", func(ctx context.Context) error {
@@ -662,7 +662,7 @@ healthMgr.RegisterChecker(reliability.NewLeaseHealthChecker("lease", func(ctx co
 ### 5.3 数据校验 ✅
 
 ```go
-// pkg/etcdapi/server.go:107
+// api/etcd/server.go:107
 dataValidator := reliability.NewDataValidator(cfg.EnableCRC)
 ```
 

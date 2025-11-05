@@ -28,8 +28,8 @@ import (
 	"metaStore/internal/memory"
 	"metaStore/internal/raft"
 	"metaStore/internal/rocksdb"
-	"metaStore/pkg/etcdapi"
-	"metaStore/pkg/httpapi"
+	etcdapi "metaStore/api/etcd"
+	httpapi "metaStore/api/http"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/raft/v3/raftpb"
