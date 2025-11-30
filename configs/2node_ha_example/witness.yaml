@@ -1,0 +1,35 @@
+# 2-Node HA Configuration - Witness Node
+# ========================================
+# Lightweight node that only participates in voting.
+# Resource requirements: ~256MB RAM, minimal disk
+
+server:
+  cluster_id: 1
+  member_id: 3
+
+  # Witness doesn't serve client requests
+  etcd:
+    address: ""  # Disabled
+  http:
+    address: ""  # Disabled
+  mysql:
+    address: ""  # Disabled
+
+  # Raft Configuration
+  raft:
+    node_role: "witness"  # Voting only, no data storage
+
+    witness:
+      persist_vote: true
+      forward_requests: false
+
+    tick_interval: 100ms
+    election_tick: 10
+    heartbeat_tick: 1
+    pre_vote: true
+    check_quorum: true
+
+  # Logging
+  log:
+    level: info
+    encoding: json

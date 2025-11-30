@@ -106,6 +106,56 @@ func (cm *ClusterManager) AddMember(peerURLs []string, isLearner bool) (*MemberI
 	return member, nil
 }
 
+// AddWitnessMember adds a witness node to the cluster
+// Witness nodes participate in Raft voting but don't store data
+// They enable 2-node HA by providing the 3rd vote needed for quorum
+func (cm *ClusterManager) AddWitnessMember(peerURLs []string) (*MemberInfo, error) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	// 1. Generate new member ID
+	memberID := generateMemberID()
+
+	// 2. Create member info with witness flag
+	member := &MemberInfo{
+		ID:         memberID,
+		Name:       fmt.Sprintf("witness-%d", memberID),
+		PeerURLs:   peerURLs,
+		ClientURLs: []string{}, // Witness nodes don't serve client requests
+		IsLearner:  false,      // Witness is a voter, not a learner
+		IsWitness:  true,       // Mark as witness node
+	}
+
+	// 3. Create ConfChange - Witness nodes are added as regular voters
+	// The witness behavior is controlled by the node's configuration, not Raft
+	context := []byte{}
+	if len(peerURLs) > 0 {
+		context = []byte(peerURLs[0])
+	}
+
+	cc := raftpb.ConfChange{
+		Type:    raftpb.ConfChangeAddNode, // Witness is a voter
+		NodeID:  memberID,
+		Context: context,
+	}
+
+	// 4. Send to confChangeC
+	if cm.confChangeC != nil {
+		select {
+		case cm.confChangeC <- cc:
+			// Successfully sent
+		default:
+			return nil, fmt.Errorf("confChange channel full")
+		}
+	}
+
+	// 5. Add to members map
+	cm.members[memberID] = member
+
+	// 6. Return member info
+	return member, nil
+}
+
 // RemoveMember 移除成员
 func (cm *ClusterManager) RemoveMember(id uint64) error {
 	cm.mu.Lock()
