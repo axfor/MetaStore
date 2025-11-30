@@ -115,6 +115,24 @@ server:
 
   # Raft 共识配置（基于 etcd Raft 推荐配置）
   raft:
+    # ============================================
+    # 节点角色配置 (Node Role Configuration)
+    # ============================================
+    # node_role: 节点在集群中的角色
+    #   - "data" (默认): 数据节点，存储数据并参与投票
+    #   - "witness": 见证节点，仅参与投票不存储数据（2节点HA场景）
+    #
+    # 2节点HA架构说明：
+    #   传统3节点：3个数据节点，容忍1节点故障，3份数据
+    #   2节点HA：2个数据节点 + 1个Witness，容忍1节点故障，2份数据
+    #   Witness优势：资源消耗极低（~256MB内存），适合成本敏感场景
+    node_role: "data"  # 默认为数据节点
+
+    # Witness 节点配置（仅当 node_role: "witness" 时生效）
+    witness:
+      persist_vote: true      # 持久化投票状态，防止重启后重复投票
+      forward_requests: false # 是否转发客户端请求到Leader
+
     # Tick 配置（影响 Raft 处理速度和延迟）
     # 推荐值：
     #   - 标准生产：100ms（etcd 默认，election_timeout=1000ms）
