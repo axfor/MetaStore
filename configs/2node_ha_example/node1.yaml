@@ -1,0 +1,45 @@
+# 2-Node HA Configuration - Data Node 1
+# ========================================
+# This is a full data node that stores data and serves clients.
+#
+# Cluster Architecture:
+#   Node 1 (this)  + Node 2 (data)  + Witness = 2-node HA
+#   Data + Vote      Data + Vote      Vote only
+#
+# Start order:
+#   1. Start Node 1: ./metastore --config node1.yaml --cluster "http://node1:2380"
+#   2. Start Node 2: ./metastore --config node2.yaml --cluster "http://node1:2380,http://node2:2380" --join
+#   3. Start Witness: ./metastore --config witness.yaml --cluster "http://node1:2380,http://node2:2380,http://witness:2380" --join
+
+server:
+  cluster_id: 1
+  member_id: 1
+
+  # Protocol Configuration
+  etcd:
+    address: ":2379"
+  http:
+    address: ":9121"
+  mysql:
+    address: ":3306"
+    username: "root"
+    password: ""
+
+  # Raft Configuration
+  raft:
+    node_role: "data"  # Full data node (default)
+
+    tick_interval: 100ms
+    election_tick: 10
+    heartbeat_tick: 1
+    pre_vote: true
+    check_quorum: true
+
+    lease_read:
+      enable: true
+      clock_drift: 100ms
+
+  # Logging
+  log:
+    level: info
+    encoding: json

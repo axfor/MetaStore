@@ -21,4 +21,5 @@ type MemberInfo struct {
 	PeerURLs   []string `json:"peer_urls"`
 	ClientURLs []string `json:"client_urls"`
 	IsLearner  bool     `json:"is_learner"`
+	IsWitness  bool     `json:"is_witness"` // Witness node flag (votes but doesn't store data)
 }

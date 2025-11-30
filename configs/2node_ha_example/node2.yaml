@@ -1,0 +1,35 @@
+# 2-Node HA Configuration - Data Node 2
+# ========================================
+
+server:
+  cluster_id: 1
+  member_id: 2
+
+  # Protocol Configuration
+  etcd:
+    address: ":2379"
+  http:
+    address: ":9121"
+  mysql:
+    address: ":3306"
+    username: "root"
+    password: ""
+
+  # Raft Configuration
+  raft:
+    node_role: "data"  # Full data node
+
+    tick_interval: 100ms
+    election_tick: 10
+    heartbeat_tick: 1
+    pre_vote: true
+    check_quorum: true
+
+    lease_read:
+      enable: true
+      clock_drift: 100ms
+
+  # Logging
+  log:
+    level: info
+    encoding: json
