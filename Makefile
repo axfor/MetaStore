@@ -61,6 +61,8 @@ clean:
 ## test: Run all tests (including RocksDB storage tests)
 test:
 	@echo "$(CYAN)Running all tests with GreenTea GC...$(NO_COLOR)"
+	@echo "$(YELLOW)Testing pkg packages...$(NO_COLOR)"
+	@$(GOTEST) -v -timeout=5m ./pkg/...
 	@echo "$(YELLOW)Testing internal packages...$(NO_COLOR)"
 	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" GOEXPERIMENT=greenteagc $(GOTEST) -v -timeout=30m ./internal/...
 	@echo "$(YELLOW)Testing integration and system tests...$(NO_COLOR)"
@@ -70,6 +72,7 @@ test:
 ## test-unit: Run only unit tests (no integration tests)
 test-unit:
 	@echo "$(CYAN)Running unit tests...$(NO_COLOR)"
+	@$(GOTEST) -v -timeout=5m ./pkg/...
 	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v -timeout=15m ./internal/...
 
 ## test-integration: Run only integration tests

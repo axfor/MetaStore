@@ -154,8 +154,25 @@ type PerformanceConfig struct {
 	EnableLeaseProtobuf    bool `yaml:"enable_lease_protobuf"`    // Lease Protobuf serialization, default true
 }
 
+// NodeRole defines the role of a Raft node
+type NodeRole string
+
+const (
+	// NodeRoleData is a full data node that participates in Raft consensus and stores data
+	NodeRoleData NodeRole = "data"
+
+	// NodeRoleWitness is a lightweight witness node that only participates in voting
+	// Witness nodes do NOT store data, they only help form quorum for leader election
+	// This enables 2-node HA by adding a lightweight 3rd node for voting
+	NodeRoleWitness NodeRole = "witness"
+)
+
 // RaftConfig Raft consensus configuration
 type RaftConfig struct {
+	// Node role configuration (for 2-node HA support)
+	NodeRole NodeRole      `yaml:"node_role"` // Node role: "data" (default) or "witness"
+	Witness  WitnessConfig `yaml:"witness"`   // Witness node specific configuration
+
 	// Tick configuration (affects Raft processing speed)
 	TickInterval  time.Duration `yaml:"tick_interval"`   // Raft tick interval, default 100ms
 	ElectionTick  int           `yaml:"election_tick"`   // Election timeout tick count, default 10 (= 1s)
@@ -177,6 +194,29 @@ type RaftConfig struct {
 
 	// Lease Read configuration (read performance optimization, reference: etcd/TiKV)
 	LeaseRead LeaseReadConfig `yaml:"lease_read"` // Lease Read configuration
+}
+
+// WitnessConfig configuration for witness nodes
+// Witness nodes are lightweight nodes that participate in Raft voting but don't store data
+// They enable 2-node HA by providing the 3rd vote needed for quorum
+type WitnessConfig struct {
+	// PersistVote persists voting state to prevent double voting after restart
+	// Recommended: true for production to ensure vote consistency
+	PersistVote bool `yaml:"persist_vote"`
+
+	// ForwardRequests forwards client requests to the current leader
+	// If false, witness nodes reject client requests directly
+	ForwardRequests bool `yaml:"forward_requests"`
+}
+
+// IsWitness returns true if this node is configured as a witness node
+func (r *RaftConfig) IsWitness() bool {
+	return r.NodeRole == NodeRoleWitness
+}
+
+// IsDataNode returns true if this node is configured as a full data node
+func (r *RaftConfig) IsDataNode() bool {
+	return r.NodeRole == NodeRoleData || r.NodeRole == ""
 }
 
 // RaftBatchConfig batch proposal configuration
@@ -442,6 +482,19 @@ func (c *Config) SetDefaults() {
 	c.Server.Performance.EnableLeaseProtobuf = true     // Lease Protobuf (20.6x improvement)
 
 	// Raft defaults (production standard config, industry best practices)
+	// Node role defaults to "data" (full data node)
+	if c.Server.Raft.NodeRole == "" {
+		c.Server.Raft.NodeRole = NodeRoleData
+	}
+
+	// Witness node specific defaults
+	if c.Server.Raft.NodeRole == NodeRoleWitness {
+		// Witness nodes should persist vote state by default for safety
+		c.Server.Raft.Witness.PersistVote = true
+		// Witness nodes don't provide read service, disable Lease Read
+		c.Server.Raft.LeaseRead.Enable = false
+	}
+
 	if c.Server.Raft.TickInterval == 0 {
 		c.Server.Raft.TickInterval = 100 * time.Millisecond // Standard production: 100ms (etcd default)
 	}
@@ -485,7 +538,10 @@ func (c *Config) SetDefaults() {
 
 	// LeaseRead defaults (read performance optimization, reference: etcd/TiKV)
 	// Enable Lease Read by default to achieve 10-100x read performance improvement
-	c.Server.Raft.LeaseRead.Enable = true
+	// Note: Witness nodes have LeaseRead disabled (set earlier in SetDefaults)
+	if c.Server.Raft.NodeRole != NodeRoleWitness {
+		c.Server.Raft.LeaseRead.Enable = true
+	}
 	if c.Server.Raft.LeaseRead.ClockDrift == 0 {
 		c.Server.Raft.LeaseRead.ClockDrift = 100 * time.Millisecond // etcd recommended value (same datacenter)
 		// Notes:
@@ -631,6 +687,21 @@ func (c *Config) Validate() error {
 	}
 
 	// Validate Raft configuration
+	// Validate node role
+	if c.Server.Raft.NodeRole != "" &&
+		c.Server.Raft.NodeRole != NodeRoleData &&
+		c.Server.Raft.NodeRole != NodeRoleWitness {
+		return fmt.Errorf("raft.node_role must be either 'data' or 'witness'")
+	}
+
+	// Witness node specific validation
+	if c.Server.Raft.IsWitness() {
+		// Witness nodes should not have Lease Read enabled
+		if c.Server.Raft.LeaseRead.Enable {
+			return fmt.Errorf("witness nodes cannot have lease_read enabled (no data to serve)")
+		}
+	}
+
 	if c.Server.Raft.TickInterval <= 0 {
 		return fmt.Errorf("raft.tick_interval must be > 0")
 	}

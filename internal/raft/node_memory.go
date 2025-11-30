@@ -99,6 +99,12 @@ type raftNode struct {
 
 var defaultSnapshotCount uint64 = 10000
 
+// isWitness returns true if this node is configured as a witness node
+// Witness nodes participate in Raft voting but don't store data
+func (rc *raftNode) isWitness() bool {
+	return rc.cfg != nil && rc.cfg.Server.Raft.IsWitness()
+}
+
 // newRaftNode initiates a raft instance and returns a committed log entry
 // channel and error channel. Proposals for log updates are sent over the
 // provided the proposal channel. All log entries are replayed over the
@@ -194,6 +200,11 @@ func (rc *raftNode) publishEntries(ents []raftpb.Entry) (<-chan struct{}, bool) 
 		return nil, true
 	}
 
+	// Witness nodes only process ConfChange entries, skip data application
+	if rc.isWitness() {
+		return rc.publishEntriesAsWitness(ents)
+	}
+
 	data := make([]string, 0, len(ents))
 	for i := range ents {
 		switch ents[i].Type {
@@ -258,6 +269,52 @@ func (rc *raftNode) publishEntries(ents []raftpb.Entry) (<-chan struct{}, bool) 
 	}
 
 	return applyDoneC, true
+}
+
+// publishEntriesAsWitness handles entries for witness nodes
+// Witness nodes only process ConfChange entries (cluster membership changes)
+// They skip all data entries since they don't store data
+func (rc *raftNode) publishEntriesAsWitness(ents []raftpb.Entry) (<-chan struct{}, bool) {
+	for i := range ents {
+		switch ents[i].Type {
+		case raftpb.EntryNormal:
+			// Witness nodes skip normal data entries
+			// They participate in Raft consensus but don't apply data
+			continue
+
+		case raftpb.EntryConfChange:
+			// Process cluster configuration changes
+			var cc raftpb.ConfChange
+			cc.Unmarshal(ents[i].Data)
+			rc.confState = *rc.node.ApplyConfChange(cc)
+
+			switch cc.Type {
+			case raftpb.ConfChangeAddNode:
+				if len(cc.Context) > 0 {
+					rc.transport.AddPeer(types.ID(cc.NodeID), []string{string(cc.Context)})
+				}
+				rc.logger.Info("witness: added peer",
+					zap.Uint64("node_id", cc.NodeID),
+					zap.String("component", "raft-memory-witness"))
+
+			case raftpb.ConfChangeRemoveNode:
+				if cc.NodeID == uint64(rc.id) {
+					rc.logger.Warn("witness: I've been removed from the cluster! Shutting down.",
+						zap.String("component", "raft-memory-witness"))
+					return nil, false
+				}
+				rc.transport.RemovePeer(types.ID(cc.NodeID))
+				rc.logger.Info("witness: removed peer",
+					zap.Uint64("node_id", cc.NodeID),
+					zap.String("component", "raft-memory-witness"))
+			}
+		}
+	}
+
+	// Update appliedIndex even for witness nodes (for Raft protocol correctness)
+	rc.appliedIndex = ents[len(ents)-1].Index
+
+	return nil, true
 }
 
 func (rc *raftNode) loadSnapshot() *raftpb.Snapshot {
@@ -394,7 +451,8 @@ func (rc *raftNode) startRaft() {
 	}
 
 	// 初始化批量提案系统（如果启用）
-	if rc.cfg.Server.Raft.Batch.Enable {
+	// Witness nodes don't propose data, so batch system is not needed
+	if rc.cfg.Server.Raft.Batch.Enable && !rc.isWitness() {
 		batchConfig := batch.BatchConfig{
 			MinBatchSize:  rc.cfg.Server.Raft.Batch.MinBatchSize,
 			MaxBatchSize:  rc.cfg.Server.Raft.Batch.MaxBatchSize,
@@ -413,6 +471,9 @@ func (rc *raftNode) startRaft() {
 			zap.Duration("max_timeout", batchConfig.MaxTimeout),
 			zap.Float64("load_threshold", batchConfig.LoadThreshold),
 			zap.String("component", "raft-memory"))
+	} else if rc.isWitness() {
+		rc.logger.Info("batch proposal system skipped (witness node)",
+			zap.String("component", "raft-memory-witness"))
 	} else {
 		rc.logger.Info("batch proposal system disabled", zap.String("component", "raft-memory"))
 	}
@@ -467,6 +528,16 @@ func (rc *raftNode) startRaft() {
 			zap.String("component", "raft-memory"))
 	} else {
 		rc.logger.Info("lease read system disabled", zap.String("component", "raft-memory"))
+	}
+
+	// Log witness node startup
+	if rc.isWitness() {
+		rc.logger.Info("witness node started",
+			zap.Int("id", rc.id),
+			zap.Int("peer_count", len(rc.peers)),
+			zap.Bool("persist_vote", rc.cfg.Server.Raft.Witness.PersistVote),
+			zap.String("role", "witness"),
+			zap.String("component", "raft-memory-witness"))
 	}
 
 	go rc.serveRaft()
