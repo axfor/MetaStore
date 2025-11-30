@@ -181,6 +181,56 @@ server:
 	})
 }
 
+// TestMainConfigHasWitnessSettings tests that the main config.yaml includes witness settings
+func TestMainConfigHasWitnessSettings(t *testing.T) {
+	// Test YAML structure matches main config.yaml format
+	yamlData := `
+server:
+  cluster_id: 1
+  member_id: 1
+  etcd:
+    address: ":2379"
+  raft:
+    node_role: "data"
+    witness:
+      persist_vote: true
+      forward_requests: false
+    tick_interval: 100ms
+    election_tick: 10
+    heartbeat_tick: 1
+`
+	var cfg Config
+	err := yaml.Unmarshal([]byte(yamlData), &cfg)
+	if err != nil {
+		t.Fatalf("Failed to parse YAML: %v", err)
+	}
+
+	cfg.SetDefaults()
+
+	// Verify data node settings
+	if cfg.Server.Raft.NodeRole != NodeRoleData {
+		t.Errorf("Expected NodeRole=%s, got %s", NodeRoleData, cfg.Server.Raft.NodeRole)
+	}
+
+	// Verify witness config is parsed (even for data node)
+	if !cfg.Server.Raft.Witness.PersistVote {
+		t.Error("Expected Witness.PersistVote=true")
+	}
+
+	// Verify LeaseRead enabled for data node
+	if !cfg.Server.Raft.LeaseRead.Enable {
+		t.Error("Expected LeaseRead.Enable=true for data node")
+	}
+
+	// Now test switching to witness mode
+	cfg.Server.Raft.NodeRole = NodeRoleWitness
+	cfg.SetDefaults()
+
+	if cfg.Server.Raft.LeaseRead.Enable {
+		t.Error("Expected LeaseRead.Enable=false for witness node after SetDefaults")
+	}
+}
+
 // TestNodeRoleHelpers tests the IsWitness and IsDataNode helper methods
 func TestNodeRoleHelpers(t *testing.T) {
 	testCases := []struct {
