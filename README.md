@@ -18,6 +18,7 @@ A lightweight, high-performance, production-ready distributed metadata managemen
 - **🔒 Production Ready**: Comprehensive test coverage (100%), fault injection testing, and performance benchmarking
 - **🏗️ Raft Consensus**: Built on etcd's battle-tested raft library for strong consistency
 - **🚀 High Availability**: Tolerates up to (N-1)/2 node failures in an N-node cluster
+- **👁️ 2-Node HA with Witness**: Support for 2 data nodes + 1 lightweight witness node for cost-effective HA
 - **💾 Dual Storage Modes**: Memory+WAL (fast) or RocksDB (persistent)
 - **📊 Observability**: Prometheus metrics, structured logging, and health checks
 - **🔧 Production Features**: Graceful shutdown, panic recovery, rate limiting, and input validation
@@ -350,6 +351,65 @@ make stop-cluster
 ./metastore --member-id 2 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 22380
 ./metastore --member-id 3 --cluster http://127.0.0.1:12379,http://127.0.0.1:22379,http://127.0.0.1:32379 --port 32380
 ```
+
+### 2-Node HA with Witness Node
+
+For cost-effective high availability with only 2 data nodes, MetaStore supports a **Witness node** - a lightweight 3rd node that participates in Raft voting but doesn't store data.
+
+**Architecture:**
+```
+┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+│   Data Node 1   │  │   Data Node 2   │  │  Witness Node   │
+│                 │  │                 │  │                 │
+│  ✓ Store Data   │  │  ✓ Store Data   │  │  ✗ No Data      │
+│  ✓ Serve Client │  │  ✓ Serve Client │  │  ✗ No Client    │
+│  ✓ Raft Vote    │  │  ✓ Raft Vote    │  │  ✓ Raft Vote    │
+└─────────────────┘  └─────────────────┘  └─────────────────┘
+     ~8GB RAM             ~8GB RAM            ~256MB RAM
+```
+
+**Benefits:**
+- **Cost Effective**: Witness uses minimal resources (~256MB RAM)
+- **Full Fault Tolerance**: Survives 1 node failure (same as 3-node cluster)
+- **Data Efficiency**: Only 2 copies of data instead of 3
+
+**Configuration Example:**
+
+```yaml
+# witness.yaml - Witness node configuration
+server:
+  cluster_id: 1
+  member_id: 3
+
+  # Witness doesn't serve client requests
+  etcd:
+    address: ""   # Disabled
+  http:
+    address: ""   # Disabled
+  mysql:
+    address: ""   # Disabled
+
+  raft:
+    node_role: "witness"    # Key configuration
+    witness:
+      persist_vote: true    # Persist voting state
+      forward_requests: false
+```
+
+**Deployment:**
+
+```bash
+# Start Data Node 1 (bootstrap)
+./metastore --config configs/2node_ha_example/node1.yaml --cluster "http://node1:2380"
+
+# Start Data Node 2 (join)
+./metastore --config configs/2node_ha_example/node2.yaml --cluster "http://node1:2380,http://node2:2380" --join
+
+# Start Witness Node (join)
+./metastore --config configs/2node_ha_example/witness.yaml --cluster "http://node1:2380,http://node2:2380,http://witness:2380" --join
+```
+
+See [configs/2node_ha_example/](configs/2node_ha_example/) for complete configuration examples and [docs/design/2NODE_HA_DESIGN.md](docs/design/2NODE_HA_DESIGN.md) for detailed design documentation.
 
 ## 📊 Performance & Testing
 
@@ -766,6 +826,7 @@ Apache License 2.0 - See [LICENSE](LICENSE) for details.
 - [x] Comprehensive testing (100% coverage)
 - [x] Production deployment guide
 - [x] 100% etcd v3 API compatibility (38/38 RPCs)
+- [x] 2-Node HA with Witness node support
 
 ### In Progress 🚧
 - [ ] Performance optimization (ongoing)
