@@ -16,17 +16,17 @@ server:
 
   # etcd gRPC 协议配置
   etcd:
-    address: ":2379"  # etcd gRPC 监听地址
+    address: ":2379" # etcd gRPC 监听地址
 
   # HTTP REST API 配置
   http:
-    address: ":9121"  # HTTP API 监听地址
+    address: ":9121" # HTTP API 监听地址
 
   # MySQL 协议配置
   mysql:
-    address: ":3306"   # MySQL 协议监听地址
-    username: "root"   # MySQL 认证用户名
-    password: ""       # MySQL 认证密码（生产环境请设置强密码）
+    address: ":3306" # MySQL 协议监听地址
+    username: "root" # MySQL 认证用户名
+    password: "" # MySQL 认证密码（生产环境请设置强密码）
 
   # ============================================
   # gRPC 配置（基于业界最佳实践优化：etcd、gRPC 官方、TiKV）
@@ -115,6 +115,24 @@ server:
 
   # Raft 共识配置（基于 etcd Raft 推荐配置）
   raft:
+    # ============================================
+    # 节点角色配置 (Node Role Configuration)
+    # ============================================
+    # node_role: 节点在集群中的角色
+    #   - "data" (默认): 数据节点，存储数据并参与投票
+    #   - "witness": 见证节点，仅参与投票不存储数据（2节点HA场景）
+    #
+    # 2节点HA架构说明：
+    #   传统3节点：3个数据节点，容忍1节点故障，3份数据
+    #   2节点HA：2个数据节点 + 1个Witness，容忍1节点故障，2份数据
+    #   Witness优势：资源消耗极低（~256MB内存），适合成本敏感场景
+    node_role: "data" # 默认为数据节点 "data" (默认) 或 "witness"
+
+    # Witness 节点配置（仅当 node_role: "witness" 时生效）
+    witness:
+      persist_vote: true # 持久化投票状态，防止重启后重复投票
+      forward_requests: false # 是否转发客户端请求到Leader
+
     # Tick 配置（影响 Raft 处理速度和延迟）
     # 推荐值：
     #   - 标准生产：100ms（etcd 默认，election_timeout=1000ms）
@@ -122,8 +140,8 @@ server:
     #   - 极速响应：30ms（election_timeout=900-1200ms，高负载场景）
     tick_interval: 100ms # Raft tick 间隔（生产环境标准配置）
 
-    election_tick: 10     # 选举超时 tick 数（10 × 100ms = 1000ms，符合业界最佳实践）
-    heartbeat_tick: 1     # 心跳间隔 tick 数（1 × 100ms = 100ms，election_timeout/10）
+    election_tick: 10 # 选举超时 tick 数（10 × 100ms = 1000ms，符合业界最佳实践）
+    heartbeat_tick: 1 # 心跳间隔 tick 数（1 × 100ms = 100ms，election_timeout/10）
 
     # 消息大小配置
     max_size_per_msg: 4194304 # 4MB，与 gRPC max_recv_msg_size 对齐
@@ -137,8 +155,8 @@ server:
     max_uncommitted_entries_size: 1073741824 # 1GB，最大未提交条目大小
 
     # 优化开关
-    pre_vote: true      # 启用 PreVote（减少不必要的选举）
-    check_quorum: true  # 启用 CheckQuorum（leader 定期确认 quorum）
+    pre_vote: true # 启用 PreVote（减少不必要的选举）
+    check_quorum: true # 启用 CheckQuorum（leader 定期确认 quorum）
 
     # 批量提案配置（动态批量优化，参考 TiKV、etcd）
     # 性能提升：5-50x（取决于负载模式）
@@ -146,12 +164,12 @@ server:
     #   - 低负载：小批量 + 短超时 = 低延迟（接近单提案延迟）
     #   - 高负载：大批量 + 长超时 = 高吞吐（显著提升吞吐量）
     batch:
-      enable: true           # 启用批量提案（默认启用，推荐）
-      min_batch_size: 1      # 最小批量大小（低负载场景，单提案）
-      max_batch_size: 256    # 最大批量大小（高负载场景，TiKV 使用 256）
-      min_timeout: 5ms       # 最小超时时间（低负载，快速响应）
-      max_timeout: 20ms      # 最大超时时间（高负载，批量聚合）
-      load_threshold: 0.7    # 负载阈值（0.0-1.0，70% 时切换到高负载模式）
+      enable: true # 启用批量提案（默认启用，推荐）
+      min_batch_size: 1 # 最小批量大小（低负载场景，单提案）
+      max_batch_size: 256 # 最大批量大小（高负载场景，TiKV 使用 256）
+      min_timeout: 5ms # 最小超时时间（低负载，快速响应）
+      max_timeout: 20ms # 最大超时时间（高负载，批量聚合）
+      load_threshold: 0.7 # 负载阈值（0.0-1.0，70% 时切换到高负载模式）
 
     # Lease Read 配置（读性能优化，参考 etcd、TiKV）
     # 性能提升：10-100x（读操作），特别适合读多写少场景
@@ -161,11 +179,12 @@ server:
     #   - 基于当前配置：min(1000/2, 100*3) - 100 = 400ms（合理的 lease duration）
     #   - 时钟偏移容忍：建议值 100-200ms（election_timeout 的 10-20%）
     lease_read:
-      enable: true           # 启用 Lease Read（默认启用，推荐）
-      clock_drift: 100ms     # 时钟偏移容忍（etcd 推荐值，同数据中心部署）
-                             # 跨区域部署建议：200ms
-                             # 跨大洲部署建议：500ms（需相应增大 election_timeout）
-      read_timeout: 5s       # 读超时时间（防止读请求永久挂起）
+      enable: true # 启用 Lease Read（默认启用，推荐）
+      clock_drift:
+        100ms # 时钟偏移容忍（etcd 推荐值，同数据中心部署）
+        # 跨区域部署建议：200ms
+        # 跨大洲部署建议：500ms（需相应增大 election_timeout）
+      read_timeout: 5s # 读超时时间（防止读请求永久挂起）
 
   # RocksDB 性能配置（仅在使用 RocksDB 存储引擎时生效）
   rocksdb:
@@ -174,20 +193,20 @@ server:
 
     # Write Buffer 配置（影响写性能）
     write_buffer_size: 67108864 # 64MB（默认），单个 memtable 大小
-    max_write_buffer_number: 3  # 最大 write buffer 数量
+    max_write_buffer_number: 3 # 最大 write buffer 数量
     min_write_buffer_number_to_merge: 1 # 触发合并的最小 write buffer 数量
 
     # Compaction 配置
-    max_background_jobs: 4  # 后台 compaction/flush 线程数（建议设置为 CPU 核心数）
-    level0_file_num_compaction_trigger: 4  # Level 0 触发 compaction 的文件数
-    level0_slowdown_writes_trigger: 20     # Level 0 减缓写入的文件数
-    level0_stop_writes_trigger: 36         # Level 0 停止写入的文件数
+    max_background_jobs: 4 # 后台 compaction/flush 线程数（建议设置为 CPU 核心数）
+    level0_file_num_compaction_trigger: 4 # Level 0 触发 compaction 的文件数
+    level0_slowdown_writes_trigger: 20 # Level 0 减缓写入的文件数
+    level0_stop_writes_trigger: 36 # Level 0 停止写入的文件数
 
     # Bloom Filter 配置（优化点查询性能）
-    bloom_filter_bits_per_key: 10  # Bloom filter 每个 key 的 bit 数（10 bits ≈ 1% 误判率）
-    block_based_table_bloom_filter: true  # 启用 Block-based Bloom Filter
+    bloom_filter_bits_per_key: 10 # Bloom filter 每个 key 的 bit 数（10 bits ≈ 1% 误判率）
+    block_based_table_bloom_filter: true # 启用 Block-based Bloom Filter
 
     # 其他优化
-    max_open_files: 10000  # 最大打开文件数
-    use_fsync: false       # 是否使用 fsync（false 使用 fdatasync，性能更好）
+    max_open_files: 10000 # 最大打开文件数
+    use_fsync: false # 是否使用 fsync（false 使用 fdatasync，性能更好）
     bytes_per_sync: 1048576 # 1MB，后台同步数据到磁盘的间隔
