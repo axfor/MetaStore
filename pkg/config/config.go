@@ -51,6 +51,7 @@ type ServerConfig struct {
 	Performance PerformanceConfig `yaml:"performance"`
 	Raft        RaftConfig        `yaml:"raft"`
 	RocksDB     RocksDBConfig     `yaml:"rocksdb"`
+	MVCC        MVCCConfig        `yaml:"mvcc"` // MVCC configuration
 }
 
 // EtcdConfig etcd gRPC protocol configuration
@@ -267,6 +268,55 @@ type RocksDBConfig struct {
 	MaxOpenFiles  int    `yaml:"max_open_files"`   // Default 10000
 	UseFsync      bool   `yaml:"use_fsync"`        // Default false (use fdatasync)
 	BytesPerSync  uint64 `yaml:"bytes_per_sync"`   // Default 1MB
+}
+
+// MVCCConfig MVCC (Multi-Version Concurrency Control) configuration
+// MVCC enables historical version queries and is compatible with etcd's revision model
+type MVCCConfig struct {
+	// Retention configuration
+	Retention MVCCRetentionConfig `yaml:"retention"`
+
+	// Auto compaction configuration
+	AutoCompaction MVCCAutoCompactionConfig `yaml:"auto_compaction"`
+
+	// Compaction performance configuration
+	Compaction MVCCCompactionConfig `yaml:"compaction"`
+}
+
+// MVCCRetentionConfig version retention configuration
+type MVCCRetentionConfig struct {
+	// MaxRevisions is the maximum number of revisions to retain (default 1000, consistent with etcd)
+	MaxRevisions int64 `yaml:"max_revisions"`
+
+	// MaxAge is the maximum age of revisions to retain (optional, 0 means only use MaxRevisions)
+	// If both are set, the stricter condition applies
+	MaxAge time.Duration `yaml:"max_age"`
+}
+
+// MVCCAutoCompactionConfig auto compaction configuration
+type MVCCAutoCompactionConfig struct {
+	// Enable enables auto compaction (default true)
+	Enable bool `yaml:"enable"`
+
+	// Mode is the compaction mode: "revision" or "periodic"
+	// - "revision": compact revisions older than Retention revisions
+	// - "periodic": compact revisions older than Period
+	Mode string `yaml:"mode"`
+
+	// Retention is the number of revisions to retain in "revision" mode (default 1000)
+	Retention int64 `yaml:"retention"`
+
+	// Period is the time period to retain in "periodic" mode (e.g., "1h", "24h")
+	Period time.Duration `yaml:"period"`
+}
+
+// MVCCCompactionConfig compaction performance configuration
+type MVCCCompactionConfig struct {
+	// BatchSize is the number of keys to compact per batch (default 1000)
+	BatchSize int `yaml:"batch_size"`
+
+	// BatchInterval is the interval between batches to avoid impacting normal requests (default 10ms)
+	BatchInterval time.Duration `yaml:"batch_interval"`
 }
 
 // DefaultConfig returns a configuration with recommended default values
@@ -592,6 +642,30 @@ func (c *Config) SetDefaults() {
 		c.Server.RocksDB.BytesPerSync = 1048576 // 1MB
 	}
 	// UseFsync defaults to false (no need to set)
+
+	// MVCC defaults (compatible with etcd)
+	if c.Server.MVCC.Retention.MaxRevisions == 0 {
+		c.Server.MVCC.Retention.MaxRevisions = 1000 // etcd default
+	}
+	// MaxAge defaults to 0 (only use MaxRevisions)
+
+	// Auto compaction defaults
+	c.Server.MVCC.AutoCompaction.Enable = true
+	if c.Server.MVCC.AutoCompaction.Mode == "" {
+		c.Server.MVCC.AutoCompaction.Mode = "revision" // Default to revision-based
+	}
+	if c.Server.MVCC.AutoCompaction.Retention == 0 {
+		c.Server.MVCC.AutoCompaction.Retention = 1000 // etcd default
+	}
+	// Period defaults to 0 (only used in periodic mode)
+
+	// Compaction performance defaults
+	if c.Server.MVCC.Compaction.BatchSize == 0 {
+		c.Server.MVCC.Compaction.BatchSize = 1000
+	}
+	if c.Server.MVCC.Compaction.BatchInterval == 0 {
+		c.Server.MVCC.Compaction.BatchInterval = 10 * time.Millisecond
+	}
 }
 
 // OverrideFromEnv overrides configuration from environment variables
@@ -759,6 +833,40 @@ func (c *Config) Validate() error {
 		if c.Server.Raft.LeaseRead.ClockDrift >= electionTimeout {
 			return fmt.Errorf("raft.lease_read.clock_drift must be < election_timeout")
 		}
+	}
+
+	// Validate MVCC configuration
+	if c.Server.MVCC.Retention.MaxRevisions <= 0 {
+		return fmt.Errorf("mvcc.retention.max_revisions must be > 0")
+	}
+	if c.Server.MVCC.Retention.MaxAge < 0 {
+		return fmt.Errorf("mvcc.retention.max_age must be >= 0")
+	}
+
+	// Validate auto compaction configuration
+	if c.Server.MVCC.AutoCompaction.Enable {
+		validModes := map[string]bool{"revision": true, "periodic": true}
+		if !validModes[c.Server.MVCC.AutoCompaction.Mode] {
+			return fmt.Errorf("mvcc.auto_compaction.mode must be 'revision' or 'periodic'")
+		}
+		if c.Server.MVCC.AutoCompaction.Mode == "revision" {
+			if c.Server.MVCC.AutoCompaction.Retention <= 0 {
+				return fmt.Errorf("mvcc.auto_compaction.retention must be > 0 in revision mode")
+			}
+		}
+		if c.Server.MVCC.AutoCompaction.Mode == "periodic" {
+			if c.Server.MVCC.AutoCompaction.Period <= 0 {
+				return fmt.Errorf("mvcc.auto_compaction.period must be > 0 in periodic mode")
+			}
+		}
+	}
+
+	// Validate compaction performance configuration
+	if c.Server.MVCC.Compaction.BatchSize <= 0 {
+		return fmt.Errorf("mvcc.compaction.batch_size must be > 0")
+	}
+	if c.Server.MVCC.Compaction.BatchInterval < 0 {
+		return fmt.Errorf("mvcc.compaction.batch_interval must be >= 0")
 	}
 
 	return nil
