@@ -52,10 +52,10 @@ type etcdRocksDBCluster struct {
 
 // newEtcdRocksDBCluster creates a cluster of n etcd-compatible RocksDB nodes
 func newEtcdRocksDBCluster(t *testing.T, n int) *etcdRocksDBCluster {
-	peers := make([]string, n)
-	for i := range peers {
-		peers[i] = fmt.Sprintf("http://127.0.0.1:%d", 10200+i)
-	}
+	// Allocate dynamic ports to avoid conflicts when running tests in parallel
+	peers, listeners := allocatePorts(n)
+	// Release the listeners so Raft can bind to these ports
+	releaseListeners(listeners)
 
 	clus := &etcdRocksDBCluster{
 		peers:            peers,
