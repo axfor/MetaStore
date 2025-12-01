@@ -92,7 +92,9 @@ func startTestServerRocksDB(t *testing.T) (*etcdapi.Server, *clientv3.Client, fu
 	t.Cleanup(cleanup)
 
 	// Setup RocksDB
-	peers := []string{"http://127.0.0.1:10400"}
+	// Allocate dynamic ports to avoid conflicts when running tests in parallel
+	peers, listeners := allocatePorts(1)
+	releaseListeners(listeners)
 	os.RemoveAll(dataDir)
 
 	proposeC := make(chan string, 1)

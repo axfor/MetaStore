@@ -42,7 +42,9 @@ func TestMySQLCrossProtocolMemory(t *testing.T) {
 	t.Parallel()
 
 	// Setup: Create a single storage instance with HTTP, etcd, and MySQL interfaces
-	peers := []string{"http://127.0.0.1:10400"}
+	// Allocate dynamic ports to avoid conflicts when running tests in parallel
+	peers, listeners := allocatePorts(1)
+	releaseListeners(listeners)
 
 	// Clean up data directory
 	dataDir := "data/memory/mysql_cross_1"

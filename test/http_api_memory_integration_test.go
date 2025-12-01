@@ -56,10 +56,10 @@ type cluster struct {
 
 // newCluster creates a cluster of n nodes
 func newCluster(n int) *cluster {
-	peers := make([]string, n)
-	for i := range peers {
-		peers[i] = fmt.Sprintf("http://127.0.0.1:%d", 10000+i)
-	}
+	// Allocate dynamic ports to avoid conflicts when running tests in parallel
+	peers, listeners := allocatePorts(n)
+	// Release the listeners so Raft can bind to these ports
+	releaseListeners(listeners)
 
 	clus := &cluster{
 		peers:              peers,

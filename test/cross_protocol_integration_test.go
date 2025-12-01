@@ -116,7 +116,9 @@ func etcdDelete(t *testing.T, client *clientv3.Client, ctx context.Context, key 
 // can be read via etcd API, and vice versa (Memory engine)
 func TestCrossProtocolMemoryDataInteroperability(t *testing.T) {
 	// Setup: Create a single storage instance with both HTTP and etcd interfaces
-	peers := []string{"http://127.0.0.1:10300"}
+	// Allocate dynamic ports to avoid conflicts when running tests in parallel
+	peers, listeners := allocatePorts(1)
+	releaseListeners(listeners)
 
 	// Clean up data directory
 	os.RemoveAll("data/memory/1")

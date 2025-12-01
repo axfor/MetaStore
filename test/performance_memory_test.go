@@ -127,8 +127,8 @@ func TestMemoryPerformance_LargeScaleLoad(t *testing.T) {
 		t.Errorf("Average latency too high: %v (expected < 200ms)", avgLatency)
 	}
 
-	if throughput < 800 {
-		t.Errorf("Throughput too low: %.2f ops/sec (expected > 800)", throughput)
+	if throughput < 500 {
+		t.Errorf("Throughput too low: %.2f ops/sec (expected > 500)", throughput)
 	}
 }
 

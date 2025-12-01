@@ -167,7 +167,15 @@
       "Bash(./test_sql_parser.sh:*)",
       "Bash(then echo \"✓ 新格式 (包含 etcd/http/mysql 配置)\" elif grep -q \"mysql:\" \"$f\")",
       "Bash(then if grep -q \"enable:\" \"$f\")",
-      "Bash(then echo \"✗ 旧格式 (包含 enable 字段)\" else echo \"? 部分更新\" fi else echo \"- 无 MySQL 配置\" fi done)"
+      "Bash(then echo \"✗ 旧格式 (包含 enable 字段)\" else echo \"? 部分更新\" fi else echo \"- 无 MySQL 配置\" fi done)",
+      "Bash(grep:*)",
+      "Bash(GOEXPERIMENT=greenteagc CGO_ENABLED=1 'CGO_LDFLAGS=-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain' go test -p 1 -run ^Test[^B] ./test/...)",
+      "Bash(GOEXPERIMENT=greenteagc CGO_ENABLED=1 'CGO_LDFLAGS=-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain' go test -v -p 1 ./test/... -run TestEtcdMemorySingleNode -timeout=120s)",
+      "Bash(GOEXPERIMENT=greenteagc CGO_ENABLED=1 'CGO_LDFLAGS=-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain' go test -p 1 ./internal/... ./pkg/... ./api/...)",
+      "Bash(GOEXPERIMENT=greenteagc CGO_ENABLED=1 'CGO_LDFLAGS=-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain' go test -v ./test/... -run TestCrossProtocolMemoryDataInteroperability -timeout=120s)",
+      "Bash(GOEXPERIMENT=greenteagc CGO_ENABLED=1 'CGO_LDFLAGS=-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain' go test -v ./test/... -run TestEtcdMemoryClusterBasicConsistency -timeout=120s)",
+      "Bash(GOEXPERIMENT=greenteagc CGO_ENABLED=1 'CGO_LDFLAGS=-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain' go test -v ./test/... -run TestEtcdRocksDBSingleNodeOperations -timeout=120s)",
+      "Bash(make:*)"
     ],
     "deny": [],
     "ask": []
