@@ -33,6 +33,31 @@ import (
 	"go.etcd.io/raft/v3/raftpb"
 )
 
+// allocatePorts allocates n dynamic ports and returns them as Raft peer URLs
+// This avoids port conflicts when running tests in parallel
+func allocatePorts(n int) ([]string, []net.Listener) {
+	peers := make([]string, n)
+	listeners := make([]net.Listener, n)
+	for i := 0; i < n; i++ {
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			panic(fmt.Sprintf("failed to allocate port: %v", err))
+		}
+		listeners[i] = listener
+		peers[i] = fmt.Sprintf("http://%s", listener.Addr().String())
+	}
+	return peers, listeners
+}
+
+// releaseListeners closes all listeners (call this after raft starts listening)
+func releaseListeners(listeners []net.Listener) {
+	for _, l := range listeners {
+		if l != nil {
+			l.Close()
+		}
+	}
+}
+
 // testNode represents a single node for testing
 type testNode struct {
 	id               int
@@ -57,7 +82,9 @@ func startMemoryNode(t testing.TB, nodeID int, configOpts ...func(*config.Config
 	dataDir := fmt.Sprintf("data/perf-test/%d", nodeID)
 	os.RemoveAll(dataDir)
 
-	peers := []string{fmt.Sprintf("http://127.0.0.1:%d", 10200+nodeID)}
+	// Allocate dynamic ports to avoid conflicts when running tests in parallel
+	peers, listeners := allocatePorts(1)
+	releaseListeners(listeners)
 
 	proposeC := make(chan string, 1)
 	confChangeC := make(chan raftpb.ConfChange, 1)
@@ -198,7 +225,9 @@ func startRocksDBNode(t testing.TB, nodeID int, configOpts ...func(*config.Confi
 		t.Fatalf("Failed to open RocksDB: %v", err)
 	}
 
-	peers := []string{fmt.Sprintf("http://127.0.0.1:%d", 10300+nodeID)}
+	// Allocate dynamic ports to avoid conflicts when running tests in parallel
+	peers, listeners := allocatePorts(1)
+	releaseListeners(listeners)
 
 	proposeC := make(chan string, 1)
 	confChangeC := make(chan raftpb.ConfChange, 1)
