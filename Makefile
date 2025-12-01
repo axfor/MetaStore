@@ -37,7 +37,7 @@ GREEN=\033[0;32m
 YELLOW=\033[0;33m
 CYAN=\033[0;36m
 
-.PHONY: all build clean test help deps tidy run-memory run-rocksdb cluster-memory cluster-rocksdb install test-perf test-perf-memory test-perf-rocksdb
+.PHONY: all build clean test help deps tidy run-memory run-rocksdb cluster-memory cluster-rocksdb install test-perf test-perf-memory test-perf-rocksdb benchmark
 
 ## all: Default target - build the binary
 all: build
@@ -55,18 +55,24 @@ clean:
 	@$(GOCLEAN)
 	@rm -f $(BINARY_NAME)
 	@rm -rf data/
+	@rm -rf test/data/
+	@rm -rf /tmp/metastore-test-*
 	@rm -f /tmp/test_*.log
 	@echo "$(GREEN)Clean complete$(NO_COLOR)"
 
-## test: Run all tests (including RocksDB storage tests)
+## test: Run all tests (excluding performance/benchmark tests)
 test:
-	@echo "$(CYAN)Running all tests with GreenTea GC...$(NO_COLOR)"
+	@echo "$(CYAN)Running all tests with GreenTea GC (excluding performance/benchmark tests)...$(NO_COLOR)"
+	@echo "$(YELLOW)Cleaning test data directories...$(NO_COLOR)"
+	@rm -rf data/
+	@rm -rf test/data/
+	@rm -rf /tmp/metastore-test-*
 	@echo "$(YELLOW)Testing pkg packages...$(NO_COLOR)"
 	@$(GOTEST) -v -timeout=5m ./pkg/...
 	@echo "$(YELLOW)Testing internal packages...$(NO_COLOR)"
 	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" GOEXPERIMENT=greenteagc $(GOTEST) -v -timeout=30m ./internal/...
 	@echo "$(YELLOW)Testing integration and system tests...$(NO_COLOR)"
-	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" GOEXPERIMENT=greenteagc $(GOTEST) -v -timeout=120m ./test/
+	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" GOEXPERIMENT=greenteagc $(GOTEST) -v -timeout=30m -skip "Performance|Benchmark" ./test/
 	@echo "$(GREEN)All tests passed!$(NO_COLOR)"
 
 ## test-unit: Run only unit tests (no integration tests)
@@ -78,6 +84,10 @@ test-unit:
 ## test-integration: Run only integration tests
 test-integration:
 	@echo "$(CYAN)Running integration tests...$(NO_COLOR)"
+	@echo "$(YELLOW)Cleaning test data directories...$(NO_COLOR)"
+	@rm -rf data/
+	@rm -rf test/data/
+	@rm -rf /tmp/metastore-test-*
 	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v -timeout=20m ./test/
 
 ## test-storage: Run only RocksDB storage tests
@@ -124,6 +134,12 @@ test-perf:
 	@echo "$(YELLOW)Testing RocksDB storage performance...$(NO_COLOR)"
 	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" GOEXPERIMENT=greenteagc $(GOTEST) -v -timeout=20m -run="TestRocksDBPerformance_" ./test/
 	@echo "$(GREEN)All performance tests completed!$(NO_COLOR)"
+
+## benchmark: Run benchmark tests
+benchmark:
+	@echo "$(CYAN)Running benchmark tests...$(NO_COLOR)"
+	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" GOEXPERIMENT=greenteagc $(GOTEST) -v -timeout=30m -run="Benchmark" ./test/
+	@echo "$(GREEN)Benchmark tests completed!$(NO_COLOR)"
 
 ## deps: Download dependencies
 deps:
@@ -197,10 +213,11 @@ help:
 	@echo ""
 	@echo "$(YELLOW)Examples:$(NO_COLOR)"
 	@echo "  make build              # Build the binary"
-	@echo "  make test               # Run all tests"
+	@echo "  make test               # Run all tests (excluding perf/benchmark)"
 	@echo "  make test-unit          # Run unit tests only"
 	@echo "  make test-integration   # Run integration tests only"
 	@echo "  make test-perf          # Run all performance tests"
+	@echo "  make benchmark          # Run benchmark tests"
 	@echo "  make test-perf-memory   # Run Memory performance tests only"
 	@echo "  make test-perf-rocksdb  # Run RocksDB performance tests only"
 	@echo "  make run-memory         # Run with memory storage"

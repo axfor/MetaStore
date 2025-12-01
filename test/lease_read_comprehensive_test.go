@@ -290,20 +290,35 @@ func TestLeaseRead_LeaseExpiration(t *testing.T) {
 	node, cleanup := startMemoryNode(t, 1, WithLeaseRead)
 	defer cleanup()
 
-	// Wait for node to start
-	time.Sleep(1 * time.Second)
+	// Wait for node to start and become leader (election takes ~1s)
+	time.Sleep(2 * time.Second)
 
 	testable, _ := node.raftNode.(raft.TestableNode)
 	leaseManager := testable.LeaseManager()
 	require.NotNil(t, leaseManager, "LeaseManager should exist")
 
-	// 2. Verify initial lease state
-	t.Log("Step 1: Verify initial lease state")
-	initialStats := leaseManager.Stats()
+	// 2. Wait for valid lease (leader election must complete)
+	t.Log("Step 1: Wait for node to become leader and have valid lease")
+	var initialStats struct {
+		HasValidLease   bool
+		LeaseRenewCount int64
+		LeaseRemaining  time.Duration
+	}
+	// Wait up to 5 seconds for lease to become valid (leader election)
+	for i := 0; i < 50; i++ {
+		stats := leaseManager.Stats()
+		if stats.HasValidLease {
+			initialStats.HasValidLease = stats.HasValidLease
+			initialStats.LeaseRenewCount = stats.LeaseRenewCount
+			initialStats.LeaseRemaining = stats.LeaseRemaining
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 	t.Logf("Initial state: HasValidLease=%v, RenewCount=%d, Remaining=%v",
 		initialStats.HasValidLease, initialStats.LeaseRenewCount, initialStats.LeaseRemaining)
 
-	assert.True(t, initialStats.HasValidLease, "Should have valid lease")
+	require.True(t, initialStats.HasValidLease, "Should have valid lease after leader election")
 	initialRenewCount := initialStats.LeaseRenewCount
 
 	// 3. Wait sufficient time to observe lease renewal
