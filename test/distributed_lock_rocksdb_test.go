@@ -48,10 +48,10 @@ func startRocksDBLockTestServer(t *testing.T) (*clientv3.Client, func()) {
 	require.NoError(t, err)
 
 	return cli, func() {
-		// 关key：给 Session clean up留出time，避免 "connection is closing" incorrect
+		// closekey：to Session clean uptime， "connection is closing" incorrect
 		time.Sleep(500 * time.Millisecond)
-		cleanup() // 先closeserver
-		cli.Close() // 再closeclient
+		cleanup() // closeserver
+		cli.Close() // closeclient
 	}
 }
 
@@ -304,7 +304,7 @@ func TestRocksDB_MutexFIFOOrder(t *testing.T) {
 	var orderMu sync.Mutex
 	acquireOrder := make([]int, 0, numClients)
 
-	// 关key：use两阶segment信号
+	// closekey：usesegment
 	// 1. startSignals: notification goroutine startcreate Session
 	// 2. sessionReady: Session createdone，canstartnext
 	startSignals := make([]chan struct{}, numClients)
@@ -326,7 +326,7 @@ func TestRocksDB_MutexFIFOOrder(t *testing.T) {
 			require.NoError(t, err)
 			defer session.Close()
 
-			// Session createdone，notification主thread
+			// Session createdone，notificationthread
 			close(sessionReady[id])
 
 			mutex := concurrency.NewMutex(session, "/rocksdb/test/fifo")
@@ -346,11 +346,11 @@ func TestRocksDB_MutexFIFOOrder(t *testing.T) {
 		}(i)
 	}
 
-	// 按orderstartclient，并waiteach Session createdone再startnext
+	// orderstartclient，andwaiteach Session createdonestartnext
 	for i := 0; i < numClients; i++ {
 		close(startSignals[i])
-		<-sessionReady[i] // wait Session createdone（此时 Lease alreadyvia Raft 共识）
-		time.Sleep(10 * time.Millisecond) // 小latency确保order
+		<-sessionReady[i] // wait Session createdone(when Lease alreadyvia Raft )
+		time.Sleep(10 * time.Millisecond) // smalllatencyorder
 	}
 
 	wg.Wait()
@@ -362,7 +362,7 @@ func TestRocksDB_MutexFIFOOrder(t *testing.T) {
 	for i := range expectedOrder {
 		expectedOrder[i] = i
 	}
-	assert.Equal(t, expectedOrder, acquireOrder, "Lock acquisition should follow FIFO order")
+	assert.Equal(t, expectedOrder, acquireOrder, "lock acquisition should follow FIFO order")
 }
 
 func TestRocksDB_MutexCriticalSection(t *testing.T) {
@@ -407,7 +407,7 @@ func TestRocksDB_MutexCriticalSection(t *testing.T) {
 	wg.Wait()
 
 	assert.Equal(t, int64(numClients*iterations), atomic.LoadInt64(&counter))
-	assert.Equal(t, int64(0), atomic.LoadInt64(&violations), "No race conditions should occur")
+	assert.Equal(t, int64(0), atomic.LoadInt64(&violations), "no race conditions should occur")
 }
 
 // ============================================================================
@@ -494,7 +494,7 @@ func TestRocksDB_MutexReleaseOnSessionClose(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	session1, err := concurrency.NewSession(cli, concurrency.WithTTL(3)) // 缩短 TTL to 3 秒
+	session1, err := concurrency.NewSession(cli, concurrency.WithTTL(3)) // short TTL to 3 seconds
 	require.NoError(t, err)
 	lease1ID := session1.Lease()
 	t.Logf("Session1 created with lease ID: %x", lease1ID)
@@ -534,7 +534,7 @@ func TestRocksDB_MutexReleaseOnSessionClose(t *testing.T) {
 	err = session1.Close()
 	t.Logf("Session1 closed, error: %v", err)
 
-	// Check if lease was revoked
+	// Check if lease was revokedd
 	ttl2, err := cli.TimeToLive(ctx, lease1ID)
 	require.NoError(t, err)
 	t.Logf("Session1 lease TTL after close: %d seconds (should be -1)", ttl2.TTL)
@@ -548,14 +548,14 @@ func TestRocksDB_MutexReleaseOnSessionClose(t *testing.T) {
 	case <-acquired:
 		t.Log("RocksDB Second session acquired lock after first session closed")
 		assert.True(t, mutex2.IsOwner())
-	case <-time.After(10 * time.Second): // 增加timeoutto 10 秒，给 Raft 共识and Lease revoke足够time
+	case <-time.After(10 * time.Second): // increasetimeoutto 10 seconds，to Raft and Lease revokedtime
 		// Check state before failing
 		ttl3, _ := cli.TimeToLive(ctx, lease1ID)
 		t.Logf("Final Session1 lease TTL: %d", ttl3.TTL)
 		getResp2, _ := cli.Get(ctx, lockKey1)
 		t.Logf("Final Session1 lock key: exists=%v", len(getResp2.Kvs) > 0)
 
-		t.Fatal("Second session should acquire lock after first session closes")
+		t.Fatal("second session should acquire lock after first session closes")
 	}
 
 	mutex2.Unlock(ctx)

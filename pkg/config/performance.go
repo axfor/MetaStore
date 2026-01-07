@@ -16,7 +16,7 @@ package config
 
 import "sync/atomic"
 
-// global性能config（use atomic 保证concurrencysafe）
+// globalperformanceconfig(use atomic certifyconcurrencysafe)
 var (
 	globalEnableProtobuf         atomic.Bool
 	globalEnableSnapshotProtobuf atomic.Bool
@@ -30,8 +30,8 @@ func init() {
 	globalEnableLeaseProtobuf.Store(true)
 }
 
-// InitPerformanceConfig initializeglobal性能config
-// shouldinloadconfig后立即call
+// InitPerformanceConfig initializeglobalperformanceconfig
+// shouldinload configaftercall
 func InitPerformanceConfig(cfg *Config) {
 	globalEnableProtobuf.Store(cfg.Server.Performance.EnableProtobuf)
 	globalEnableSnapshotProtobuf.Store(cfg.Server.Performance.EnableSnapshotProtobuf)
@@ -53,17 +53,17 @@ func GetEnableLeaseProtobuf() bool {
 	return globalEnableLeaseProtobuf.Load()
 }
 
-// SetEnableProtobuf running时setisnoenabled Raft operation Protobuf serialize
+// SetEnableProtobuf runningwhensetisnoenabled Raft operation Protobuf serialize
 func SetEnableProtobuf(enable bool) {
 	globalEnableProtobuf.Store(enable)
 }
 
-// SetEnableSnapshotProtobuf running时setisnoenabledsnapshot Protobuf serialize
+// SetEnableSnapshotProtobuf runningwhensetisnoenabledsnapshot Protobuf serialize
 func SetEnableSnapshotProtobuf(enable bool) {
 	globalEnableSnapshotProtobuf.Store(enable)
 }
 
-// SetEnableLeaseProtobuf running时setisnoenabled Lease Protobuf serialize
+// SetEnableLeaseProtobuf runningwhensetisnoenabled Lease Protobuf serialize
 func SetEnableLeaseProtobuf(enable bool) {
 	globalEnableLeaseProtobuf.Store(enable)
 }

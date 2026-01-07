@@ -24,7 +24,7 @@ import (
 
 // TestLeaseProtobufSerialization test Protobuf Lease serialize
 func TestLeaseProtobufSerialization(t *testing.T) {
-	// 准备testdata
+	// preparepreparetestdata
 	now := time.Now()
 	lease := &kvstore.Lease{
 		ID:        123,
@@ -50,7 +50,7 @@ func TestLeaseProtobufSerialization(t *testing.T) {
 		t.Fatalf("DeserializeLease failed: %v", err)
 	}
 
-	// verifydatacorrect性
+	// verifydatacorrect
 	if decoded.ID != lease.ID {
 		t.Errorf("Expected ID %d, got %d", lease.ID, decoded.ID)
 	}
@@ -58,7 +58,7 @@ func TestLeaseProtobufSerialization(t *testing.T) {
 		t.Errorf("Expected TTL %d, got %d", lease.TTL, decoded.TTL)
 	}
 
-	// verify GrantTime（纳秒precision）
+	// verify GrantTime(secondsprecision)
 	if decoded.GrantTime.UnixNano() != lease.GrantTime.UnixNano() {
 		t.Errorf("Expected GrantTime %v, got %v", lease.GrantTime, decoded.GrantTime)
 	}
@@ -74,9 +74,9 @@ func TestLeaseProtobufSerialization(t *testing.T) {
 	}
 }
 
-// TestLeaseGOBBackwardCompatibility test GOB 向后compatible性
+// TestLeaseGOBBackwardCompatibility test GOB aftercompatible
 func TestLeaseGOBBackwardCompatibility(t *testing.T) {
-	// 准备testdata（useold GOB format）
+	// preparepreparetestdata(useold GOB format)
 	now := time.Now()
 	lease := &kvstore.Lease{
 		ID:        456,
@@ -85,20 +85,20 @@ func TestLeaseGOBBackwardCompatibility(t *testing.T) {
 		Keys:      map[string]bool{"oldkey": true},
 	}
 
-	// use GOB serialize（模拟olddata）
+	// use GOB serialize(olddata)
 	var buf bytes.Buffer
 	if err := gob.NewEncoder(&buf).Encode(lease); err != nil {
 		t.Fatalf("GOB encode failed: %v", err)
 	}
 	gobData := buf.Bytes()
 
-	// usenewdeserializefunction（should能handle GOB）
+	// usenewdeserializefunction(shouldcanhandle GOB)
 	decoded, err := DeserializeLease(gobData)
 	if err != nil {
 		t.Fatalf("DeserializeLease failed for GOB: %v", err)
 	}
 
-	// verifydatacorrect性
+	// verifydatacorrect
 	if decoded.ID != lease.ID {
 		t.Errorf("Expected ID %d, got %d", lease.ID, decoded.ID)
 	}
@@ -113,7 +113,7 @@ func TestLeaseGOBBackwardCompatibility(t *testing.T) {
 	}
 }
 
-// TestLeaseEmptyKeys test无关联 key  Lease
+// TestLeaseEmptyKeys testnoclose key  Lease
 func TestLeaseEmptyKeys(t *testing.T) {
 	lease := &kvstore.Lease{
 		ID:        789,
@@ -153,7 +153,7 @@ func TestLeaseNilLease(t *testing.T) {
 
 // TestLeaseManyKeys testlarge number of key  Lease
 func TestLeaseManyKeys(t *testing.T) {
-	// createpackage含 1000 个 key  Lease
+	// createpackage 1000   key  Lease
 	keys := make(map[string]bool, 1000)
 	for i := 0; i < 1000; i++ {
 		keys[string(rune('k'))+string(rune(i))] = true
@@ -184,7 +184,7 @@ func TestLeaseManyKeys(t *testing.T) {
 	}
 }
 
-// BenchmarkLeaseProtobuf 基准test: Protobuf serialize
+// BenchmarkLeaseProtobuf preparetest: Protobuf serialize
 func BenchmarkLeaseProtobuf(b *testing.B) {
 	lease := &kvstore.Lease{
 		ID:        123,
@@ -207,7 +207,7 @@ func BenchmarkLeaseProtobuf(b *testing.B) {
 	}
 }
 
-// BenchmarkLeaseGOB 基准test: GOB serialize（对比）
+// BenchmarkLeaseGOB preparetest: GOB serialize(to)
 func BenchmarkLeaseGOB(b *testing.B) {
 	lease := &kvstore.Lease{
 		ID:        123,
@@ -233,7 +233,7 @@ func BenchmarkLeaseGOB(b *testing.B) {
 	}
 }
 
-// BenchmarkLeaseManyKeysProtobuf 基准test: 多 key Protobuf
+// BenchmarkLeaseManyKeysProtobuf preparetest: many key Protobuf
 func BenchmarkLeaseManyKeysProtobuf(b *testing.B) {
 	keys := make(map[string]bool, 100)
 	for i := 0; i < 100; i++ {
@@ -254,7 +254,7 @@ func BenchmarkLeaseManyKeysProtobuf(b *testing.B) {
 	}
 }
 
-// BenchmarkLeaseManyKeysGOB 基准test: 多 key GOB
+// BenchmarkLeaseManyKeysGOB preparetest: many key GOB
 func BenchmarkLeaseManyKeysGOB(b *testing.B) {
 	keys := make(map[string]bool, 100)
 	for i := 0; i < 100; i++ {

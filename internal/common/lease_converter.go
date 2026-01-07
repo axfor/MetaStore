@@ -26,12 +26,12 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// 功能switch：enabled Protobuf Lease serializeoptimize
-// TODO: 未来移toconfigfile中 (configs/config.yaml)
+// featureswitch：enabled Protobuf Lease serializeoptimize
+// TODO: not cometoconfigfilein (configs/config.yaml)
 func EnableLeaseProtobuf() bool { return config.GetEnableLeaseProtobuf() }
 
 // SerializeLease serialize Lease
-// 优先use Protobuf（2-4x 性能提升），回退to GOB（向后compatible）
+// use Protobuf(2-4x performance)，to GOB(aftercompatible)
 func SerializeLease(lease *kvstore.Lease) ([]byte, error) {
 	if lease == nil {
 		return nil, fmt.Errorf("lease is nil")
@@ -46,11 +46,11 @@ func SerializeLease(lease *kvstore.Lease) ([]byte, error) {
 			return nil, fmt.Errorf("protobuf marshal lease failed: %w", err)
 		}
 
-		// add Protobuf markerprefix（用atdeserialize时识别）
+		// add Protobuf markerprefix(for deserializewhen)
 		return append([]byte("LEASE-PB:"), data...), nil
 	}
 
-	// 回退to GOB（向后compatible）
+	// to GOB(aftercompatible)
 	var buf bytes.Buffer
 	if err := gob.NewEncoder(&buf).Encode(lease); err != nil {
 		return nil, fmt.Errorf("gob encode lease failed: %w", err)
@@ -59,13 +59,13 @@ func SerializeLease(lease *kvstore.Lease) ([]byte, error) {
 }
 
 // DeserializeLease deserialize Lease
-// 自动检测 Protobuf or GOB format
+// test Protobuf or GOB format
 func DeserializeLease(data []byte) (*kvstore.Lease, error) {
 	if len(data) == 0 {
 		return nil, fmt.Errorf("empty lease data")
 	}
 
-	// checkisnoas Protobuf format（以 "LEASE-PB:" prefix标识）
+	// checkisnoas Protobuf format( "LEASE-PB:" prefix)
 	const pbPrefix = "LEASE-PB:"
 	if len(data) >= len(pbPrefix) && string(data[:len(pbPrefix)]) == pbPrefix {
 		// Protobuf format
@@ -77,7 +77,7 @@ func DeserializeLease(data []byte) (*kvstore.Lease, error) {
 		return ProtoToLease(pbLease), nil
 	}
 
-	// GOB format（向后compatibleolddata）
+	// GOB format(aftercompatibleolddata)
 	var lease kvstore.Lease
 	buf := bytes.NewBuffer(data)
 	if err := gob.NewDecoder(buf).Decode(&lease); err != nil {

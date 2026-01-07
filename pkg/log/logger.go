@@ -30,7 +30,7 @@ var (
 	once         sync.Once
 )
 
-// Logger structure化log器
+// Logger structuretransformlog
 type Logger struct {
 	zap    *zap.Logger
 	sugar  *zap.SugaredLogger
@@ -42,8 +42,8 @@ type Config struct {
 	// Level loglevel: debug, info, warn, error, dpanic, panic, fatal
 	Level string
 
-	// OutputPaths logoutputpath（supported多个）
-	// 例如: ["stdout", "/var/log/metastore/app.log"]
+	// OutputPaths logoutputpath(supportedmany )
+	// : ["stdout", "/var/log/metastore/app.log"]
 	OutputPaths []string
 
 	// ErrorOutputPaths incorrectlogoutputpath
@@ -52,16 +52,16 @@ type Config struct {
 	// Encoding encodeformat: json or console
 	Encoding string
 
-	// Development isno开发schema（will显示更详fineheapstackinfo）
+	// Development isnoopenschema(willfineheapstackinfo)
 	Development bool
 
-	// DisableCaller isnodisabledcall者info（file名、row号）
+	// DisableCaller isnodisabledcallerinfo(file、row)
 	DisableCaller bool
 
 	// DisableStacktrace isnodisabledheapstacktrace
 	DisableStacktrace bool
 
-	// EnableColor isnoenabled颜色output（仅 console encode）
+	// EnableColor isnoenabledoutput( console encode)
 	EnableColor bool
 }
 
@@ -77,7 +77,7 @@ var DefaultConfig = &Config{
 	EnableColor:       true,
 }
 
-// ProductionConfig 生产environmentconfig
+// ProductionConfig environmentconfig
 var ProductionConfig = &Config{
 	Level:             "info",
 	OutputPaths:       []string{"stdout", "/var/log/metastore/app.log"},
@@ -89,7 +89,7 @@ var ProductionConfig = &Config{
 	EnableColor:       false,
 }
 
-// DevelopmentConfig 开发environmentconfig
+// DevelopmentConfig openenvironmentconfig
 var DevelopmentConfig = &Config{
 	Level:             "debug",
 	OutputPaths:       []string{"stdout"},
@@ -101,13 +101,13 @@ var DevelopmentConfig = &Config{
 	EnableColor:       true,
 }
 
-// NewLogger createnewlog器
+// NewLogger createnewlog
 func NewLogger(cfg *Config) (*Logger, error) {
 	if cfg == nil {
 		cfg = DefaultConfig
 	}
 
-	// 解析loglevel
+	// loglevel
 	level := zapcore.InfoLevel
 	if err := level.UnmarshalText([]byte(cfg.Level)); err != nil {
 		return nil, err
@@ -129,7 +129,7 @@ func NewLogger(cfg *Config) (*Logger, error) {
 		EncodeCaller:   zapcore.ShortCallerEncoder,
 	}
 
-	// ifis console encode且enabled颜色
+	// ifis console encodeenabled
 	if cfg.Encoding == "console" && cfg.EnableColor {
 		encoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 	}
@@ -159,7 +159,7 @@ func NewLogger(cfg *Config) (*Logger, error) {
 	if len(cfg.ErrorOutputPaths) > 0 {
 		for _, path := range cfg.ErrorOutputPaths {
 			if contains(cfg.OutputPaths, path) {
-				continue // 避免duplicate
+				continue // duplicate
 			}
 
 			writer := getWriter(path)
@@ -170,7 +170,7 @@ func NewLogger(cfg *Config) (*Logger, error) {
 				encoder = zapcore.NewConsoleEncoder(encoderConfig)
 			}
 
-			// incorrectlog只record Error and以上level
+			// incorrectlogrecord Error andpreviouslevel
 			core := zapcore.NewCore(
 				encoder,
 				zapcore.AddSync(writer),
@@ -209,7 +209,7 @@ func NewLogger(cfg *Config) (*Logger, error) {
 	}, nil
 }
 
-// InitGlobalLogger initializegloballog器
+// InitGlobalLogger initializegloballog
 func InitGlobalLogger(cfg *Config) error {
 	var err error
 	once.Do(func() {
@@ -218,8 +218,8 @@ func InitGlobalLogger(cfg *Config) error {
 	return err
 }
 
-// InitFromConfig fromconfigfileinitializegloballog器
-// will config.LogConfig convertas log.Config 并initialize
+// InitFromConfig fromconfigfileinitializegloballog
+// will config.LogConfig convertas log.Config andinitialize
 func InitFromConfig(cfg *config.LogConfig) error {
 	if cfg == nil {
 		return InitGlobalLogger(DefaultConfig)
@@ -233,22 +233,22 @@ func InitFromConfig(cfg *config.LogConfig) error {
 		Development:       false,
 		DisableCaller:     false,
 		DisableStacktrace: false,
-		EnableColor:       cfg.Encoding == "console", // console schemaenabled颜色
+		EnableColor:       cfg.Encoding == "console", // console schemaenabled
 	}
 
 	return InitGlobalLogger(logCfg)
 }
 
-// GetLogger getgloballog器
+// GetLogger getgloballog
 func GetLogger() *Logger {
 	if globalLogger == nil {
-		// 自动initializeasdefaultconfig
+		// initializeasdefaultconfig
 		_ = InitGlobalLogger(DefaultConfig)
 	}
 	return globalLogger
 }
 
-// ReplaceGlobalLogger replacegloballog器
+// ReplaceGlobalLogger replacegloballog
 func ReplaceGlobalLogger(logger *Logger) {
 	globalLogger = logger
 }
@@ -258,7 +258,7 @@ func (l *Logger) Sync() error {
 	return l.zap.Sync()
 }
 
-// With addfield（returnnew logger）
+// With addfield(returnnew logger)
 func (l *Logger) With(fields ...zap.Field) *Logger {
 	return &Logger{
 		zap:    l.zap.With(fields...),
@@ -267,7 +267,7 @@ func (l *Logger) With(fields ...zap.Field) *Logger {
 	}
 }
 
-// Named create命名子log器
+// Named createlog
 func (l *Logger) Named(name string) *Logger {
 	return &Logger{
 		zap:    l.zap.Named(name),
@@ -296,52 +296,52 @@ func (l *Logger) Error(msg string, fields ...zap.Field) {
 	l.zap.Error(msg, fields...)
 }
 
-// DPanic levellog（开发schemawill panic）
+// DPanic levellog(openschemawill panic)
 func (l *Logger) DPanic(msg string, fields ...zap.Field) {
 	l.zap.DPanic(msg, fields...)
 }
 
-// Panic levellog（will panic）
+// Panic levellog(will panic)
 func (l *Logger) Panic(msg string, fields ...zap.Field) {
 	l.zap.Panic(msg, fields...)
 }
 
-// Fatal levellog（will退出程序）
+// Fatal levellog(will)
 func (l *Logger) Fatal(msg string, fields ...zap.Field) {
 	l.zap.Fatal(msg, fields...)
 }
 
-// Debugf format化 Debug log
+// Debugf formattransform Debug log
 func (l *Logger) Debugf(template string, args ...interface{}) {
 	l.sugar.Debugf(template, args...)
 }
 
-// Infof format化 Info log
+// Infof formattransform Info log
 func (l *Logger) Infof(template string, args ...interface{}) {
 	l.sugar.Infof(template, args...)
 }
 
-// Warnf format化 Warn log
+// Warnf formattransform Warn log
 func (l *Logger) Warnf(template string, args ...interface{}) {
 	l.sugar.Warnf(template, args...)
 }
 
-// Errorf format化 Error log
+// Errorf formattransform Error log
 func (l *Logger) Errorf(template string, args ...interface{}) {
 	l.sugar.Errorf(template, args...)
 }
 
-// DPanicf format化 DPanic log
+// DPanicf formattransform DPanic log
 func (l *Logger) DPanicf(template string, args ...interface{}) {
 	l.sugar.DPanicf(template, args...)
 }
 
-// Panicf format化 Panic log
+// Panicf formattransform Panic log
 func (l *Logger) Panicf(template string, args ...interface{}) {
 	l.sugar.Panicf(template, args...)
 }
 
-// Fatalf format化 Fatal log
+// Fatalf formattransform Fatal log
 func (l *Logger) Fatalf(template string, args ...interface{}) {
 	l.sugar.Fatalf(template, args...)
 }
@@ -354,17 +354,17 @@ func getWriter(path string) zapcore.WriteSyncer {
 	case "stderr":
 		return zapcore.AddSync(os.Stderr)
 	default:
-		// fileoutput（will自动createdirectory）
+		// fileoutput(willcreatedirectory)
 		file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
-			// failure时回退to stdout
+			// failurewhento stdout
 			return zapcore.AddSync(os.Stdout)
 		}
 		return zapcore.AddSync(file)
 	}
 }
 
-// contains check字符串切片isnopackage含element
+// contains checkisnopackageelement
 func contains(slice []string, item string) bool {
 	for _, s := range slice {
 		if s == item {
@@ -374,7 +374,7 @@ func contains(slice []string, item string) bool {
 	return false
 }
 
-// global便捷function（useglobal logger）
+// globalfunction(useglobal logger)
 
 // Debug global Debug log
 func Debug(msg string, fields ...zap.Field) {
@@ -401,32 +401,32 @@ func Fatal(msg string, fields ...zap.Field) {
 	GetLogger().Fatal(msg, fields...)
 }
 
-// Debugf globalformat化 Debug log
+// Debugf globalformattransform Debug log
 func Debugf(template string, args ...interface{}) {
 	GetLogger().Debugf(template, args...)
 }
 
-// Infof globalformat化 Info log
+// Infof globalformattransform Info log
 func Infof(template string, args ...interface{}) {
 	GetLogger().Infof(template, args...)
 }
 
-// Warnf globalformat化 Warn log
+// Warnf globalformattransform Warn log
 func Warnf(template string, args ...interface{}) {
 	GetLogger().Warnf(template, args...)
 }
 
-// Errorf globalformat化 Error log
+// Errorf globalformattransform Error log
 func Errorf(template string, args ...interface{}) {
 	GetLogger().Errorf(template, args...)
 }
 
-// Fatalf globalformat化 Fatal log
+// Fatalf globalformattransform Fatal log
 func Fatalf(template string, args ...interface{}) {
 	GetLogger().Fatalf(template, args...)
 }
 
-// Sync synchronousgloballog器
+// Sync synchronousgloballog
 func Sync() error {
 	if globalLogger != nil {
 		return globalLogger.Sync()

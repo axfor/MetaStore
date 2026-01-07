@@ -36,7 +36,7 @@ var (
 	ErrWatchCanceled    = errors.New("watch canceled")
 )
 
-// errorCodeMap willinternalincorrectmapto gRPC status码
+// errorCodeMap willinternalincorrectmapto gRPC status
 var errorCodeMap = map[error]codes.Code{
 	ErrKeyNotFound:      codes.NotFound,
 	ErrCompacted:        codes.OutOfRange,
@@ -62,7 +62,7 @@ func toGRPCError(err error) error {
 		return err
 	}
 
-	// findmapincorrect码
+	// findmapincorrect
 	for knownErr, code := range errorCodeMap {
 		if errors.Is(err, knownErr) {
 			return status.Error(code, err.Error())

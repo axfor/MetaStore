@@ -20,7 +20,7 @@ import (
 	"os"
 	"strings"
 
-	// "metaStore/internal/batch" // 已disabled BatchProposer
+	// "metaStore/internal/batch" // disabled BatchProposer
 	"metaStore/internal/memory"
 	"metaStore/internal/raft"
 	"metaStore/internal/rocksdb"
@@ -34,7 +34,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.etcd.io/raft/v3/raftpb"
 	"go.uber.org/zap"
-	// "time" // 已disabled BatchProposer，not再need
+	// "time" // disabled BatchProposer，no longer needed
 )
 
 const (
@@ -48,7 +48,7 @@ func main() {
 	// configfilepath（optional）
 	configFile := flag.String("config", "", "path to config file (optional, uses defaults if not provided)")
 
-	// commandrowargument（用at覆盖configfileorin无configfile时use）
+	// command line argument（used to overrideconfigfileor when noconfigfilewhen using）
 	cluster := flag.String("cluster", "http://127.0.0.1:9021", "comma separated cluster peers")
 	clusterID := flag.Uint64("cluster-id", 1, "cluster ID")
 	memberID := flag.Int("member-id", 1, "node ID")
@@ -59,15 +59,15 @@ func main() {
 
 	flag.Parse()
 
-	// loadconfig（if提供configfile则fromfileload，elseusedefaultconfig）
+	// load config（if providedconfigfilethen load from file，else use defaultconfig）
 	cfg, err := config.LoadConfigOrDefault(*configFile, uint64(*clusterID), uint64(*memberID), *grpcAddr)
 	if err != nil {
-		// configloadfailure时use fmt output，因aslog系统还未initialize
+		// configloadfailurewhen using fmt output，because logsystemnot yet initialized
 		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
 		os.Exit(-1)
 	}
 
-	// initializelog系统（mustin其他component之前initialize）
+	// initialize log system（must be initialized before other components）
 	if err := log.InitFromConfig(&cfg.Server.Log); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
 		os.Exit(-1)
@@ -79,7 +79,7 @@ func main() {
 		zap.Strings("error_output_paths", cfg.Server.Log.ErrorOutputPaths),
 		zap.String("component", "main"))
 
-	// initializeglobal性能config
+	// initializeglobalperformanceconfig
 	config.InitPerformanceConfig(cfg)
 	log.Info("Performance optimizations initialized",
 		zap.Bool("enable_protobuf", config.GetEnableProtobuf()),
@@ -87,12 +87,12 @@ func main() {
 		zap.Bool("enable_lease_protobuf", config.GetEnableLeaseProtobuf()),
 		zap.String("component", "config"))
 
-	// start Prometheus 指标server（ifenabled）
+	// start Prometheus metricsserver（ifenabled）
 	if cfg.Server.Monitoring.EnablePrometheus {
 		prometheusAddr := fmt.Sprintf(":%d", cfg.Server.Monitoring.PrometheusPort)
 		prometheusRegistry := prometheus.NewRegistry()
 
-		// registerdefault Go running时指标
+		// registerdefault Go runningwhenmetrics
 		prometheusRegistry.MustRegister(prometheus.NewGoCollector())
 		prometheusRegistry.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
 
@@ -110,7 +110,7 @@ func main() {
 		}()
 	}
 
-	// configfilecan被commandrowargument覆盖
+	// configfilecanbecommand line argumentoverride
 	if *configFile == "" {
 		log.Info("Using default configuration with command-line parameters",
 			zap.Uint64("cluster_id", cfg.Server.ClusterID),
@@ -137,7 +137,7 @@ func main() {
 		log.Info("Starting with RocksDB persistent storage", zap.String("component", "main"))
 		dbPath := fmt.Sprintf("data/rocksdb/%d", cfg.Server.MemberID)
 
-		// useconfigfile中 RocksDB config
+		// use RocksDB config from config file RocksDB config
 		db, err := rocksdb.Open(dbPath, &cfg.Server.RocksDB)
 		if err != nil {
 			log.Fatalf("Failed to open RocksDB: %v", err)
@@ -160,11 +160,11 @@ func main() {
 		getSnapshot := func() ([]byte, error) { return kvs.GetSnapshot() }
 		commitC, errorC, snapshotterReady, raftNode := raft.NewNodeRocksDB(*memberID, strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC, db, dbPath, cfg)
 
-		// use原始构造function（notuse BatchProposer）
+		// use original constructor function（not using BatchProposer）
 		kvs = rocksdb.NewRocksDB(db, <-snapshotterReady, proposeC, commitC, errorC)
 		defer kvs.Close()
 
-		// 注入 raft nodereference，用atgetstatusinfo
+		// inject raft node reference，used to getstatus info
 		kvs.SetRaftNode(raftNode, cfg.Server.MemberID)
 
 		// Start HTTP API server
@@ -232,10 +232,10 @@ func main() {
 		getSnapshot := func() ([]byte, error) { return kvs.GetSnapshot() }
 		commitC, errorC, snapshotterReady, raftNode := raft.NewNode(*memberID, strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC, "memory", cfg)
 
-		// use原始构造function（notuse BatchProposer）
+		// use original constructor function（not using BatchProposer）
 		kvs = memory.NewMemory(<-snapshotterReady, proposeC, commitC, errorC)
 
-		// 注入 raft nodereference，用atgetstatusinfo
+		// inject raft node reference，used to getstatus info
 		kvs.SetRaftNode(raftNode, cfg.Server.MemberID)
 
 		// Start HTTP API server

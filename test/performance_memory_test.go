@@ -151,7 +151,7 @@ func TestMemoryPerformance_SustainedLoad(t *testing.T) {
 	defer cli.Close()
 
 	// Test parameters
-	duration := 5 * time.Minute // 5分钟持续loadtest
+	duration := 5 * time.Minute // 5separateholdloadtest
 	numClients := 20
 
 	t.Logf("Starting sustained load test: %d clients for %v", numClients, duration)
@@ -235,7 +235,7 @@ func TestMemoryPerformance_MixedWorkload(t *testing.T) {
 	defer cli.Close()
 
 	// Test parameters
-	testDuration := 5 * time.Minute // 5分钟混合loadtest
+	testDuration := 5 * time.Minute // 5separatemergeloadtest
 	numClients := 30
 
 	t.Logf("Starting mixed workload test: %d clients for %v", numClients, testDuration)
@@ -447,9 +447,9 @@ func TestMemoryPerformance_TransactionThroughput(t *testing.T) {
 		t.Errorf("Error rate too high: %d errors", errors)
 	}
 
-	// 调整性能期望threshold：120 txn/secis合理基线
-	// 原来500 txn/secfortestenvironment来说过high
-	// inCI/CDor繁忙系统上，实际throughput约as150-250 txn/sec
+	// completeperformancethreshold：120 txn/secismerge
+	// come500 txn/secfortestenvironmentcomeedhigh
+	// inCI/CDorsystemprevious，throughputas150-250 txn/sec
 	if throughput < 150 {
 		t.Errorf("Transaction throughput too low: %.2f txn/sec (expected > 200)", throughput)
 	}

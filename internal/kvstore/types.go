@@ -16,22 +16,22 @@ package kvstore
 
 import "time"
 
-// KeyValue extendkey-value pairstructure，supported etcd 语义
+// KeyValue extendkey-value pairstructure，supported etcd 
 type KeyValue struct {
 	Key            []byte // key
 	Value          []byte // value
-	CreateRevision int64  // create时 revision
+	CreateRevision int64  // createwhen revision
 	ModRevision    int64  // lastmodify revision
-	Version        int64  // 该keymodifytimes（from 1 start）
-	Lease          int64  // 关联 lease ID（0 indicates无 lease）
+	Version        int64  // shouldkeymodifytimes(from 1 start)
+	Lease          int64  // close lease ID(0 indicatesno lease)
 }
 
-// WatchEvent indicates一个 watch event
+// WatchEvent indicatesfirst  watch event
 type WatchEvent struct {
 	Type     EventType // eventtype：PUT or DELETE
 	Kv       *KeyValue // currentkey-value pair
-	PrevKv   *KeyValue // 前一个key-value pair（ifrequest）
-	Revision int64     // event发生时 revision
+	PrevKv   *KeyValue // beforefirst key-value pair(ifrequest)
+	Revision int64     // eventoccurwhen revision
 }
 
 // EventType eventtype
@@ -66,7 +66,7 @@ const (
 	FilterNoDelete              // Filter out DELETE events
 )
 
-// Compare indicatestransaction中compareoperation
+// Compare indicatestransactionincompareoperation
 type Compare struct {
 	Target      CompareTarget   // comparetarget：VERSION, CREATE, MOD, VALUE, LEASE
 	Result      CompareResult   // compareresult：EQUAL, GREATER, LESS, NOT_EQUAL
@@ -95,7 +95,7 @@ const (
 	CompareNotEqual CompareResult = 3
 )
 
-// CompareUnion comparevalue联合type
+// CompareUnion comparevaluemergetype
 type CompareUnion struct {
 	Version        int64
 	CreateRevision int64
@@ -104,7 +104,7 @@ type CompareUnion struct {
 	Lease          int64
 }
 
-// Op indicatestransaction中operation
+// Op indicatestransactioninoperation
 type Op struct {
 	Type     OpType // operationtype：RANGE, PUT, DELETE, TXN
 	Key      []byte
@@ -128,7 +128,7 @@ const (
 type TxnResponse struct {
 	Succeeded bool              // compareisnosuccess
 	Responses []OpResponse      // operationresponselist
-	Revision  int64             // transactionexecute后 revision
+	Revision  int64             // transactionexecuteafter revision
 }
 
 // OpResponse operationresponse
@@ -142,15 +142,15 @@ type OpResponse struct {
 // RangeOptions Range operationoption
 type RangeOptions struct {
 	Limit             int64           // returnkeyquantitylimit
-	Revision          int64           // 查询specified revision data
+	Revision          int64           // queryspecified revision data
 	SortOrder         SortOrder       // sortorder
 	SortTarget        SortTarget      // sorttarget
 	MaxCreateRevision int64           // maximumcreate revision filter
 	MinCreateRevision int64           // minimumcreate revision filter
 	MaxModRevision    int64           // maximummodify revision filter
 	MinModRevision    int64           // minimummodify revision filter
-	CountOnly         bool            // 只returnquantity
-	KeysOnly          bool            // 只returnkey
+	CountOnly         bool            // returnquantity
+	KeysOnly          bool            // returnkey
 }
 
 // SortOrder sortorder
@@ -190,19 +190,19 @@ type PutResponse struct {
 // DeleteResponse Delete operationresponse
 type DeleteResponse struct {
 	Deleted  int64       // deletekeyquantity
-	PrevKvs  []*KeyValue // 被deletekey-value pair
+	PrevKvs  []*KeyValue // bedeletekey-value pair
 	Revision int64
 }
 
 // Lease leasestructure
 type Lease struct {
 	ID        int64              // Lease ID
-	TTL       int64              // 生存time（秒）
+	TTL       int64              // time(seconds)
 	GrantTime time.Time          // granttime
-	Keys      map[string]bool    // 关联keyset
+	Keys      map[string]bool    // closekeyset
 }
 
-// IsExpired checkleaseisno已expiration
+// IsExpired checkleaseisnoexpired
 func (l *Lease) IsExpired() bool {
 	if l == nil {
 		return true
@@ -211,7 +211,7 @@ func (l *Lease) IsExpired() bool {
 	return elapsed >= float64(l.TTL)
 }
 
-// Remaining return剩余time（秒）
+// Remaining returntime(seconds)
 func (l *Lease) Remaining() int64 {
 	if l == nil {
 		return 0
@@ -224,7 +224,7 @@ func (l *Lease) Remaining() int64 {
 	return int64(remaining)
 }
 
-// Renew renewal，returnnew剩余time
+// Renew renewal，returnnewtime
 func (l *Lease) Renew(ttl int64) int64 {
 	if l == nil {
 		return 0
@@ -234,12 +234,12 @@ func (l *Lease) Renew(ttl int64) int64 {
 	return l.TTL
 }
 
-// RaftStatus Raft statusinfo
+// RaftStatus Raft status info
 type RaftStatus struct {
 	NodeID   uint64 `json:"node_id"`   // currentnode ID
 	Term     uint64 `json:"term"`      // current Term
-	LeaderID uint64 `json:"leader_id"` // Leader node ID (0 indicates无 leader)
+	LeaderID uint64 `json:"leader_id"` // Leader node ID (0 indicatesno leader)
 	State    string `json:"state"`     // "leader", "follower", "candidate", "pre-candidate"
-	Applied  uint64 `json:"applied"`   // 已应用 index
-	Commit   uint64 `json:"commit"`    // 已commit index
+	Applied  uint64 `json:"applied"`   // already applied index
+	Commit   uint64 `json:"commit"`    // already commit index
 }

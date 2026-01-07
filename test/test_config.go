@@ -19,55 +19,55 @@ import (
 	"time"
 )
 
-// NewTestConfig create用attestconfig
-// use合理testdefaultvalue，可via opts custom
+// NewTestConfig createfor testconfig
+// usemergetestdefaultvalue，canvia opts custom
 func NewTestConfig(nodeID, clusterID uint64, address string, opts ...func(*config.Config)) *config.Config {
 	cfg := config.DefaultConfig(nodeID, clusterID, address)
 
 	// testenvironmentoptimizeconfig
-	// Auth: use较low bcrypt cost 加快test速度
-	cfg.Server.Auth.BcryptCost = 4  // default 10，testenvironment用 4 以加fast度
+	// Auth: uselow bcrypt cost fasttest
+	cfg.Server.Auth.BcryptCost = 4  // default 10，testenvironment 4 fast
 	cfg.Server.Auth.TokenTTL = 10 * time.Minute
 	cfg.Server.Auth.TokenCleanupInterval = 1 * time.Minute
 
-	// Limits: set合理testlimit
+	// Limits: setmergetestlimit
 	cfg.Server.Limits.MaxWatchCount = 1000
 	cfg.Server.Limits.MaxLeaseCount = 10000
 	cfg.Server.Limits.MaxConnections = 500
 	cfg.Server.Limits.MaxRequestSize = 1.5 * 1024 * 1024 // 1.5MB
 
-	// Monitoring: defaultdisabled以避免port冲突
+	// Monitoring: defaultdisabledport
 	cfg.Server.Monitoring.EnablePrometheus = false
 
-	// Maintenance: use较小 chunk size 加快test
+	// Maintenance: usesmall chunk size fasttest
 	cfg.Server.Maintenance.SnapshotChunkSize = 1 * 1024 * 1024 // 1MB
 
-	// Log: testenvironmentuse简化log
+	// Log: testenvironmentusetransformlog
 	cfg.Server.Log.Level = "info"
 	cfg.Server.Log.Encoding = "console"
 	cfg.Server.Log.OutputPaths = []string{"stdout"}
 
-	// Reliability: 较短timeouttime
+	// Reliability: shorttimeouttime
 	cfg.Server.Reliability.ShutdownTimeout = 5 * time.Second
 	cfg.Server.Reliability.DrainTimeout = 2 * time.Second
 
-	// RocksDB: testenvironmentuse较小cache
+	// RocksDB: testenvironmentusesmallcache
 	cfg.Server.RocksDB.BlockCacheSize = 8 * 1024 * 1024    // 8MB
 	cfg.Server.RocksDB.WriteBufferSize = 4 * 1024 * 1024   // 4MB
 	cfg.Server.RocksDB.MaxWriteBufferNumber = 2
 	cfg.Server.RocksDB.MaxBackgroundJobs = 2
 	cfg.Server.RocksDB.BloomFilterBitsPerKey = 10
 
-	// Raft: testenvironmentuseoptimizeconfig（inherit自 DefaultConfig）
-	// defaultvalue（已optimize）：
-	//   - TickInterval: 50ms（fastresponse，比 etcd default 100ms 快 2x）
+	// Raft: testenvironmentuseoptimizeconfig(inherit DefaultConfig)
+	// defaultvalue(already optimize)：
+	//   - TickInterval: 50ms(fastresponse， etcd default 100ms fast 2x)
 	//   - ElectionTick: 10 (500ms election timeout)
 	//   - HeartbeatTick: 1 (50ms heartbeat)
 	//   - MaxSizePerMsg: 4MB
-	//   - MaxInflightMsgs: 1024（high吞吐，比 etcd default 512 提升 2x）
-	// 如需更激进optimize，可use WithRaftConfig() customconfig
+	//   - MaxInflightMsgs: 1024(high， etcd default 512  2x)
+	// optimize，canuse WithRaftConfig() customconfig
 
-	// 应用customoption
+	// appliedcustomoption
 	for _, opt := range opts {
 		opt(cfg)
 	}
@@ -109,7 +109,7 @@ func WithGRPCConfig(maxRecvMsgSize, maxSendMsgSize int) func(*config.Config) {
 	}
 }
 
-// WithMonitoring enabled监控
+// WithMonitoring enabledmonitoring
 func WithMonitoring(prometheusPort int) func(*config.Config) {
 	return func(cfg *config.Config) {
 		cfg.Server.Monitoring.EnablePrometheus = true
@@ -117,14 +117,14 @@ func WithMonitoring(prometheusPort int) func(*config.Config) {
 	}
 }
 
-// WithMaintenanceConfig custom维护config
+// WithMaintenanceConfig customconfig
 func WithMaintenanceConfig(snapshotChunkSize int) func(*config.Config) {
 	return func(cfg *config.Config) {
 		cfg.Server.Maintenance.SnapshotChunkSize = snapshotChunkSize
 	}
 }
 
-// WithFastTest fasttestconfig（降lowtimeouttime，加快test速度）
+// WithFastTest fasttestconfig(lowtimeouttime，fasttest)
 func WithFastTest() func(*config.Config) {
 	return func(cfg *config.Config) {
 		cfg.Server.Auth.BcryptCost = 4
@@ -135,7 +135,7 @@ func WithFastTest() func(*config.Config) {
 	}
 }
 
-// WithProductionLike class生产environmentconfig（用at性能test）
+// WithProductionLike classenvironmentconfig(for performancetest)
 func WithProductionLike() func(*config.Config) {
 	return func(cfg *config.Config) {
 		cfg.Server.Auth.BcryptCost = 10
@@ -148,18 +148,18 @@ func WithProductionLike() func(*config.Config) {
 	}
 }
 
-// WithFastRaft fast Raft config（用at加速unittest）
-// use更短 tick interval，适合notneedtrue实timerowastest
+// WithFastRaft fast Raft config(for unittest)
+// useshort tick interval，mergenotneedtruetimerowastest
 func WithFastRaft() func(*config.Config) {
 	return func(cfg *config.Config) {
-		cfg.Server.Raft.TickInterval = 50 * time.Millisecond  // 50ms tick（比default 100ms 快 2x）
+		cfg.Server.Raft.TickInterval = 50 * time.Millisecond  // 50ms tick(default 100ms fast 2x)
 		cfg.Server.Raft.ElectionTick = 10  // 500ms election timeout
 		cfg.Server.Raft.HeartbeatTick = 1   // 50ms heartbeat
-		// 其他argument保持default
+		// argumentholddefault
 	}
 }
 
-// WithRaftConfig custom Raft config（用at性能调优test）
+// WithRaftConfig custom Raft config(for performancetest)
 func WithRaftConfig(tickInterval time.Duration, electionTick, heartbeatTick int) func(*config.Config) {
 	return func(cfg *config.Config) {
 		cfg.Server.Raft.TickInterval = tickInterval
@@ -168,8 +168,8 @@ func WithRaftConfig(tickInterval time.Duration, electionTick, heartbeatTick int)
 	}
 }
 
-// WithBatchProposal custom批量提案config（用at批量optimizetest）
-// default情况下批量提案已enabled，use此functioncancustom批量argument
+// WithBatchProposal customconfig(for optimizetest)
+// defaultnextalready enabled，usefunctioncancustomargument
 func WithBatchProposal(minBatch, maxBatch int, minTimeout, maxTimeout time.Duration, loadThreshold float64) func(*config.Config) {
 	return func(cfg *config.Config) {
 		cfg.Server.Raft.Batch.Enable = true
@@ -181,8 +181,8 @@ func WithBatchProposal(minBatch, maxBatch int, minTimeout, maxTimeout time.Durat
 	}
 }
 
-// WithoutBatchProposal disabled批量提案（用at基准testand性能对比）
-// use此functioncantestnotenabled批量optimize时性能，作as对比基准
+// WithoutBatchProposal disabled(for preparetestandperformanceto)
+// usefunctioncantestnotenabledoptimizewhenperformance，astoprepare
 func WithoutBatchProposal() func(*config.Config) {
 	return func(cfg *config.Config) {
 		cfg.Server.Raft.Batch.Enable = false

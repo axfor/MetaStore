@@ -19,25 +19,25 @@ import (
 	"fmt"
 )
 
-// BatchProposal 批量提案package装器
-// 用at区分单个提案and批量提案
+// BatchProposal package
+// for separatesingle and
 type BatchProposal struct {
-	IsBatch   bool     `json:"is_batch"`   // isnoas批量提案
-	Proposals []string `json:"proposals"`  // 提案list
+	IsBatch   bool     `json:"is_batch"`   // isnoas
+	Proposals []string `json:"proposals"`  // list
 }
 
-// EncodeBatch will批量提案encodeas JSON 字节
+// EncodeBatch willencodeas JSON 
 func EncodeBatch(proposals []string) ([]byte, error) {
 	if len(proposals) == 0 {
 		return nil, fmt.Errorf("empty proposals")
 	}
 
-	// if只有一个提案，直接return原始字符串（向后compatible）
+	// ifhavefirst ，returnstart(aftercompatible)
 	if len(proposals) == 1 {
 		return []byte(proposals[0]), nil
 	}
 
-	// 多个提案，encodeas批量提案
+	// many ，encodeas
 	batch := BatchProposal{
 		IsBatch:   true,
 		Proposals: proposals,
@@ -45,30 +45,30 @@ func EncodeBatch(proposals []string) ([]byte, error) {
 	return json.Marshal(batch)
 }
 
-// DecodeBatch decode批量提案
-// return提案list。ifis单个提案，returnunit素list
+// DecodeBatch decode
+// returnlist。ifissingle ，returnunitlist
 func DecodeBatch(data []byte) ([]string, error) {
 	if len(data) == 0 {
 		return nil, fmt.Errorf("empty data")
 	}
 
-	// 尝试decodeas批量提案
+	// testdecodeas
 	var batch BatchProposal
 	if err := json.Unmarshal(data, &batch); err != nil {
-		// notis批量提案，when作单个提案handle（向后compatible）
+		// notis，whensingle handle(aftercompatible)
 		return []string{string(data)}, nil
 	}
 
-	// is批量提案
+	// is
 	if batch.IsBatch {
 		return batch.Proposals, nil
 	}
 
-	// notis批量提案marker，when作单个提案
+	// notismarker，whensingle 
 	return []string{string(data)}, nil
 }
 
-// IsBatchProposal checkdataisnoas批量提案
+// IsBatchProposal checkdataisnoas
 func IsBatchProposal(data []byte) bool {
 	var batch BatchProposal
 	if err := json.Unmarshal(data, &batch); err != nil {
