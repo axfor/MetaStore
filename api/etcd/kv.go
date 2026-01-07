@@ -32,11 +32,46 @@ type KVServer struct {
 func (s *KVServer) Range(ctx context.Context, req *pb.RangeRequest) (*pb.RangeResponse, error) {
 	key := string(req.Key)
 	rangeEnd := string(req.RangeEnd)
-	limit := req.Limit
-	revision := req.Revision
+
+	// 构建 RangeOptions
+	opts := kvstore.RangeOptions{
+		Limit:             req.Limit,
+		Revision:          req.Revision,
+		MaxCreateRevision: req.MaxCreateRevision,
+		MinCreateRevision: req.MinCreateRevision,
+		MaxModRevision:    req.MaxModRevision,
+		MinModRevision:    req.MinModRevision,
+		CountOnly:         req.CountOnly,
+		KeysOnly:          req.KeysOnly,
+	}
+
+	// 转换排序选项
+	switch req.SortOrder {
+	case pb.RangeRequest_ASCEND:
+		opts.SortOrder = kvstore.SortAscend
+	case pb.RangeRequest_DESCEND:
+		opts.SortOrder = kvstore.SortDescend
+	default:
+		opts.SortOrder = kvstore.SortNone
+	}
+
+	switch req.SortTarget {
+	case pb.RangeRequest_KEY:
+		opts.SortTarget = kvstore.SortByKey
+	case pb.RangeRequest_VERSION:
+		opts.SortTarget = kvstore.SortByVersion
+	case pb.RangeRequest_CREATE:
+		opts.SortTarget = kvstore.SortByCreate
+	case pb.RangeRequest_MOD:
+		opts.SortTarget = kvstore.SortByMod
+	case pb.RangeRequest_VALUE:
+		opts.SortTarget = kvstore.SortByValue
+	default:
+		opts.SortTarget = kvstore.SortByKey
+	}
 
 	// 从 store 查询
-	resp, err := s.server.store.Range(ctx, key, rangeEnd, limit, revision)
+	resp, err := s.server.store.RangeWithOptions(ctx, key, rangeEnd, opts)
 	if err != nil {
 		return nil, toGRPCError(err)
 	}

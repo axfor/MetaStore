@@ -38,11 +38,21 @@ type LeaseManager struct {
 	checkInterval time.Duration // Lease 过期检查间隔
 	defaultTTL    time.Duration // 默认 TTL
 	maxLeaseCount int           // 最大 Lease 数量限制（0 表示无限制）
+
+	// Lease ID 生成器 (集群安全)
+	// ID 格式: 高16位为节点ID，低48位为计数器
+	nodeID         uint64
+	leaseIDCounter atomic.Int64
 }
 
 // NewLeaseManager 创建新的 Lease 管理器
 // 参数: store, leaseConfig (可选), limitsConfig (可选)
 func NewLeaseManager(store kvstore.Store, leaseCfg *config.LeaseConfig, limitsCfg *config.LimitsConfig) *LeaseManager {
+	return NewLeaseManagerWithNodeID(store, leaseCfg, limitsCfg, 1)
+}
+
+// NewLeaseManagerWithNodeID 创建新的 Lease 管理器（带节点 ID，用于集群）
+func NewLeaseManagerWithNodeID(store kvstore.Store, leaseCfg *config.LeaseConfig, limitsCfg *config.LimitsConfig, nodeID uint64) *LeaseManager {
 	// 使用配置或默认值
 	if leaseCfg == nil {
 		defaultCfg := config.DefaultConfig(1, 1, ":2379")
@@ -61,6 +71,7 @@ func NewLeaseManager(store kvstore.Store, leaseCfg *config.LeaseConfig, limitsCf
 		checkInterval: leaseCfg.CheckInterval,
 		defaultTTL:    leaseCfg.DefaultTTL,
 		maxLeaseCount: maxLeases,
+		nodeID:        nodeID,
 	}
 }
 
@@ -75,6 +86,16 @@ func (lm *LeaseManager) Stop() {
 		return
 	}
 	close(lm.stopCh)
+}
+
+// GenerateLeaseID 生成集群唯一的 Lease ID
+// ID 格式: 高16位为节点ID，低48位为计数器
+// 这样每个节点可以独立生成不冲突的 ID
+func (lm *LeaseManager) GenerateLeaseID() int64 {
+	counter := lm.leaseIDCounter.Add(1)
+	// 高16位: nodeID, 低48位: counter
+	// 支持最多 65535 个节点，每个节点 2^48 个 Lease
+	return int64(lm.nodeID<<48) | (counter & 0x0000FFFFFFFFFFFF)
 }
 
 // Grant 创建一个新的 lease
