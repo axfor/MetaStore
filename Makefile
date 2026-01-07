@@ -15,21 +15,31 @@ GOMOD=$(GOCMD) mod
 
 # Build flags
 LDFLAGS=-ldflags="-s -w"
-CGO_LDFLAGS=-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2
+CGO_LDFLAGS_BASE=-lpthread -lstdc++ -ldl -lm -lz -lbz2
 
-# Detect OS
+# Detect OS and Architecture
 UNAME_S := $(shell uname -s)
+UNAME_M := $(shell uname -m)
+
 ifeq ($(UNAME_S),Darwin)
-    # macOS specific settings - add Wl,-U for missing Security framework symbols
-    CGO_LDFLAGS += -Wl,-U,_SecTrustCopyCertificateChain
-    ROCKSDB_PATH ?= /usr/local
+    # macOS specific settings
+    OS_ARCH := darwin-$(UNAME_M)
+    # macOS doesn't support full static linking
+    CGO_LDFLAGS_BASE += -Wl,-U,_SecTrustCopyCertificateChain
 else ifeq ($(UNAME_S),Linux)
     # Linux specific settings
-    ROCKSDB_PATH ?= /usr/local
+    OS_ARCH := linux-$(UNAME_M)
 else
     # Windows or other
-    ROCKSDB_PATH ?= C:/rocksdb
+    OS_ARCH := windows-$(UNAME_M)
 endif
+
+# Use bundled RocksDB from third_party (static libraries)
+ROCKSDB_DIR := $(shell pwd)/third_party/rocksdb/$(OS_ARCH)
+CGO_CFLAGS = -I$(ROCKSDB_DIR)/include
+# Add library path so -lrocksdb can find our static libraries
+# Put both -L flag and explicit .a files to ensure static linking
+CGO_LDFLAGS = -L$(ROCKSDB_DIR)/lib $(ROCKSDB_DIR)/lib/librocksdb.a $(ROCKSDB_DIR)/lib/libzstd.a $(ROCKSDB_DIR)/lib/liblz4.a $(ROCKSDB_DIR)/lib/libsnappy.a $(CGO_LDFLAGS_BASE)
 
 # Colors for output
 NO_COLOR=\033[0m
@@ -37,15 +47,15 @@ GREEN=\033[0;32m
 YELLOW=\033[0;33m
 CYAN=\033[0;36m
 
-.PHONY: all build clean test help deps tidy run-memory run-rocksdb cluster-memory cluster-rocksdb install test-perf test-perf-memory test-perf-rocksdb benchmark
+.PHONY: all build clean test help deps tidy run-memory run-rocksdb cluster-memory cluster-rocksdb install test-perf test-perf-memory test-perf-rocksdb benchmark rocksdb-download rocksdb rocksdb-clean rocksdb-compression
 
 ## all: Default target - build the binary
 all: build
 
 ## build: Build MetaStore binary with both storage engines (using GreenTea GC)
-build:
+build: rocksdb
 	@echo "$(CYAN)Building MetaStore with GreenTea GC...$(NO_COLOR)"
-	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" GOEXPERIMENT=greenteagc $(GOBUILD) $(LDFLAGS) -o $(BINARY_NAME) $(CMD_PATH)
+	@CGO_ENABLED=1 CGO_CFLAGS="$(CGO_CFLAGS)" CGO_LDFLAGS="$(CGO_LDFLAGS)" GOEXPERIMENT=greenteagc $(GOBUILD) $(LDFLAGS) -o $(BINARY_NAME) $(CMD_PATH)
 	@echo "$(GREEN)Build complete: $(BINARY_NAME)$(NO_COLOR)"
 	@ls -lh $(BINARY_NAME)
 
@@ -58,6 +68,7 @@ clean:
 	@rm -rf test/data/
 	@rm -rf /tmp/metastore-test-*
 	@rm -f /tmp/test_*.log
+	@rm -rf third_party/rocksdb/darwin-arm64/*
 	@echo "$(GREEN)Clean complete$(NO_COLOR)"
 
 ## test: Run all tests (excluding performance/benchmark tests)
@@ -68,11 +79,11 @@ test:
 	@rm -rf test/data/
 	@rm -rf /tmp/metastore-test-*
 	@echo "$(YELLOW)Testing pkg packages...$(NO_COLOR)"
-	@$(GOTEST) -v -timeout=5m ./pkg/...
+	@CGO_ENABLED=1 CGO_CFLAGS="$(CGO_CFLAGS)" CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v -timeout=5m ./pkg/...
 	@echo "$(YELLOW)Testing internal packages...$(NO_COLOR)"
-	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" GOEXPERIMENT=greenteagc $(GOTEST) -v -timeout=30m ./internal/...
+	@CGO_ENABLED=1 CGO_CFLAGS="$(CGO_CFLAGS)" CGO_LDFLAGS="$(CGO_LDFLAGS)" GOEXPERIMENT=greenteagc $(GOTEST) -v -timeout=30m ./internal/...
 	@echo "$(YELLOW)Testing integration and system tests...$(NO_COLOR)"
-	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" GOEXPERIMENT=greenteagc $(GOTEST) -v -timeout=30m -skip "Performance|Benchmark" ./test/
+	@CGO_ENABLED=1 CGO_CFLAGS="$(CGO_CFLAGS)" CGO_LDFLAGS="$(CGO_LDFLAGS)" GOEXPERIMENT=greenteagc $(GOTEST) -v -timeout=30m -skip "Performance|Benchmark" ./test/
 	@echo "$(GREEN)All tests passed!$(NO_COLOR)"
 
 ## test-unit: Run only unit tests (no integration tests)
@@ -223,4 +234,101 @@ help:
 	@echo "  make run-memory         # Run with memory storage"
 	@echo "  make cluster-rocksdb    # Start 3-node RocksDB cluster"
 	@echo "  make stop-cluster       # Stop all nodes"
+	@echo "  make rocksdb-download   # Download RocksDB source code"
+	@echo "  make rocksdb            # Build RocksDB from local source"
 	@echo "  make clean              # Clean build artifacts"
+
+## rocksdb-download: Download RocksDB source code
+rocksdb-download:
+	@echo "$(CYAN)Downloading RocksDB 10.4.2 source code...$(NO_COLOR)"
+	@if [ -d "third_party/rocksdb/src/v10.4.2" ]; then \
+		echo "$(YELLOW)RocksDB source already exists at third_party/rocksdb/src/v10.4.2$(NO_COLOR)"; \
+		echo "$(YELLOW)To re-download, first remove: rm -rf third_party/rocksdb/src/v10.4.2$(NO_COLOR)"; \
+	else \
+		mkdir -p third_party/rocksdb/src; \
+		git clone --depth 1 --branch v10.4.2 https://github.com/facebook/rocksdb.git third_party/rocksdb/src/v10.4.2; \
+		echo "$(GREEN)RocksDB source downloaded to: third_party/rocksdb/src/v10.4.2$(NO_COLOR)"; \
+	fi
+
+## rocksdb: Build RocksDB and dependencies from local source
+rocksdb:
+	@# Check if libraries already exist
+	@if [ -f "$(ROCKSDB_DIR)/lib/librocksdb.a" ] && \
+	   [ -f "$(ROCKSDB_DIR)/lib/libzstd.a" ] && \
+	   [ -f "$(ROCKSDB_DIR)/lib/liblz4.a" ] && \
+	   [ -f "$(ROCKSDB_DIR)/lib/libsnappy.a" ]; then \
+		echo "$(GREEN)RocksDB libraries already built for $(OS_ARCH)$(NO_COLOR)"; \
+		exit 0; \
+	fi
+	@echo "$(CYAN)Building RocksDB from source for $(OS_ARCH)...$(NO_COLOR)"
+	@echo "$(YELLOW)This will take 10-20 minutes...$(NO_COLOR)"
+	@# Check if source exists
+	@if [ ! -d "third_party/rocksdb/src/v10.4.2" ]; then \
+		echo "$(YELLOW)RocksDB source not found!$(NO_COLOR)"; \
+		echo "$(YELLOW)Please run 'make rocksdb-download' first to download the source code$(NO_COLOR)"; \
+		exit 1; \
+	fi
+	@mkdir -p $(ROCKSDB_DIR)/include
+	@mkdir -p $(ROCKSDB_DIR)/lib
+	@# Build RocksDB static library
+	@echo "$(YELLOW)Compiling RocksDB (this may take a while)...$(NO_COLOR)"
+	@cd third_party/rocksdb/src/v10.4.2 && \
+		EXTRA_CXXFLAGS="-Wno-error=unused-parameter -Wno-unused-parameter" \
+		$(MAKE) static_lib -j$$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)
+	@# Copy headers
+	@echo "$(YELLOW)Installing headers...$(NO_COLOR)"
+	@cp -r third_party/rocksdb/src/v10.4.2/include/rocksdb $(ROCKSDB_DIR)/include/
+	@# Copy static library
+	@echo "$(YELLOW)Installing static library...$(NO_COLOR)"
+	@cp third_party/rocksdb/src/v10.4.2/librocksdb.a $(ROCKSDB_DIR)/lib/
+	@# Build compression libraries
+	@$(MAKE) rocksdb-compression
+	@echo "$(GREEN)RocksDB dependencies built successfully!$(NO_COLOR)"
+	@echo "$(GREEN)Libraries installed to: $(ROCKSDB_DIR)/lib$(NO_COLOR)"
+	@ls -lh $(ROCKSDB_DIR)/lib/
+
+## rocksdb-compression: Build compression libraries from source
+rocksdb-compression:
+	@echo "$(YELLOW)Building compression libraries...$(NO_COLOR)"
+ifeq ($(UNAME_S),Darwin)
+	@# On macOS, use Homebrew to get compression libraries
+	@echo "$(YELLOW)Copying compression libraries from Homebrew...$(NO_COLOR)"
+	@if command -v brew >/dev/null 2>&1; then \
+		for lib in lz4 zstd snappy; do \
+			if brew list $$lib >/dev/null 2>&1; then \
+				echo "Copying $$lib..."; \
+				cp $$(brew --prefix $$lib)/lib/lib$$lib.a $(ROCKSDB_DIR)/lib/ 2>/dev/null || true; \
+			else \
+				echo "$(YELLOW)$$lib not installed, installing via Homebrew...$(NO_COLOR)"; \
+				brew install $$lib; \
+				cp $$(brew --prefix $$lib)/lib/lib$$lib.a $(ROCKSDB_DIR)/lib/; \
+			fi \
+		done \
+	else \
+		echo "$(YELLOW)Homebrew not found, skipping compression libraries$(NO_COLOR)"; \
+	fi
+else
+	@# On Linux, build from source or use system libraries
+	@echo "$(YELLOW)Looking for system compression libraries...$(NO_COLOR)"
+	@for lib in lz4 zstd snappy; do \
+		if [ -f "/usr/lib/x86_64-linux-gnu/lib$$lib.a" ]; then \
+			cp /usr/lib/x86_64-linux-gnu/lib$$lib.a $(ROCKSDB_DIR)/lib/; \
+		elif [ -f "/usr/lib64/lib$$lib.a" ]; then \
+			cp /usr/lib64/lib$$lib.a $(ROCKSDB_DIR)/lib/; \
+		elif [ -f "/usr/lib/lib$$lib.a" ]; then \
+			cp /usr/lib/lib$$lib.a $(ROCKSDB_DIR)/lib/; \
+		else \
+			echo "$(YELLOW)$$lib not found in standard paths$(NO_COLOR)"; \
+		fi \
+	done
+endif
+
+## rocksdb-clean: Clean RocksDB build artifacts
+rocksdb-clean: 
+	@rm -rf third_party/rocksdb/darwin-arm64/*
+	@echo "$(YELLOW)Cleaning RocksDB build artifacts...$(NO_COLOR)"
+	@if [ -d "third_party/rocksdb/src/v10.4.2" ]; then \
+		cd third_party/rocksdb/src/v10.4.2 && $(MAKE) clean; \
+	fi
+	@echo "$(GREEN)Clean complete$(NO_COLOR)"
+
