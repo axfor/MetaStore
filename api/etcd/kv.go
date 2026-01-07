@@ -22,7 +22,7 @@ import (
 	mvccpb "go.etcd.io/etcd/api/v3/mvccpb"
 )
 
-// KVServer implement etcd KV 
+// KVServer implement etcd KV
 type KVServer struct {
 	pb.UnimplementedKVServer
 	server *Server
