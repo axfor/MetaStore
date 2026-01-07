@@ -30,11 +30,21 @@ import (
 	etcdconcurrency "go.etcd.io/etcd/client/v3/concurrency"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 // ============================================================================
 // Test Helper Functions
 // ============================================================================
+
+// createQuietLogger creates a logger that suppresses warnings
+func createQuietLogger() *zap.Logger {
+	zapConfig := zap.NewProductionConfig()
+	zapConfig.Level = zap.NewAtomicLevelAt(zapcore.ErrorLevel) // Only log errors and above
+	logger, _ := zapConfig.Build()
+	return logger
+}
 
 // startLockTestServer start lock test server
 func startLockTestServer(t *testing.T) (*etcdapi.Server, *clientv3.Client) {
@@ -58,12 +68,15 @@ func startLockTestServer(t *testing.T) (*etcdapi.Server, *clientv3.Client) {
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   []string{server.Address()},
 		DialTimeout: 5 * time.Second,
+		Logger:      createQuietLogger(), // Suppress "lease keep alive loop" warnings
 	})
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
 		cli.Close()
 		server.Stop()
+		server.WaitForShutdown() // Wait for graceful shutdown to complete
+		time.Sleep(100 * time.Millisecond) // Extra time for goroutines to exit
 	})
 
 	return server, cli
@@ -1030,6 +1043,7 @@ func BenchmarkMutexLockUnlock(b *testing.B) {
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   []string{server.Address()},
 		DialTimeout: 5 * time.Second,
+		Logger:      createQuietLogger(), // Suppress "lease keep alive loop" warnings
 	})
 	if err != nil {
 		b.Fatal(err)
@@ -1072,6 +1086,7 @@ func BenchmarkTryLock(b *testing.B) {
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   []string{server.Address()},
 		DialTimeout: 5 * time.Second,
+		Logger:      createQuietLogger(), // Suppress "lease keep alive loop" warnings
 	})
 	if err != nil {
 		b.Fatal(err)
@@ -1116,6 +1131,7 @@ func BenchmarkSessionCreate(b *testing.B) {
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   []string{server.Address()},
 		DialTimeout: 5 * time.Second,
+		Logger:      createQuietLogger(), // Suppress "lease keep alive loop" warnings
 	})
 	if err != nil {
 		b.Fatal(err)
@@ -1648,59 +1664,219 @@ func TestMutexWaitingQueue(t *testing.T) {
 }
 
 // TestMutexWatchEventHandling test Watch event handling
+// This test verifies that when multiple sessions wait for a lock,
+// they acquire it sequentially as expected when the lock is released.
+// Each session uses its own independent etcd client to simulate real distributed scenario.
 func TestMutexWatchEventHandling(t *testing.T) {
-	_, cli := startLockTestServer(t)
+	server, _ := startLockTestServer(t)
 	ctx := context.Background()
 
-	// create many sessions and locks
+	// create sessions with independent clients (simulate different processes)
 	const numSessions = 3
+	clients := make([]*clientv3.Client, numSessions)
 	sessions := make([]*Session, numSessions)
 	mutexes := make([]*Mutex, numSessions)
 
 	for i := range sessions {
 		var err error
-		sessions[i], err = NewSession(cli, WithTTL(60))
+		// Each session gets its own independent client
+		clients[i], err = clientv3.New(clientv3.Config{
+			Endpoints:   []string{server.Address()},
+			DialTimeout: 5 * time.Second,
+			Logger:      createQuietLogger(), // Suppress "lease keep alive loop" warnings
+		})
+		require.NoError(t, err)
+
+		sessions[i], err = NewSession(clients[i], WithTTL(60))
 		require.NoError(t, err)
 		mutexes[i] = NewMutex(sessions[i], "/test/watch-events")
 	}
 
 	defer func() {
-		for _, s := range sessions {
-			s.Close()
+		for i := range sessions {
+			sessions[i].Close()
+			clients[i].Close()
 		}
 	}()
 
-	// first session acquires lock
+	// Use channels to coordinate and verify behavior
+	type lockEvent struct {
+		sessionID int
+		acquired  bool
+		err       error
+	}
+	events := make(chan lockEvent, numSessions)
+
+	// Session 0 acquires lock first
 	err := mutexes[0].Lock(ctx)
 	require.NoError(t, err)
+	t.Log("Session 0 acquired lock")
 
-	// other sessions attempt to acquire lock (will wait)
-	done := make([]chan error, numSessions-1)
+	// Start goroutines for other sessions in sequence
+	// Use a channel to ensure each session has called Lock() before starting the next
+	lockStarted := make([]chan struct{}, numSessions)
 	for i := 1; i < numSessions; i++ {
-		done[i-1] = make(chan error, 1)
-		go func(idx int) {
-			done[idx-1] <- mutexes[idx].Lock(ctx)
-		}(i)
+		lockStarted[i] = make(chan struct{})
 	}
 
-	// wait other sessions to enter waiting status
-	time.Sleep(200 * time.Millisecond)
+	for i := 1; i < numSessions; i++ {
+		go func(idx int) {
+			t.Logf("Session %d attempting to acquire lock", idx)
+			// Signal that we're about to call Lock()
+			close(lockStarted[idx])
+			err := mutexes[idx].Lock(ctx)
+			events <- lockEvent{sessionID: idx, acquired: err == nil, err: err}
+			if err == nil {
+				t.Logf("Session %d acquired lock", idx)
+			}
+		}(i)
 
-	// release first lock
+		// Wait for this goroutine to start Lock() before starting the next
+		<-lockStarted[i]
+		time.Sleep(50 * time.Millisecond) // Ensure Lock() call has registered in queue
+	}
+
+	// Release Session 0's lock - this should allow Session 1 to acquire
+	t.Log("Session 0 releasing lock")
 	err = mutexes[0].Unlock(ctx)
 	require.NoError(t, err)
 
-	// verify waiting sessions acquire lock in sequence
-	for i := 1; i < numSessions; i++ {
-		select {
-		case err := <-done[i-1]:
-			require.NoError(t, err)
-			t.Logf("Session %d acquired lock", i)
-			mutexes[i].Unlock(ctx)
-		case <-time.After(5 * time.Second):
-			t.Fatalf("Session %d failed to acquire lock", i)
-		}
+	// Session 1 should acquire the lock
+	select {
+	case event := <-events:
+		require.Equal(t, 1, event.sessionID, "Session 1 should acquire lock first")
+		require.True(t, event.acquired, "Session 1 should successfully acquire lock")
+		require.NoError(t, event.err)
+
+		// Release Session 1's lock to allow Session 2
+		err = mutexes[1].Unlock(ctx)
+		require.NoError(t, err)
+		t.Log("Session 1 released lock")
+
+	case <-time.After(5 * time.Second):
+		t.Fatal("Session 1 failed to acquire lock within timeout")
 	}
+
+	// Session 2 should acquire the lock next
+	select {
+	case event := <-events:
+		require.Equal(t, 2, event.sessionID, "Session 2 should acquire lock second")
+		require.True(t, event.acquired, "Session 2 should successfully acquire lock")
+		require.NoError(t, event.err)
+
+		// Release Session 2's lock
+		err = mutexes[2].Unlock(ctx)
+		require.NoError(t, err)
+		t.Log("Session 2 released lock")
+
+	case <-time.After(5 * time.Second):
+		t.Fatal("Session 2 failed to acquire lock within timeout")
+	}
+
+	t.Log("All sessions successfully acquired and released locks in FIFO order")
+}
+
+// TestMutexRealWorldConcurrency test real-world concurrent lock acquisition
+// This test simulates a real distributed scenario where multiple independent
+// processes compete for a lock without any coordination.
+func TestMutexRealWorldConcurrency(t *testing.T) {
+	server, _ := startLockTestServer(t)
+	ctx := context.Background()
+
+	const numCompetitors = 5
+	clients := make([]*clientv3.Client, numCompetitors)
+	sessions := make([]*Session, numCompetitors)
+	mutexes := make([]*Mutex, numCompetitors)
+
+	// Create independent clients and sessions for each competitor
+	for i := 0; i < numCompetitors; i++ {
+		var err error
+		clients[i], err = clientv3.New(clientv3.Config{
+			Endpoints:   []string{server.Address()},
+			DialTimeout: 5 * time.Second,
+			Logger:      createQuietLogger(), // Suppress "lease keep alive loop" warnings
+		})
+		require.NoError(t, err)
+
+		sessions[i], err = NewSession(clients[i], WithTTL(60))
+		require.NoError(t, err)
+		mutexes[i] = NewMutex(sessions[i], "/test/real-world-lock")
+	}
+
+	defer func() {
+		for i := range sessions {
+			sessions[i].Close()
+			clients[i].Close()
+		}
+	}()
+
+	// Track results
+	type result struct {
+		competitorID int
+		acquiredAt   int64
+		err          error
+	}
+	results := make(chan result, numCompetitors)
+
+	// All competitors start simultaneously (no coordination)
+	var wg sync.WaitGroup
+	startSignal := make(chan struct{})
+
+	for i := 0; i < numCompetitors; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+
+			// Wait for start signal
+			<-startSignal
+
+			// Try to acquire lock
+			err := mutexes[id].Lock(ctx)
+			acquireTime := time.Now().UnixNano()
+
+			if err != nil {
+				results <- result{competitorID: id, err: err}
+				return
+			}
+
+			results <- result{competitorID: id, acquiredAt: acquireTime}
+
+			// Hold lock briefly
+			time.Sleep(20 * time.Millisecond)
+
+			// Release lock
+			mutexes[id].Unlock(ctx)
+		}(i)
+	}
+
+	// Start all competitors at once
+	close(startSignal)
+
+	// Wait for all to complete
+	wg.Wait()
+	close(results)
+
+	// Verify results
+	var acquisitionOrder []int
+	var acquisitionTimes []int64
+
+	for res := range results {
+		require.NoError(t, res.err, "Competitor %d should successfully acquire lock", res.competitorID)
+		acquisitionOrder = append(acquisitionOrder, res.competitorID)
+		acquisitionTimes = append(acquisitionTimes, res.acquiredAt)
+	}
+
+	// Verify all competitors got the lock
+	require.Len(t, acquisitionOrder, numCompetitors, "All competitors should acquire lock")
+
+	// Verify acquisitions happened sequentially (times are ordered)
+	for i := 1; i < len(acquisitionTimes); i++ {
+		assert.True(t, acquisitionTimes[i] >= acquisitionTimes[i-1],
+			"Lock acquisitions should be sequential in time")
+	}
+
+	t.Logf("Acquisition order: %v", acquisitionOrder)
+	t.Log("All competitors successfully acquired lock in concurrent scenario")
 }
 
 // ============================================================================
@@ -1754,4 +1930,89 @@ func TestLockLatencyDistribution(t *testing.T) {
 
 	// verify latency is reasonable
 	assert.Less(t, avg, 100*time.Millisecond, "Average latency should be reasonable")
+}
+
+// TestMutexSameSessionSamePrefix test same session with same prefix
+// This tests what happens when the same session creates multiple mutex objects
+// with the same prefix - they should share the same lock key.
+func TestMutexSameSessionSamePrefix(t *testing.T) {
+	_, cli := startLockTestServer(t)
+	ctx := context.Background()
+
+	session, err := NewSession(cli, WithTTL(30))
+	require.NoError(t, err)
+	defer session.Close()
+
+	// Create first mutex and acquire lock
+	mutex1 := NewMutex(session, "/test/same-session")
+	err = mutex1.Lock(ctx)
+	require.NoError(t, err)
+	key1 := mutex1.Key()
+	t.Logf("Mutex1 acquired lock, key: %s", key1)
+
+	// Create second mutex with same session and same prefix
+	mutex2 := NewMutex(session, "/test/same-session")
+	
+	// Try to lock with mutex2 - should succeed because it uses the same key
+	err = mutex2.Lock(ctx)
+	require.NoError(t, err, "Second mutex with same session should also succeed")
+	key2 := mutex2.Key()
+	t.Logf("Mutex2 acquired lock, key: %s", key2)
+
+	// Verify they use the same key (because same session = same lease ID)
+	assert.Equal(t, key1, key2, "Both mutexes should use the same key")
+
+	// Both are owners
+	assert.True(t, mutex1.IsOwner())
+	assert.True(t, mutex2.IsOwner())
+
+	// Unlock with mutex1
+	err = mutex1.Unlock(ctx)
+	require.NoError(t, err)
+	
+	// mutex1 no longer owner, but mutex2 might still think it is (shared state issue)
+	assert.False(t, mutex1.IsOwner())
+	// Note: mutex2 doesn't know mutex1 unlocked, because they're separate objects
+	// This is a known limitation of using same session with multiple mutex objects
+	
+	t.Log("Test completed: same session can reuse key across mutex objects")
+}
+
+// TestMutexReentrantSameObject test reentrant lock with same mutex object
+func TestMutexReentrantSameObject(t *testing.T) {
+	_, cli := startLockTestServer(t)
+	ctx := context.Background()
+
+	session, err := NewSession(cli, WithTTL(30))
+	require.NoError(t, err)
+	defer session.Close()
+
+	mutex := NewMutex(session, "/test/reentrant-same")
+
+	// First lock
+	err = mutex.Lock(ctx)
+	require.NoError(t, err)
+	key1 := mutex.Key()
+	t.Logf("First Lock() succeeded, key: %s", key1)
+
+	// Second lock on same mutex object - should return immediately
+	start := time.Now()
+	err = mutex.Lock(ctx)
+	elapsed := time.Since(start)
+	require.NoError(t, err)
+	key2 := mutex.Key()
+	
+	assert.Equal(t, key1, key2, "Key should remain the same")
+	assert.Less(t, elapsed, 10*time.Millisecond, "Second Lock() should return immediately")
+	t.Logf("Second Lock() succeeded immediately in %v", elapsed)
+
+	// Still owner
+	assert.True(t, mutex.IsOwner())
+
+	// Unlock once releases the lock
+	err = mutex.Unlock(ctx)
+	require.NoError(t, err)
+	assert.False(t, mutex.IsOwner())
+	
+	t.Log("Test completed: same mutex object supports reentrant lock")
 }

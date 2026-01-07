@@ -24,12 +24,12 @@ import (
 	"go.uber.org/zap"
 )
 
-// Watch createfirst  watch，returneventchannel
+// Watch creates a new watch and returns event channel
 func (m *MemoryEtcd) Watch(ctx context.Context, key, rangeEnd string, startRevision int64, watchID int64) (<-chan kvstore.WatchEvent, error) {
 	return m.WatchWithOptions(key, rangeEnd, startRevision, watchID, nil)
 }
 
-// WatchWithOptions createoption watch
+// WatchWithOptions creates a watch with options
 func (m *MemoryEtcd) WatchWithOptions(key, rangeEnd string, startRevision int64, watchID int64, opts *kvstore.WatchOptions) (<-chan kvstore.WatchEvent, error) {
 	m.watchMu.Lock()
 	defer m.watchMu.Unlock()
@@ -39,7 +39,7 @@ func (m *MemoryEtcd) WatchWithOptions(key, rangeEnd string, startRevision int64,
 		return nil, fmt.Errorf("watch ID %d already exists", watchID)
 	}
 
-	// createeventchannel(bufferblocking)
+	// Create event channel with buffer to prevent blocking
 	eventCh := make(chan kvstore.WatchEvent, 100)
 
 	// Parse options
@@ -52,7 +52,7 @@ func (m *MemoryEtcd) WatchWithOptions(key, rangeEnd string, startRevision int64,
 		fragment = opts.Fragment
 	}
 
-	// createsubscribe
+	// Create subscription
 	sub := &watchSubscription{
 		watchID:        watchID,
 		key:            key,
@@ -68,50 +68,91 @@ func (m *MemoryEtcd) WatchWithOptions(key, rangeEnd string, startRevision int64,
 
 	m.watches[watchID] = sub
 
-	// if startRevision > 0，sendevent
-	// note：currentimplementnotcomplete，canfromcurrentdatabecomeinitialsnapshot
+	// If startRevision > 0, send historical events
+	// Note: Current implementation is simplified, uses current data as initial snapshot
 	if startRevision > 0 && startRevision < m.revision.Load() {
-		// asynchronoussendcurrentallmatchkeyas PUT event
+		// Asynchronously send all matching keys as PUT events
 		go m.sendHistoricalEvents(sub, key, rangeEnd)
 	}
 
 	return eventCh, nil
 }
 
-// sendHistoricalEvents sendevent(fromcurrentdatasnapshot)
+// sendHistoricalEvents sends historical events from current data snapshot
 func (m *MemoryEtcd) sendHistoricalEvents(sub *watchSubscription, key, rangeEnd string) {
-	// use ShardedMap.GetAll() getalldata(internallock)
+	// Use ShardedMap.GetAll() to get all data (internally locked)
 	allData := m.kvData.GetAll()
+	currentRev := m.revision.Load() // Capture current revision
 
-	// getallmatchkey
+	foundAny := false
+	// Get all matching keys
 	for k, kv := range allData {
 		if m.matchWatch(k, key, rangeEnd) {
-			event := kvstore.WatchEvent{
-				Type:     kvstore.EventTypePut,
-				Kv:       kv,
-				PrevKv:   nil, // eventnotreturn prevKv
-				Revision: kv.ModRevision,
-			}
+			foundAny = true
+			// Only send events for revisions >= startRev
+			if kv.ModRevision >= sub.startRev {
+				event := kvstore.WatchEvent{
+					Type:     kvstore.EventTypePut,
+					Kv:       kv,
+					PrevKv:   nil, // Historical events don't return prevKv
+					Revision: kv.ModRevision,
+				}
 
-			// non-blockingsend
-			select {
-			case sub.eventCh <- event:
-				// successsend
-			case <-sub.cancel:
-				// Watch already cancel
-				return
-			default:
-				// Channel full，skipevent
-				log.Warn("Watch channel full, skipping historical event",
-				zap.Int64("watchID", sub.watchID),
-				zap.String("key", k),
-				zap.String("component", "watch"))
+				// Non-blocking send
+				select {
+				case sub.eventCh <- event:
+					// Successfully sent
+				case <-sub.cancel:
+					// Watch already cancelled
+					return
+				default:
+					// Channel full, skip event
+					log.Warn("Watch channel full, skipping historical event",
+						zap.Int64("watchID", sub.watchID),
+						zap.String("key", k),
+						zap.String("component", "watch"))
+				}
 			}
+		}
+	}
+
+	// CRITICAL FIX: If watching a specific key (not a range) and it doesn't exist,
+	// send a DELETE event to indicate the key was deleted
+	// This solves the race condition where Watch starts after a key is deleted
+	if !foundAny && rangeEnd == "" {
+		// Single key watch, key doesn't exist - likely was deleted
+		// Send a synthetic DELETE event so watchers don't wait forever
+		event := kvstore.WatchEvent{
+			Type: kvstore.EventTypeDelete,
+			Kv: &kvstore.KeyValue{
+				Key:            []byte(key),
+				Value:          nil,
+				CreateRevision: 0,
+				ModRevision:    currentRev, // Use current revision
+				Version:        0,
+				Lease:          0,
+			},
+			PrevKv:   nil,
+			Revision: currentRev, // Use current revision
+		}
+
+		select {
+		case sub.eventCh <- event:
+			// Successfully sent DELETE notification
+		case <-sub.cancel:
+			// Watch cancelled
+			return
+		default:
+			// Channel full
+			log.Warn("Watch channel full, skipping synthetic DELETE event",
+				zap.Int64("watchID", sub.watchID),
+				zap.String("key", key),
+				zap.String("component", "watch"))
 		}
 	}
 }
 
-// CancelWatch cancelfirst  watch
+// CancelWatch cancels a watch
 func (m *MemoryEtcd) CancelWatch(watchID int64) error {
 	m.watchMu.Lock()
 	sub, ok := m.watches[watchID]
@@ -139,7 +180,7 @@ func (m *MemoryEtcd) CancelWatch(watchID int64) error {
 	return nil
 }
 
-// notifyWatches notificationallmatch watch (high-performance lock-free version)
+// notifyWatches notifies all matching watches (high-performance lock-free version)
 func (m *MemoryEtcd) notifyWatches(event kvstore.WatchEvent) {
 	key := ""
 	if event.Kv != nil {
@@ -179,9 +220,9 @@ func (m *MemoryEtcd) notifyWatches(event kvstore.WatchEvent) {
 		case sub.eventCh <- eventToSend:
 			// Success
 		case <-sub.cancel:
-			// Watchalready cancel
+			// Watch already cancelled
 		default:
-			// Channelfull，asynchronoussend(slowclient)
+			// Channel full, send asynchronously (slow client)
 			go m.slowSendEvent(sub, eventToSend)
 		}
 	}
@@ -221,22 +262,22 @@ func (m *MemoryEtcd) slowSendEvent(sub *watchSubscription, event kvstore.WatchEv
 	}
 }
 
-// matchWatch check key isnomatch watch range
+// matchWatch checks if key matches watch range
 func (m *MemoryEtcd) matchWatch(key, watchKey, rangeEnd string) bool {
 	if rangeEnd == "" {
-		// singlekeymatch
+		// Single key match
 		return key == watchKey
 	}
-	// rangematch
+	// Range match
 	return key >= watchKey && (rangeEnd == "\x00" || key < rangeEnd)
 }
 
-// LeaseGrant createfirst new lease
+// LeaseGrant creates a new lease
 func (m *MemoryEtcd) LeaseGrant(ctx context.Context, id int64, ttl int64) (*kvstore.Lease, error) {
 	m.leaseMu.Lock()
 	defer m.leaseMu.Unlock()
 
-	// check lease isnoexists
+	// Check if lease already exists
 	if _, ok := m.leases[id]; ok {
 		return nil, fmt.Errorf("lease already exists: %d", id)
 	}
@@ -252,7 +293,7 @@ func (m *MemoryEtcd) LeaseGrant(ctx context.Context, id int64, ttl int64) (*kvst
 	return lease, nil
 }
 
-// LeaseRevoke revokedfirst  lease(deleteallclosekey)
+// LeaseRevoke revokes a lease and deletes all associated keys
 func (m *MemoryEtcd) LeaseRevoke(ctx context.Context, id int64) error {
 	m.leaseMu.Lock()
 
@@ -265,13 +306,13 @@ func (m *MemoryEtcd) LeaseRevoke(ctx context.Context, id int64) error {
 	// Collect events to send after releasing lock
 	events := make([]kvstore.WatchEvent, 0, len(lease.Keys))
 
-	// deleteallclosekey
+	// Delete all associated keys
 	for key := range lease.Keys {
 		if kv, exists := m.kvData.Get(key); exists {
-			// increase revision
+			// Increase revision
 			newRevision := m.revision.Add(1)
 
-			// deletekey(ShardedMap internallock)
+			// Delete key (ShardedMap has internal lock)
 			m.kvData.Delete(key)
 
 			// Prepare watch event
@@ -293,13 +334,13 @@ func (m *MemoryEtcd) LeaseRevoke(ctx context.Context, id int64) error {
 		}
 	}
 
-	// delete lease
+	// Delete lease
 	delete(m.leases, id)
 
 	// Release lock before notifying watches (data is already committed)
 	m.leaseMu.Unlock()
 
-	// trigger watch event
+	// Trigger watch events
 	for _, event := range events {
 		m.notifyWatches(event)
 	}
@@ -307,7 +348,7 @@ func (m *MemoryEtcd) LeaseRevoke(ctx context.Context, id int64) error {
 	return nil
 }
 
-// LeaseRenew renewalfirst  lease
+// LeaseRenew renews a lease
 func (m *MemoryEtcd) LeaseRenew(ctx context.Context, id int64) (*kvstore.Lease, error) {
 	m.leaseMu.Lock()
 	defer m.leaseMu.Unlock()
@@ -317,12 +358,12 @@ func (m *MemoryEtcd) LeaseRenew(ctx context.Context, id int64) (*kvstore.Lease, 
 		return nil, fmt.Errorf("lease not found: %d", id)
 	}
 
-	// renewal
+	// Renew the lease
 	lease.Renew(lease.TTL)
 	return lease, nil
 }
 
-// LeaseTimeToLive get lease time
+// LeaseTimeToLive gets lease remaining time
 func (m *MemoryEtcd) LeaseTimeToLive(ctx context.Context, id int64) (*kvstore.Lease, error) {
 	m.leaseMu.RLock()
 	defer m.leaseMu.RUnlock()
@@ -332,7 +373,7 @@ func (m *MemoryEtcd) LeaseTimeToLive(ctx context.Context, id int64) (*kvstore.Le
 		return nil, fmt.Errorf("lease not found: %d", id)
 	}
 
-	// return lease replica
+	// Return lease copy
 	leaseCopy := &kvstore.Lease{
 		ID:        lease.ID,
 		TTL:       lease.TTL,
@@ -346,7 +387,7 @@ func (m *MemoryEtcd) LeaseTimeToLive(ctx context.Context, id int64) (*kvstore.Le
 	return leaseCopy, nil
 }
 
-// Leases returnall lease
+// Leases returns all leases
 func (m *MemoryEtcd) Leases(ctx context.Context) ([]*kvstore.Lease, error) {
 	m.leaseMu.RLock()
 	defer m.leaseMu.RUnlock()
