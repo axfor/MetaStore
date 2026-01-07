@@ -21,7 +21,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// 定义 etcd 兼容的错误类型
+// definition etcd compatibleincorrecttype
 var (
 	ErrKeyNotFound      = errors.New("key not found")
 	ErrCompacted        = errors.New("required revision has been compacted")
@@ -36,7 +36,7 @@ var (
 	ErrWatchCanceled    = errors.New("watch canceled")
 )
 
-// errorCodeMap 将内部错误映射到 gRPC 状态码
+// errorCodeMap willinternalincorrectmapto gRPC status码
 var errorCodeMap = map[error]codes.Code{
 	ErrKeyNotFound:      codes.NotFound,
 	ErrCompacted:        codes.OutOfRange,
@@ -51,24 +51,24 @@ var errorCodeMap = map[error]codes.Code{
 	ErrWatchCanceled:    codes.Canceled,
 }
 
-// toGRPCError 将内部错误转换为 gRPC 错误
+// toGRPCError willinternalincorrectconvertas gRPC incorrect
 func toGRPCError(err error) error {
 	if err == nil {
 		return nil
 	}
 
-	// 检查是否已经是 gRPC status 错误
+	// checkisnoalreadyis gRPC status incorrect
 	if _, ok := status.FromError(err); ok {
 		return err
 	}
 
-	// 查找映射的错误码
+	// findmapincorrect码
 	for knownErr, code := range errorCodeMap {
 		if errors.Is(err, knownErr) {
 			return status.Error(code, err.Error())
 		}
 	}
 
-	// 默认返回 Internal 错误
+	// defaultreturn Internal incorrect
 	return status.Error(codes.Internal, err.Error())
 }

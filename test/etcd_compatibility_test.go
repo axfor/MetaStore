@@ -35,38 +35,38 @@ import (
 	"go.etcd.io/raft/v3/raftpb"
 )
 
-// startTestServer 启动测试服务器
+// startTestServer starttestserver
 func startTestServer(t *testing.T) (*etcdapi.Server, *clientv3.Client) {
-	// 创建内存存储
+	// creatememory存储
 	store := memory.NewMemoryEtcd()
 
-	// 创建 etcd 兼容服务器（随机端口）
+	// create etcd compatibleserver（randomport）
 	server, err := etcdapi.NewServer(etcdapi.ServerConfig{
 		Store:     store,
-		Address:   "127.0.0.1:0", // 使用随机端口
+		Address:   "127.0.0.1:0", // userandomport
 		ClusterID: 1,
 		MemberID:  1,
 	})
 	require.NoError(t, err)
 
-	// 启动服务器
+	// startserver
 	go func() {
 		if err := server.Start(); err != nil {
 			t.Logf("Server error: %v", err)
 		}
 	}()
 
-	// 等待服务器启动
+	// waitserverstart
 	time.Sleep(100 * time.Millisecond)
 
-	// 创建客户端
+	// createclient
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   []string{server.Address()},
 		DialTimeout: 5 * time.Second,
 	})
 	require.NoError(t, err)
 
-	// 清理函数
+	// clean upfunction
 	t.Cleanup(func() {
 		cli.Close()
 		server.Stop()
@@ -75,20 +75,20 @@ func startTestServer(t *testing.T) (*etcdapi.Server, *clientv3.Client) {
 	return server, cli
 }
 
-// startTestServerRocksDB 启动 RocksDB 测试服务器（单节点 Raft）
+// startTestServerRocksDB start RocksDB testserver（单node Raft）
 func startTestServerRocksDB(t *testing.T) (*etcdapi.Server, *clientv3.Client, func()) {
-	// 单节点 Raft 集群必须使用 nodeID=1，peers 数组的第一个元素对应 ID 1
+	// 单node Raft clustermustuse nodeID=1，peers array第一个element对应 ID 1
 	nodeID := 1
 
-	// NewNodeRocksDB 使用 data/rocksdb/{id} 目录
+	// NewNodeRocksDB use data/rocksdb/{id} directory
 	dataDir := fmt.Sprintf("data/rocksdb/%d", nodeID)
 
-	// 清理函数
+	// clean upfunction
 	cleanup := func() {
 		os.RemoveAll(dataDir)
 	}
 
-	// 确保清理
+	// 确保clean up
 	t.Cleanup(cleanup)
 
 	// Setup RocksDB
@@ -117,39 +117,39 @@ func startTestServerRocksDB(t *testing.T) (*etcdapi.Server, *clientv3.Client, fu
 	commitC, errorC, snapshotterReady, _ := raft.NewNodeRocksDB(nodeID, peers, false, getSnapshot, proposeC, confChangeC, db, dataDir, NewTestConfig(1, 1, ":2379"))
 	kvs = rocksdb.NewRocksDB(db, <-snapshotterReady, proposeC, commitC, errorC)
 
-	// 创建 etcd 兼容服务器（随机端口）
+	// create etcd compatibleserver（randomport）
 	server, err := etcdapi.NewServer(etcdapi.ServerConfig{
 		Store:     kvs,
-		Address:   "127.0.0.1:0", // 使用随机端口
+		Address:   "127.0.0.1:0", // userandomport
 		ClusterID: 1000,
 		MemberID:  1,
 	})
 	require.NoError(t, err)
 
-	// 启动服务器
+	// startserver
 	go func() {
 		if err := server.Start(); err != nil {
 			t.Logf("Server error: %v", err)
 		}
 	}()
 
-	// 等待服务器和 Raft 启动
+	// waitserverand Raft start
 	time.Sleep(3 * time.Second)
 
-	// 创建客户端
+	// createclient
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   []string{server.Address()},
 		DialTimeout: 5 * time.Second,
 	})
 	require.NoError(t, err)
 
-	// 清理函数 - 使用sync.Once防止重复关闭channel
+	// clean upfunction - usesync.Once防止duplicateclosechannel
 	var cleanupOnce sync.Once
 	cleanupAll := func() {
 		cleanupOnce.Do(func() {
 			cli.Close()
 			server.Stop()
-			close(proposeC) // 现在安全了，只会被调用一次
+			close(proposeC) // 现insafe，只will被call一次
 			<-errorC
 			db.Close()
 			cleanup()
@@ -161,7 +161,7 @@ func startTestServerRocksDB(t *testing.T) (*etcdapi.Server, *clientv3.Client, fu
 	return server, cli, cleanupAll
 }
 
-// TestBasicPutGet 测试基本的 Put 和 Get 操作
+// TestBasicPutGet test基本 Put and Get operation
 func TestBasicPutGet(t *testing.T) {
 	_, cli := startTestServer(t)
 
@@ -180,24 +180,24 @@ func TestBasicPutGet(t *testing.T) {
 	assert.Equal(t, "bar", string(getResp.Kvs[0].Value))
 }
 
-// TestPrefixRange 测试前缀查询
+// TestPrefixRange testprefix查询
 func TestPrefixRange(t *testing.T) {
 	_, cli := startTestServer(t)
 
 	ctx := context.Background()
 
-	// 写入多个键
+	// write多个key
 	cli.Put(ctx, "key1", "value1")
 	cli.Put(ctx, "key2", "value2")
 	cli.Put(ctx, "key3", "value3")
 	cli.Put(ctx, "other", "value")
 
-	// 前缀查询
+	// prefix查询
 	resp, err := cli.Get(ctx, "key", clientv3.WithPrefix())
 	require.NoError(t, err)
 	assert.Len(t, resp.Kvs, 3)
 
-	// 验证结果
+	// verifyresult
 	keys := make([]string, len(resp.Kvs))
 	for i, kv := range resp.Kvs {
 		keys[i] = string(kv.Key)
@@ -207,7 +207,7 @@ func TestPrefixRange(t *testing.T) {
 	assert.Contains(t, keys, "key3")
 }
 
-// TestDelete 测试删除操作
+// TestDelete testdeleteoperation
 func TestDelete(t *testing.T) {
 	_, cli := startTestServer(t)
 
@@ -219,22 +219,22 @@ func TestDelete(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), delResp.Deleted)
 
-	// 验证已删除
+	// verify已delete
 	getResp, err := cli.Get(ctx, "foo")
 	require.NoError(t, err)
 	assert.Len(t, getResp.Kvs, 0)
 }
 
-// TestTransaction 测试事务
+// TestTransaction testtransaction
 func TestTransaction(t *testing.T) {
 	_, cli := startTestServer(t)
 
 	ctx := context.Background()
 
-	// 先写入一个值
+	// 先write一个value
 	cli.Put(ctx, "key", "old-value")
 
-	// 成功的事务
+	// successtransaction
 	txnResp, err := cli.Txn(ctx).
 		If(clientv3.Compare(clientv3.Value("key"), "=", "old-value")).
 		Then(clientv3.OpPut("key", "new-value")).
@@ -243,12 +243,12 @@ func TestTransaction(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, txnResp.Succeeded)
 
-	// 验证值已更新
+	// verifyvalue已update
 	getResp, err := cli.Get(ctx, "key")
 	require.NoError(t, err)
 	assert.Equal(t, "new-value", string(getResp.Kvs[0].Value))
 
-	// 失败的事务
+	// failuretransaction
 	txnResp, err = cli.Txn(ctx).
 		If(clientv3.Compare(clientv3.Value("key"), "=", "wrong-value")).
 		Then(clientv3.OpPut("key", "should-not-happen")).
@@ -258,25 +258,25 @@ func TestTransaction(t *testing.T) {
 	assert.False(t, txnResp.Succeeded)
 }
 
-// TestWatch 测试 Watch 功能
+// TestWatch test Watch 功能
 func TestWatch(t *testing.T) {
 	_, cli := startTestServer(t)
 
 	ctx := context.Background()
 
-	// 创建 watch
+	// create watch
 	watchCh := cli.Watch(ctx, "watch-key")
 
-	// 等待 watch 建立
+	// wait watch 建立
 	time.Sleep(50 * time.Millisecond)
 
-	// 触发事件
+	// triggerevent
 	go func() {
 		time.Sleep(50 * time.Millisecond)
 		cli.Put(context.Background(), "watch-key", "watch-value")
 	}()
 
-	// 接收事件
+	// receiveevent
 	select {
 	case wresp := <-watchCh:
 		require.NotNil(t, wresp)
@@ -288,13 +288,13 @@ func TestWatch(t *testing.T) {
 	}
 }
 
-// TestLease 测试 Lease 功能
+// TestLease test Lease 功能
 func TestLease(t *testing.T) {
 	_, cli := startTestServer(t)
 
 	ctx := context.Background()
 
-	// 创建 lease
+	// create lease
 	leaseResp, err := cli.Grant(ctx, 10)
 	require.NoError(t, err)
 	assert.Greater(t, leaseResp.ID, int64(0))
@@ -304,7 +304,7 @@ func TestLease(t *testing.T) {
 	_, err = cli.Put(ctx, "lease-key", "lease-value", clientv3.WithLease(leaseResp.ID))
 	require.NoError(t, err)
 
-	// 验证键存在
+	// verifykey存in
 	getResp, err := cli.Get(ctx, "lease-key")
 	require.NoError(t, err)
 	assert.Len(t, getResp.Kvs, 1)
@@ -318,19 +318,19 @@ func TestLease(t *testing.T) {
 	_, err = cli.Revoke(ctx, leaseResp.ID)
 	require.NoError(t, err)
 
-	// 验证键已被删除
+	// verifykey已被delete
 	getResp, err = cli.Get(ctx, "lease-key")
 	require.NoError(t, err)
 	assert.Len(t, getResp.Kvs, 0)
 }
 
-// TestLeaseExpiry 测试 Lease 过期
+// TestLeaseExpiry test Lease expiration
 func TestLeaseExpiry(t *testing.T) {
 	_, cli := startTestServer(t)
 
 	ctx := context.Background()
 
-	// 创建短期 lease（2秒）
+	// create短期 lease（2秒）
 	leaseResp, err := cli.Grant(ctx, 2)
 	require.NoError(t, err)
 
@@ -338,40 +338,40 @@ func TestLeaseExpiry(t *testing.T) {
 	_, err = cli.Put(ctx, "expiry-key", "expiry-value", clientv3.WithLease(leaseResp.ID))
 	require.NoError(t, err)
 
-	// 验证键存在
+	// verifykey存in
 	getResp, err := cli.Get(ctx, "expiry-key")
 	require.NoError(t, err)
 	assert.Len(t, getResp.Kvs, 1)
 
-	// 等待 lease 过期（2秒 + 1秒误差）
+	// wait lease expiration（2秒 + 1秒error）
 	time.Sleep(3 * time.Second)
 
-	// 验证键已被删除
+	// verifykey已被delete
 	getResp, err = cli.Get(ctx, "expiry-key")
 	require.NoError(t, err)
 	assert.Len(t, getResp.Kvs, 0, "Key should be deleted after lease expiry")
 }
 
-// TestStatus 测试 Status API
+// TestStatus test Status API
 func TestStatus(t *testing.T) {
 	server, cli := startTestServer(t)
 
 	ctx := context.Background()
 
-	// 获取状态
+	// getstatus
 	statusResp, err := cli.Status(ctx, server.Address())
 	require.NoError(t, err)
 	assert.Equal(t, "3.6.0-compatible", statusResp.Version)
 	assert.GreaterOrEqual(t, statusResp.DbSize, int64(0))
 }
 
-// TestMultipleOperations 测试复杂场景
+// TestMultipleOperations test复杂场景
 func TestMultipleOperations(t *testing.T) {
 	_, cli := startTestServer(t)
 
 	ctx := context.Background()
 
-	// 1. 写入数据
+	// 1. writedata
 	for i := 0; i < 10; i++ {
 		key := fmt.Sprintf("key-%d", i)
 		value := fmt.Sprintf("value-%d", i)
@@ -379,12 +379,12 @@ func TestMultipleOperations(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// 2. 范围查询
+	// 2. range查询
 	resp, err := cli.Get(ctx, "key-", clientv3.WithPrefix())
 	require.NoError(t, err)
 	assert.Len(t, resp.Kvs, 10)
 
-	// 3. 事务更新
+	// 3. transactionupdate
 	txnResp, err := cli.Txn(ctx).
 		If(clientv3.Compare(clientv3.Value("key-0"), "=", "value-0")).
 		Then(
@@ -395,27 +395,27 @@ func TestMultipleOperations(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, txnResp.Succeeded)
 
-	// 4. 验证更新
+	// 4. verifyupdate
 	getResp, err := cli.Get(ctx, "key-0")
 	require.NoError(t, err)
 	assert.Equal(t, "updated-0", string(getResp.Kvs[0].Value))
 
-	// 5. 批量删除
+	// 5. 批量delete
 	delResp, err := cli.Delete(ctx, "key-", clientv3.WithPrefix())
 	require.NoError(t, err)
 	assert.Equal(t, int64(10), delResp.Deleted)
 
-	// 6. 验证已全部删除
+	// 6. verify已alldelete
 	resp, err = cli.Get(ctx, "key-", clientv3.WithPrefix())
 	require.NoError(t, err)
 	assert.Len(t, resp.Kvs, 0)
 }
 
 // ============================================================================
-// RocksDB 版本的测试
+// RocksDB versiontest
 // ============================================================================
 
-// TestBasicPutGet_RocksDB 测试基本的 Put 和 Get 操作 (RocksDB)
+// TestBasicPutGet_RocksDB test基本 Put and Get operation (RocksDB)
 func TestBasicPutGet_RocksDB(t *testing.T) {
 	_, cli, _ := startTestServerRocksDB(t)
 
@@ -434,27 +434,27 @@ func TestBasicPutGet_RocksDB(t *testing.T) {
 	assert.Equal(t, "bar", string(getResp.Kvs[0].Value))
 }
 
-// TestPrefixRange_RocksDB 测试前缀查询 (RocksDB)
+// TestPrefixRange_RocksDB testprefix查询 (RocksDB)
 func TestPrefixRange_RocksDB(t *testing.T) {
 	_, cli, _ := startTestServerRocksDB(t)
 
 	ctx := context.Background()
 
-	// 写入多个键
+	// write多个key
 	cli.Put(ctx, "key1", "value1")
 	cli.Put(ctx, "key2", "value2")
 	cli.Put(ctx, "key3", "value3")
 	cli.Put(ctx, "other", "value")
 
-	// 等待 Raft 提交
+	// wait Raft commit
 	time.Sleep(500 * time.Millisecond)
 
-	// 前缀查询
+	// prefix查询
 	resp, err := cli.Get(ctx, "key", clientv3.WithPrefix())
 	require.NoError(t, err)
 	assert.Len(t, resp.Kvs, 3)
 
-	// 验证结果
+	// verifyresult
 	keys := make([]string, len(resp.Kvs))
 	for i, kv := range resp.Kvs {
 		keys[i] = string(kv.Key)
@@ -464,7 +464,7 @@ func TestPrefixRange_RocksDB(t *testing.T) {
 	assert.Contains(t, keys, "key3")
 }
 
-// TestDelete_RocksDB 测试删除操作 (RocksDB)
+// TestDelete_RocksDB testdeleteoperation (RocksDB)
 func TestDelete_RocksDB(t *testing.T) {
 	_, cli, _ := startTestServerRocksDB(t)
 
@@ -472,31 +472,31 @@ func TestDelete_RocksDB(t *testing.T) {
 
 	// Put and Delete
 	cli.Put(ctx, "foo", "bar")
-	time.Sleep(500 * time.Millisecond) // 等待 Raft 提交
+	time.Sleep(500 * time.Millisecond) // wait Raft commit
 
 	delResp, err := cli.Delete(ctx, "foo")
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), delResp.Deleted)
 
-	time.Sleep(500 * time.Millisecond) // 等待 Raft 提交
+	time.Sleep(500 * time.Millisecond) // wait Raft commit
 
-	// 验证已删除
+	// verify已delete
 	getResp, err := cli.Get(ctx, "foo")
 	require.NoError(t, err)
 	assert.Len(t, getResp.Kvs, 0)
 }
 
-// TestTransaction_RocksDB 测试事务 (RocksDB)
+// TestTransaction_RocksDB testtransaction (RocksDB)
 func TestTransaction_RocksDB(t *testing.T) {
 	_, cli, _ := startTestServerRocksDB(t)
 
 	ctx := context.Background()
 
-	// 先写入一个值
+	// 先write一个value
 	cli.Put(ctx, "key", "old-value")
-	time.Sleep(500 * time.Millisecond) // 等待 Raft 提交
+	time.Sleep(500 * time.Millisecond) // wait Raft commit
 
-	// 成功的事务
+	// successtransaction
 	txnResp, err := cli.Txn(ctx).
 		If(clientv3.Compare(clientv3.Value("key"), "=", "old-value")).
 		Then(clientv3.OpPut("key", "new-value")).
@@ -505,14 +505,14 @@ func TestTransaction_RocksDB(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, txnResp.Succeeded)
 
-	time.Sleep(500 * time.Millisecond) // 等待 Raft 提交
+	time.Sleep(500 * time.Millisecond) // wait Raft commit
 
-	// 验证值已更新
+	// verifyvalue已update
 	getResp, err := cli.Get(ctx, "key")
 	require.NoError(t, err)
 	assert.Equal(t, "new-value", string(getResp.Kvs[0].Value))
 
-	// 失败的事务
+	// failuretransaction
 	txnResp, err = cli.Txn(ctx).
 		If(clientv3.Compare(clientv3.Value("key"), "=", "wrong-value")).
 		Then(clientv3.OpPut("key", "should-not-happen")).
@@ -522,25 +522,25 @@ func TestTransaction_RocksDB(t *testing.T) {
 	assert.False(t, txnResp.Succeeded)
 }
 
-// TestWatch_RocksDB 测试 Watch 功能 (RocksDB)
+// TestWatch_RocksDB test Watch 功能 (RocksDB)
 func TestWatch_RocksDB(t *testing.T) {
 	_, cli, _ := startTestServerRocksDB(t)
 
 	ctx := context.Background()
 
-	// 创建 watch
+	// create watch
 	watchCh := cli.Watch(ctx, "watch-key")
 
-	// 等待 watch 建立
+	// wait watch 建立
 	time.Sleep(100 * time.Millisecond)
 
-	// 触发 PUT 事件
+	// trigger PUT event
 	go func() {
 		time.Sleep(100 * time.Millisecond)
 		cli.Put(context.Background(), "watch-key", "watch-value")
 	}()
 
-	// 接收 PUT 事件
+	// receive PUT event
 	select {
 	case wresp := <-watchCh:
 		require.NotNil(t, wresp)
@@ -552,13 +552,13 @@ func TestWatch_RocksDB(t *testing.T) {
 		t.Fatal("Watch PUT timeout")
 	}
 
-	// 触发 DELETE 事件
+	// trigger DELETE event
 	go func() {
 		time.Sleep(100 * time.Millisecond)
 		cli.Delete(context.Background(), "watch-key")
 	}()
 
-	// 接收 DELETE 事件
+	// receive DELETE event
 	select {
 	case wresp := <-watchCh:
 		require.NotNil(t, wresp)
@@ -574,13 +574,13 @@ func TestWatch_RocksDB(t *testing.T) {
 	}
 }
 
-// TestLease_RocksDB 测试 Lease 功能 (RocksDB)
+// TestLease_RocksDB test Lease 功能 (RocksDB)
 func TestLease_RocksDB(t *testing.T) {
 	_, cli, _ := startTestServerRocksDB(t)
 
 	ctx := context.Background()
 
-	// 创建 lease
+	// create lease
 	leaseResp, err := cli.Grant(ctx, 10)
 	require.NoError(t, err)
 	assert.Greater(t, leaseResp.ID, int64(0))
@@ -590,9 +590,9 @@ func TestLease_RocksDB(t *testing.T) {
 	_, err = cli.Put(ctx, "lease-key", "lease-value", clientv3.WithLease(leaseResp.ID))
 	require.NoError(t, err)
 
-	time.Sleep(500 * time.Millisecond) // 等待 Raft 提交
+	time.Sleep(500 * time.Millisecond) // wait Raft commit
 
-	// 验证键存在
+	// verifykey存in
 	getResp, err := cli.Get(ctx, "lease-key")
 	require.NoError(t, err)
 	assert.Len(t, getResp.Kvs, 1)
@@ -606,21 +606,21 @@ func TestLease_RocksDB(t *testing.T) {
 	_, err = cli.Revoke(ctx, leaseResp.ID)
 	require.NoError(t, err)
 
-	time.Sleep(500 * time.Millisecond) // 等待 Raft 提交
+	time.Sleep(500 * time.Millisecond) // wait Raft commit
 
-	// 验证键已被删除
+	// verifykey已被delete
 	getResp, err = cli.Get(ctx, "lease-key")
 	require.NoError(t, err)
 	assert.Len(t, getResp.Kvs, 0)
 }
 
-// TestLeaseExpiry_RocksDB 测试 Lease 过期 (RocksDB)
+// TestLeaseExpiry_RocksDB test Lease expiration (RocksDB)
 func TestLeaseExpiry_RocksDB(t *testing.T) {
 	_, cli, _ := startTestServerRocksDB(t)
 
 	ctx := context.Background()
 
-	// 创建短期 lease（2秒）
+	// create短期 lease（2秒）
 	leaseResp, err := cli.Grant(ctx, 2)
 	require.NoError(t, err)
 
@@ -628,36 +628,36 @@ func TestLeaseExpiry_RocksDB(t *testing.T) {
 	_, err = cli.Put(ctx, "expiry-key", "expiry-value", clientv3.WithLease(leaseResp.ID))
 	require.NoError(t, err)
 
-	time.Sleep(500 * time.Millisecond) // 等待 Raft 提交
+	time.Sleep(500 * time.Millisecond) // wait Raft commit
 
-	// 验证键存在
+	// verifykey存in
 	getResp, err := cli.Get(ctx, "expiry-key")
 	require.NoError(t, err)
 	assert.Len(t, getResp.Kvs, 1)
 
-	// 等待 lease 过期（2秒 + 1秒误差）
+	// wait lease expiration（2秒 + 1秒error）
 	time.Sleep(3 * time.Second)
 
-	// 验证键已被删除
+	// verifykey已被delete
 	getResp, err = cli.Get(ctx, "expiry-key")
 	require.NoError(t, err)
 	assert.Len(t, getResp.Kvs, 0, "Key should be deleted after lease expiry")
 }
 
-// TestStatus_RocksDB 测试 Status API (RocksDB)
+// TestStatus_RocksDB test Status API (RocksDB)
 func TestStatus_RocksDB(t *testing.T) {
 	server, cli, _ := startTestServerRocksDB(t)
 
 	ctx := context.Background()
 
-	// 获取状态
+	// getstatus
 	statusResp, err := cli.Status(ctx, server.Address())
 	require.NoError(t, err)
 	assert.Equal(t, "3.6.0-compatible", statusResp.Version)
 	assert.GreaterOrEqual(t, statusResp.DbSize, int64(0))
 }
 
-// TestMultipleOperations_RocksDB 测试复杂场景 (RocksDB)
+// TestMultipleOperations_RocksDB test复杂场景 (RocksDB)
 func TestMultipleOperations_RocksDB(t *testing.T) {
 	t.Skip("Transaction not yet implemented for RocksDB (used in this test)")
 
@@ -665,7 +665,7 @@ func TestMultipleOperations_RocksDB(t *testing.T) {
 
 	ctx := context.Background()
 
-	// 1. 写入数据
+	// 1. writedata
 	for i := 0; i < 10; i++ {
 		key := fmt.Sprintf("key-%d", i)
 		value := fmt.Sprintf("value-%d", i)
@@ -673,14 +673,14 @@ func TestMultipleOperations_RocksDB(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	time.Sleep(1 * time.Second) // 等待所有写入提交
+	time.Sleep(1 * time.Second) // waitallwritecommit
 
-	// 2. 范围查询
+	// 2. range查询
 	resp, err := cli.Get(ctx, "key-", clientv3.WithPrefix())
 	require.NoError(t, err)
 	assert.Len(t, resp.Kvs, 10)
 
-	// 3. 事务更新
+	// 3. transactionupdate
 	txnResp, err := cli.Txn(ctx).
 		If(clientv3.Compare(clientv3.Value("key-0"), "=", "value-0")).
 		Then(
@@ -691,39 +691,39 @@ func TestMultipleOperations_RocksDB(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, txnResp.Succeeded)
 
-	time.Sleep(500 * time.Millisecond) // 等待 Raft 提交
+	time.Sleep(500 * time.Millisecond) // wait Raft commit
 
-	// 4. 验证更新
+	// 4. verifyupdate
 	getResp, err := cli.Get(ctx, "key-0")
 	require.NoError(t, err)
 	assert.Equal(t, "updated-0", string(getResp.Kvs[0].Value))
 
-	// 5. 批量删除
+	// 5. 批量delete
 	delResp, err := cli.Delete(ctx, "key-", clientv3.WithPrefix())
 	require.NoError(t, err)
 	assert.Equal(t, int64(10), delResp.Deleted)
 
-	time.Sleep(500 * time.Millisecond) // 等待 Raft 提交
+	time.Sleep(500 * time.Millisecond) // wait Raft commit
 
-	// 6. 验证已全部删除
+	// 6. verify已alldelete
 	resp, err = cli.Get(ctx, "key-", clientv3.WithPrefix())
 	require.NoError(t, err)
 	assert.Len(t, resp.Kvs, 0)
 }
 
-// TestWatchPrefix_RocksDB 测试 RocksDB Watch 范围监听
+// TestWatchPrefix_RocksDB test RocksDB Watch rangelisten
 func TestWatchPrefix_RocksDB(t *testing.T) {
 	_, cli, _ := startTestServerRocksDB(t)
 
 	ctx := context.Background()
 
-	// 创建前缀 watch
+	// createprefix watch
 	watchCh := cli.Watch(ctx, "prefix/", clientv3.WithPrefix())
 
-	// 等待 watch 建立
+	// wait watch 建立
 	time.Sleep(100 * time.Millisecond)
 
-	// 触发多个事件
+	// trigger多个event
 	go func() {
 		time.Sleep(100 * time.Millisecond)
 		cli.Put(context.Background(), "prefix/key1", "value1")
@@ -733,7 +733,7 @@ func TestWatchPrefix_RocksDB(t *testing.T) {
 		cli.Delete(context.Background(), "prefix/key1")
 	}()
 
-	// 接收 3 个事件
+	// receive 3 个event
 	receivedEvents := 0
 	timeout := time.After(5 * time.Second)
 
@@ -744,7 +744,7 @@ func TestWatchPrefix_RocksDB(t *testing.T) {
 			require.Len(t, wresp.Events, 1)
 			event := wresp.Events[0]
 
-			// 验证事件
+			// verifyevent
 			key := string(event.Kv.Key)
 			if event.PrevKv != nil {
 				key = string(event.PrevKv.Key)
@@ -760,36 +760,36 @@ func TestWatchPrefix_RocksDB(t *testing.T) {
 	assert.Equal(t, 3, receivedEvents)
 }
 
-// TestWatchCancel_RocksDB 测试 RocksDB Watch 取消
+// TestWatchCancel_RocksDB test RocksDB Watch cancel
 func TestWatchCancel_RocksDB(t *testing.T) {
 	_, cli, _ := startTestServerRocksDB(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// 创建 watch
+	// create watch
 	watchCh := cli.Watch(ctx, "cancel-key")
 
-	// 等待 watch 建立
+	// wait watch 建立
 	time.Sleep(100 * time.Millisecond)
 
-	// 取消 watch
+	// cancel watch
 	cancel()
 
-	// 等待取消生效
+	// waitcancel生效
 	time.Sleep(200 * time.Millisecond)
 
-	// 触发事件（不应该收到）
+	// triggerevent（notshould收to）
 	cli.Put(context.Background(), "cancel-key", "value")
 
-	// 验证 channel 已关闭或者不会收到事件
+	// verify channel 已closeornotwill收toevent
 	select {
 	case wresp, ok := <-watchCh:
 		if ok {
-			// 如果收到响应，应该是取消响应
+			// if收toresponse，shouldiscancelresponse
 			assert.True(t, wresp.Canceled, "Watch should be canceled")
 		}
-		// 否则 channel 已关闭，符合预期
+		// else channel 已close，符合预期
 	case <-time.After(500 * time.Millisecond):
-		// 超时也符合预期，说明没有收到事件
+		// timeout也符合预期，descriptionnone收toevent
 	}
 }

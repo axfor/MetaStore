@@ -25,47 +25,47 @@ import (
 )
 
 var (
-	// globalLogger 全局日志实例
+	// globalLogger globalloginstance
 	globalLogger *Logger
 	once         sync.Once
 )
 
-// Logger 结构化日志器
+// Logger structure化log器
 type Logger struct {
 	zap    *zap.Logger
 	sugar  *zap.SugaredLogger
 	config *Config
 }
 
-// Config 日志配置
+// Config logconfig
 type Config struct {
-	// Level 日志级别: debug, info, warn, error, dpanic, panic, fatal
+	// Level loglevel: debug, info, warn, error, dpanic, panic, fatal
 	Level string
 
-	// OutputPaths 日志输出路径（支持多个）
+	// OutputPaths logoutputpath（supported多个）
 	// 例如: ["stdout", "/var/log/metastore/app.log"]
 	OutputPaths []string
 
-	// ErrorOutputPaths 错误日志输出路径
+	// ErrorOutputPaths incorrectlogoutputpath
 	ErrorOutputPaths []string
 
-	// Encoding 编码格式: json 或 console
+	// Encoding encodeformat: json or console
 	Encoding string
 
-	// Development 是否开发模式（会显示更详细的堆栈信息）
+	// Development isno开发schema（will显示更详fineheapstackinfo）
 	Development bool
 
-	// DisableCaller 是否禁用调用者信息（文件名、行号）
+	// DisableCaller isnodisabledcall者info（file名、row号）
 	DisableCaller bool
 
-	// DisableStacktrace 是否禁用堆栈跟踪
+	// DisableStacktrace isnodisabledheapstacktrace
 	DisableStacktrace bool
 
-	// EnableColor 是否启用颜色输出（仅 console 编码）
+	// EnableColor isnoenabled颜色output（仅 console encode）
 	EnableColor bool
 }
 
-// DefaultConfig 默认配置
+// DefaultConfig defaultconfig
 var DefaultConfig = &Config{
 	Level:             "info",
 	OutputPaths:       []string{"stdout"},
@@ -77,7 +77,7 @@ var DefaultConfig = &Config{
 	EnableColor:       true,
 }
 
-// ProductionConfig 生产环境配置
+// ProductionConfig 生产environmentconfig
 var ProductionConfig = &Config{
 	Level:             "info",
 	OutputPaths:       []string{"stdout", "/var/log/metastore/app.log"},
@@ -89,7 +89,7 @@ var ProductionConfig = &Config{
 	EnableColor:       false,
 }
 
-// DevelopmentConfig 开发环境配置
+// DevelopmentConfig 开发environmentconfig
 var DevelopmentConfig = &Config{
 	Level:             "debug",
 	OutputPaths:       []string{"stdout"},
@@ -101,19 +101,19 @@ var DevelopmentConfig = &Config{
 	EnableColor:       true,
 }
 
-// NewLogger 创建新的日志器
+// NewLogger createnewlog器
 func NewLogger(cfg *Config) (*Logger, error) {
 	if cfg == nil {
 		cfg = DefaultConfig
 	}
 
-	// 解析日志级别
+	// 解析loglevel
 	level := zapcore.InfoLevel
 	if err := level.UnmarshalText([]byte(cfg.Level)); err != nil {
 		return nil, err
 	}
 
-	// 创建 encoder 配置
+	// create encoder config
 	encoderConfig := zapcore.EncoderConfig{
 		TimeKey:        "time",
 		LevelKey:       "level",
@@ -129,15 +129,15 @@ func NewLogger(cfg *Config) (*Logger, error) {
 		EncodeCaller:   zapcore.ShortCallerEncoder,
 	}
 
-	// 如果是 console 编码且启用颜色
+	// ifis console encode且enabled颜色
 	if cfg.Encoding == "console" && cfg.EnableColor {
 		encoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 	}
 
-	// 创建 core
+	// create core
 	var cores []zapcore.Core
 
-	// 输出路径
+	// outputpath
 	for _, path := range cfg.OutputPaths {
 		writer := getWriter(path)
 		var encoder zapcore.Encoder
@@ -155,11 +155,11 @@ func NewLogger(cfg *Config) (*Logger, error) {
 		cores = append(cores, core)
 	}
 
-	// 错误输出路径
+	// incorrectoutputpath
 	if len(cfg.ErrorOutputPaths) > 0 {
 		for _, path := range cfg.ErrorOutputPaths {
 			if contains(cfg.OutputPaths, path) {
-				continue // 避免重复
+				continue // 避免duplicate
 			}
 
 			writer := getWriter(path)
@@ -170,7 +170,7 @@ func NewLogger(cfg *Config) (*Logger, error) {
 				encoder = zapcore.NewConsoleEncoder(encoderConfig)
 			}
 
-			// 错误日志只记录 Error 及以上级别
+			// incorrectlog只record Error and以上level
 			core := zapcore.NewCore(
 				encoder,
 				zapcore.AddSync(writer),
@@ -180,10 +180,10 @@ func NewLogger(cfg *Config) (*Logger, error) {
 		}
 	}
 
-	// 合并所有 core
+	// mergeall core
 	core := zapcore.NewTee(cores...)
 
-	// 创建 zap logger
+	// create zap logger
 	opts := []zap.Option{
 		zap.AddCaller(),
 	}
@@ -209,7 +209,7 @@ func NewLogger(cfg *Config) (*Logger, error) {
 	}, nil
 }
 
-// InitGlobalLogger 初始化全局日志器
+// InitGlobalLogger initializegloballog器
 func InitGlobalLogger(cfg *Config) error {
 	var err error
 	once.Do(func() {
@@ -218,8 +218,8 @@ func InitGlobalLogger(cfg *Config) error {
 	return err
 }
 
-// InitFromConfig 从配置文件初始化全局日志器
-// 将 config.LogConfig 转换为 log.Config 并初始化
+// InitFromConfig fromconfigfileinitializegloballog器
+// will config.LogConfig convertas log.Config 并initialize
 func InitFromConfig(cfg *config.LogConfig) error {
 	if cfg == nil {
 		return InitGlobalLogger(DefaultConfig)
@@ -233,32 +233,32 @@ func InitFromConfig(cfg *config.LogConfig) error {
 		Development:       false,
 		DisableCaller:     false,
 		DisableStacktrace: false,
-		EnableColor:       cfg.Encoding == "console", // console 模式启用颜色
+		EnableColor:       cfg.Encoding == "console", // console schemaenabled颜色
 	}
 
 	return InitGlobalLogger(logCfg)
 }
 
-// GetLogger 获取全局日志器
+// GetLogger getgloballog器
 func GetLogger() *Logger {
 	if globalLogger == nil {
-		// 自动初始化为默认配置
+		// 自动initializeasdefaultconfig
 		_ = InitGlobalLogger(DefaultConfig)
 	}
 	return globalLogger
 }
 
-// ReplaceGlobalLogger 替换全局日志器
+// ReplaceGlobalLogger replacegloballog器
 func ReplaceGlobalLogger(logger *Logger) {
 	globalLogger = logger
 }
 
-// Sync 同步日志缓冲区
+// Sync synchronouslogbuffer
 func (l *Logger) Sync() error {
 	return l.zap.Sync()
 }
 
-// With 添加字段（返回新的 logger）
+// With addfield（returnnew logger）
 func (l *Logger) With(fields ...zap.Field) *Logger {
 	return &Logger{
 		zap:    l.zap.With(fields...),
@@ -267,7 +267,7 @@ func (l *Logger) With(fields ...zap.Field) *Logger {
 	}
 }
 
-// Named 创建命名子日志器
+// Named create命名子log器
 func (l *Logger) Named(name string) *Logger {
 	return &Logger{
 		zap:    l.zap.Named(name),
@@ -276,77 +276,77 @@ func (l *Logger) Named(name string) *Logger {
 	}
 }
 
-// Debug 级别日志
+// Debug levellog
 func (l *Logger) Debug(msg string, fields ...zap.Field) {
 	l.zap.Debug(msg, fields...)
 }
 
-// Info 级别日志
+// Info levellog
 func (l *Logger) Info(msg string, fields ...zap.Field) {
 	l.zap.Info(msg, fields...)
 }
 
-// Warn 级别日志
+// Warn levellog
 func (l *Logger) Warn(msg string, fields ...zap.Field) {
 	l.zap.Warn(msg, fields...)
 }
 
-// Error 级别日志
+// Error levellog
 func (l *Logger) Error(msg string, fields ...zap.Field) {
 	l.zap.Error(msg, fields...)
 }
 
-// DPanic 级别日志（开发模式会 panic）
+// DPanic levellog（开发schemawill panic）
 func (l *Logger) DPanic(msg string, fields ...zap.Field) {
 	l.zap.DPanic(msg, fields...)
 }
 
-// Panic 级别日志（会 panic）
+// Panic levellog（will panic）
 func (l *Logger) Panic(msg string, fields ...zap.Field) {
 	l.zap.Panic(msg, fields...)
 }
 
-// Fatal 级别日志（会退出程序）
+// Fatal levellog（will退出程序）
 func (l *Logger) Fatal(msg string, fields ...zap.Field) {
 	l.zap.Fatal(msg, fields...)
 }
 
-// Debugf 格式化 Debug 日志
+// Debugf format化 Debug log
 func (l *Logger) Debugf(template string, args ...interface{}) {
 	l.sugar.Debugf(template, args...)
 }
 
-// Infof 格式化 Info 日志
+// Infof format化 Info log
 func (l *Logger) Infof(template string, args ...interface{}) {
 	l.sugar.Infof(template, args...)
 }
 
-// Warnf 格式化 Warn 日志
+// Warnf format化 Warn log
 func (l *Logger) Warnf(template string, args ...interface{}) {
 	l.sugar.Warnf(template, args...)
 }
 
-// Errorf 格式化 Error 日志
+// Errorf format化 Error log
 func (l *Logger) Errorf(template string, args ...interface{}) {
 	l.sugar.Errorf(template, args...)
 }
 
-// DPanicf 格式化 DPanic 日志
+// DPanicf format化 DPanic log
 func (l *Logger) DPanicf(template string, args ...interface{}) {
 	l.sugar.DPanicf(template, args...)
 }
 
-// Panicf 格式化 Panic 日志
+// Panicf format化 Panic log
 func (l *Logger) Panicf(template string, args ...interface{}) {
 	l.sugar.Panicf(template, args...)
 }
 
-// Fatalf 格式化 Fatal 日志
+// Fatalf format化 Fatal log
 func (l *Logger) Fatalf(template string, args ...interface{}) {
 	l.sugar.Fatalf(template, args...)
 }
 
-// getWriter 获取输出 Writer
+// getWriter getoutput Writer
 func getWriter(path string) zapcore.WriteSyncer {
 	switch path {
 	case "stdout":
@@ -354,17 +354,17 @@ func getWriter(path string) zapcore.WriteSyncer {
 	case "stderr":
 		return zapcore.AddSync(os.Stderr)
 	default:
-		// 文件输出（会自动创建目录）
+		// fileoutput（will自动createdirectory）
 		file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
-			// 失败时回退到 stdout
+			// failure时回退to stdout
 			return zapcore.AddSync(os.Stdout)
 		}
 		return zapcore.AddSync(file)
 	}
 }
 
-// contains 检查字符串切片是否包含元素
+// contains check字符串切片isnopackage含element
 func contains(slice []string, item string) bool {
 	for _, s := range slice {
 		if s == item {
@@ -374,59 +374,59 @@ func contains(slice []string, item string) bool {
 	return false
 }
 
-// 全局便捷函数（使用全局 logger）
+// global便捷function（useglobal logger）
 
-// Debug 全局 Debug 日志
+// Debug global Debug log
 func Debug(msg string, fields ...zap.Field) {
 	GetLogger().Debug(msg, fields...)
 }
 
-// Info 全局 Info 日志
+// Info global Info log
 func Info(msg string, fields ...zap.Field) {
 	GetLogger().Info(msg, fields...)
 }
 
-// Warn 全局 Warn 日志
+// Warn global Warn log
 func Warn(msg string, fields ...zap.Field) {
 	GetLogger().Warn(msg, fields...)
 }
 
-// Error 全局 Error 日志
+// Error global Error log
 func Error(msg string, fields ...zap.Field) {
 	GetLogger().Error(msg, fields...)
 }
 
-// Fatal 全局 Fatal 日志
+// Fatal global Fatal log
 func Fatal(msg string, fields ...zap.Field) {
 	GetLogger().Fatal(msg, fields...)
 }
 
-// Debugf 全局格式化 Debug 日志
+// Debugf globalformat化 Debug log
 func Debugf(template string, args ...interface{}) {
 	GetLogger().Debugf(template, args...)
 }
 
-// Infof 全局格式化 Info 日志
+// Infof globalformat化 Info log
 func Infof(template string, args ...interface{}) {
 	GetLogger().Infof(template, args...)
 }
 
-// Warnf 全局格式化 Warn 日志
+// Warnf globalformat化 Warn log
 func Warnf(template string, args ...interface{}) {
 	GetLogger().Warnf(template, args...)
 }
 
-// Errorf 全局格式化 Error 日志
+// Errorf globalformat化 Error log
 func Errorf(template string, args ...interface{}) {
 	GetLogger().Errorf(template, args...)
 }
 
-// Fatalf 全局格式化 Fatal 日志
+// Fatalf globalformat化 Fatal log
 func Fatalf(template string, args ...interface{}) {
 	GetLogger().Fatalf(template, args...)
 }
 
-// Sync 同步全局日志器
+// Sync synchronousgloballog器
 func Sync() error {
 	if globalLogger != nil {
 		return globalLogger.Sync()

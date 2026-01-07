@@ -21,115 +21,115 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-// 常用字段构造函数
+// 常用field构造function
 
-// String 字符串字段
+// String 字符串field
 func String(key, val string) zap.Field {
 	return zap.String(key, val)
 }
 
-// Int64 整数字段
+// Int64 整数field
 func Int64(key string, val int64) zap.Field {
 	return zap.Int64(key, val)
 }
 
-// Int 整数字段
+// Int 整数field
 func Int(key string, val int) zap.Field {
 	return zap.Int(key, val)
 }
 
-// Uint64 无符号整数字段
+// Uint64 无符号整数field
 func Uint64(key string, val uint64) zap.Field {
 	return zap.Uint64(key, val)
 }
 
-// Bool 布尔字段
+// Bool 布尔field
 func Bool(key string, val bool) zap.Field {
 	return zap.Bool(key, val)
 }
 
-// Duration 时间间隔字段
+// Duration timeintervalfield
 func Duration(key string, val time.Duration) zap.Field {
 	return zap.Duration(key, val)
 }
 
-// Time 时间字段
+// Time timefield
 func Time(key string, val time.Time) zap.Field {
 	return zap.Time(key, val)
 }
 
-// Err 错误字段
+// Err incorrectfield
 func Err(err error) zap.Field {
 	return zap.Error(err)
 }
 
-// Any 任意类型字段
+// Any 任意typefield
 func Any(key string, val interface{}) zap.Field {
 	return zap.Any(key, val)
 }
 
-// Namespace 命名空间（用于分组字段）
+// Namespace namespace（用at分groupfield）
 func Namespace(key string) zap.Field {
 	return zap.Namespace(key)
 }
 
-// 业务相关字段
+// 业务相关field
 
-// Key KV 存储的键
+// Key KV 存储key
 func Key(key []byte) zap.Field {
 	return zap.ByteString("key", key)
 }
 
-// KeyString KV 存储的键（字符串）
+// KeyString KV 存储key（字符串）
 func KeyString(key string) zap.Field {
 	return zap.String("key", key)
 }
 
-// Value KV 存储的值
+// Value KV 存储value
 func Value(value []byte) zap.Field {
-	// 如果值太大，只记录长度
+	// ifvalue太大，只recordlength
 	if len(value) > 1024 {
 		return zap.Int("value_size", len(value))
 	}
 	return zap.ByteString("value", value)
 }
 
-// Revision 版本号
+// Revision version号
 func Revision(rev int64) zap.Field {
 	return zap.Int64("revision", rev)
 }
 
-// LeaseID 租约 ID
+// LeaseID lease ID
 func LeaseID(id int64) zap.Field {
 	return zap.Int64("lease_id", id)
 }
 
-// TTL 租约 TTL
+// TTL lease TTL
 func TTL(ttl int64) zap.Field {
 	return zap.Int64("ttl", ttl)
 }
 
-// MemberID 成员 ID
+// MemberID member ID
 func MemberID(id uint64) zap.Field {
 	return zap.Uint64("member_id", id)
 }
 
-// ClusterID 集群 ID
+// ClusterID cluster ID
 func ClusterID(id uint64) zap.Field {
 	return zap.Uint64("cluster_id", id)
 }
 
-// Username 用户名
+// Username user名
 func Username(name string) zap.Field {
 	return zap.String("username", name)
 }
 
-// RoleName 角色名
+// RoleName role名
 func RoleName(name string) zap.Field {
 	return zap.String("role", name)
 }
 
-// Token 令牌（脱敏）
+// Token token（脱敏）
 func Token(token string) zap.Field {
 	if len(token) > 8 {
 		return zap.String("token", token[:8]+"...")
@@ -137,27 +137,27 @@ func Token(token string) zap.Field {
 	return zap.String("token", "***")
 }
 
-// Method gRPC 方法
+// Method gRPC method
 func Method(method string) zap.Field {
 	return zap.String("method", method)
 }
 
-// RemoteAddr 远程地址
+// RemoteAddr 远程address
 func RemoteAddr(addr string) zap.Field {
 	return zap.String("remote_addr", addr)
 }
 
-// Component 组件名
+// Component component名
 func Component(name string) zap.Field {
 	return zap.String("component", name)
 }
 
-// Phase 阶段
+// Phase 阶segment
 func Phase(phase string) zap.Field {
 	return zap.String("phase", phase)
 }
 
-// Count 计数
+// Count count
 func Count(count int64) zap.Field {
 	return zap.Int64("count", count)
 }
@@ -167,14 +167,14 @@ func Goroutine(name string) zap.Field {
 	return zap.String("goroutine", name)
 }
 
-// RequestID 请求 ID
+// RequestID request ID
 func RequestID(id string) zap.Field {
 	return zap.String("request_id", id)
 }
 
-// 资源相关字段
+// resource相关field
 
-// ResourceStats 资源统计（嵌套字段）
+// ResourceStats resourcestatistics（嵌套field）
 func ResourceStats(currentConn, maxConn, currentReq, maxReq, mem, maxMem int64) zap.Field {
 	return zap.Object("resources", zapResourceStats{
 		CurrentConnections: currentConn,
@@ -186,7 +186,7 @@ func ResourceStats(currentConn, maxConn, currentReq, maxReq, mem, maxMem int64) 
 	})
 }
 
-// zapResourceStats 资源统计对象（实现 zapcore.ObjectMarshaler）
+// zapResourceStats resourcestatisticsobject（implement zapcore.ObjectMarshaler）
 type zapResourceStats struct {
 	CurrentConnections int64
 	MaxConnections     int64

@@ -21,9 +21,9 @@ import (
 	"time"
 )
 
-// TestSnapshotProtobufSerialization 测试 Protobuf 快照序列化
+// TestSnapshotProtobufSerialization test Protobuf snapshotserialize
 func TestSnapshotProtobufSerialization(t *testing.T) {
-	// 准备测试数据
+	// 准备testdata
 	revision := int64(100)
 	kvData := map[string]*kvstore.KeyValue{
 		"key1": {
@@ -60,29 +60,29 @@ func TestSnapshotProtobufSerialization(t *testing.T) {
 		},
 	}
 
-	// 序列化
+	// serialize
 	data, err := serializeSnapshot(revision, kvData, leases)
 	if err != nil {
 		t.Fatalf("serializeSnapshot failed: %v", err)
 	}
 
-	// 验证使用了 Protobuf 格式
+	// verifyuse Protobuf format
 	if !isProtobufSnapshot(data) {
 		t.Error("Expected Protobuf format, got JSON")
 	}
 
-	// 反序列化
+	// deserialize
 	snapshot, err := deserializeSnapshot(data)
 	if err != nil {
 		t.Fatalf("deserializeSnapshot failed: %v", err)
 	}
 
-	// 验证 Revision
+	// verify Revision
 	if snapshot.Revision != revision {
 		t.Errorf("Expected revision %d, got %d", revision, snapshot.Revision)
 	}
 
-	// 验证 KV 数据
+	// verify KV data
 	if len(snapshot.KVData) != len(kvData) {
 		t.Errorf("Expected %d KV entries, got %d", len(kvData), len(snapshot.KVData))
 	}
@@ -114,7 +114,7 @@ func TestSnapshotProtobufSerialization(t *testing.T) {
 		}
 	}
 
-	// 验证 Lease 数据
+	// verify Lease data
 	if len(snapshot.Leases) != len(leases) {
 		t.Errorf("Expected %d leases, got %d", len(leases), len(snapshot.Leases))
 	}
@@ -133,12 +133,12 @@ func TestSnapshotProtobufSerialization(t *testing.T) {
 			t.Errorf("Lease TTL mismatch for %d: expected %d, got %d", id, expectedLease.TTL, actualLease.TTL)
 		}
 
-		// 验证 GrantTime（允许纳秒级误差）
+		// verify GrantTime（allow纳秒级error）
 		if actualLease.GrantTime.UnixNano() != expectedLease.GrantTime.UnixNano() {
 			t.Errorf("Lease GrantTime mismatch for %d: expected %v, got %v", id, expectedLease.GrantTime, actualLease.GrantTime)
 		}
 
-		// 验证 Keys
+		// verify Keys
 		if len(actualLease.Keys) != len(expectedLease.Keys) {
 			t.Errorf("Lease Keys count mismatch for %d: expected %d, got %d", id, len(expectedLease.Keys), len(actualLease.Keys))
 		}
@@ -150,9 +150,9 @@ func TestSnapshotProtobufSerialization(t *testing.T) {
 	}
 }
 
-// TestSnapshotJSONBackwardCompatibility 测试 JSON 向后兼容性
+// TestSnapshotJSONBackwardCompatibility test JSON 向后compatible性
 func TestSnapshotJSONBackwardCompatibility(t *testing.T) {
-	// 准备测试数据（使用旧的 JSON 格式）
+	// 准备testdata（useold JSON format）
 	revision := int64(50)
 	kvData := map[string]*kvstore.KeyValue{
 		"oldkey": {
@@ -175,7 +175,7 @@ func TestSnapshotJSONBackwardCompatibility(t *testing.T) {
 		},
 	}
 
-	// 使用 JSON 序列化（模拟旧快照）
+	// use JSON serialize（模拟oldsnapshot）
 	oldSnapshot := SnapshotData{
 		Revision: revision,
 		KVData:   kvData,
@@ -186,13 +186,13 @@ func TestSnapshotJSONBackwardCompatibility(t *testing.T) {
 		t.Fatalf("JSON marshal failed: %v", err)
 	}
 
-	// 使用新的反序列化函数（应该能处理 JSON）
+	// usenewdeserializefunction（should能handle JSON）
 	snapshot, err := deserializeSnapshot(jsonData)
 	if err != nil {
 		t.Fatalf("deserializeSnapshot failed for JSON: %v", err)
 	}
 
-	// 验证数据正确性
+	// verifydatacorrect性
 	if snapshot.Revision != revision {
 		t.Errorf("Expected revision %d, got %d", revision, snapshot.Revision)
 	}
@@ -214,28 +214,28 @@ func TestSnapshotJSONBackwardCompatibility(t *testing.T) {
 	}
 }
 
-// TestSnapshotEmptyData 测试空快照
+// TestSnapshotEmptyData testemptysnapshot
 func TestSnapshotEmptyData(t *testing.T) {
 	revision := int64(0)
 	kvData := map[string]*kvstore.KeyValue{}
 	leases := map[int64]*kvstore.Lease{}
 
-	// 序列化空快照
+	// serializeemptysnapshot
 	data, err := serializeSnapshot(revision, kvData, leases)
 	if err != nil {
 		t.Fatalf("serializeSnapshot failed: %v", err)
 	}
 
-	// 调试输出
+	// debugoutput
 	t.Logf("Serialized empty snapshot: len=%d, data=%q", len(data), string(data[:min(len(data), 50)]))
 
-	// 反序列化
+	// deserialize
 	snapshot, err := deserializeSnapshot(data)
 	if err != nil {
 		t.Fatalf("deserializeSnapshot failed: %v (data len=%d, prefix=%q)", err, len(data), string(data[:min(len(data), 10)]))
 	}
 
-	// 验证
+	// verify
 	if snapshot.Revision != 0 {
 		t.Errorf("Expected revision 0, got %d", snapshot.Revision)
 	}
@@ -247,9 +247,9 @@ func TestSnapshotEmptyData(t *testing.T) {
 	}
 }
 
-// BenchmarkSnapshotProtobuf 基准测试: Protobuf 序列化
+// BenchmarkSnapshotProtobuf 基准test: Protobuf serialize
 func BenchmarkSnapshotProtobuf(b *testing.B) {
-	// 准备大量测试数据（模拟真实场景）
+	// 准备large number oftestdata（模拟true实场景）
 	kvData := make(map[string]*kvstore.KeyValue, 1000)
 	for i := 0; i < 1000; i++ {
 		key := string(rune('k')) + string(rune(i))
@@ -289,9 +289,9 @@ func BenchmarkSnapshotProtobuf(b *testing.B) {
 	}
 }
 
-// BenchmarkSnapshotJSON 基准测试: JSON 序列化（对比）
+// BenchmarkSnapshotJSON 基准test: JSON serialize（对比）
 func BenchmarkSnapshotJSON(b *testing.B) {
-	// 准备相同的测试数据
+	// 准备sametestdata
 	kvData := make(map[string]*kvstore.KeyValue, 1000)
 	for i := 0; i < 1000; i++ {
 		key := string(rune('k')) + string(rune(i))
@@ -336,7 +336,7 @@ func BenchmarkSnapshotJSON(b *testing.B) {
 	}
 }
 
-// isProtobufSnapshot 检查是否为 Protobuf 格式
+// isProtobufSnapshot checkisnoas Protobuf format
 func isProtobufSnapshot(data []byte) bool {
 	const pbPrefix = "SNAP-PB:"
 	return len(data) > len(pbPrefix) && string(data[:len(pbPrefix)]) == pbPrefix

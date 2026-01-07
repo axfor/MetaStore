@@ -28,21 +28,21 @@ import (
 	"go.uber.org/zap"
 )
 
-// Server HTTP API 服务器
+// Server HTTP API server
 type Server struct {
 	store       kvstore.Store
 	confChangeC chan<- raftpb.ConfChange
 	httpServer  *http.Server
 }
 
-// Config HTTP API 配置
+// Config HTTP API configuration
 type Config struct {
 	Store       kvstore.Store
 	Port        int
 	ConfChangeC chan<- raftpb.ConfChange
 }
 
-// NewServer 创建新的 HTTP API 服务器
+// NewServer creates a new HTTP API server
 func NewServer(cfg Config) *Server {
 	s := &Server{
 		store:       cfg.Store,
@@ -60,34 +60,34 @@ func NewServer(cfg Config) *Server {
 	return s
 }
 
-// Start 启动 HTTP 服务器
+// Start starts the HTTP server
 func (s *Server) Start() error {
 	log.Info("Starting HTTP API server", zap.String("address", s.httpServer.Addr), zap.String("component", "http"))
 	return s.httpServer.ListenAndServe()
 }
 
-// Stop 停止 HTTP 服务器
+// Stop stops the HTTP server
 func (s *Server) Stop() error {
 	log.Info("Stopping HTTP API server", zap.String("component", "http"))
 	return s.httpServer.Close()
 }
 
-// ServeHTTP 处理 HTTP 请求
+// ServeHTTP handles HTTP requests
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log.Info("HTTP request received",
 		zap.String("method", r.Method),
 		zap.String("uri", r.RequestURI),
 		zap.String("component", "http"))
 
-	// 去掉前导斜杠，使 key 与 etcd API 一致
+	// Remove leading slash to make key consistent with etcd API
 	key := strings.TrimPrefix(r.RequestURI, "/")
 	defer r.Body.Close()
 
-	// 检查是否是集群管理操作（以数字 ID 开头）
-	// 集群操作: POST /{nodeID} 添加节点, DELETE /{nodeID} 删除节点
+	// Check if it's a cluster management operation (starts with numeric ID)
+	// Cluster operations: POST /{nodeID} add node, DELETE /{nodeID} remove node
 	isClusterOp := false
 	if r.Method == http.MethodPost || r.Method == http.MethodDelete {
-		// 尝试解析为 nodeID，如果成功则视为集群操作
+		// Try to parse as nodeID, if successful treat as cluster operation
 		_, err := strconv.ParseUint(key, 0, 64)
 		isClusterOp = (err == nil)
 	}
@@ -118,7 +118,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handlePut 处理 PUT 请求（存储键值对）
+// handlePut handles PUT requests (store key-value pairs)
 func (s *Server) handlePut(w http.ResponseWriter, r *http.Request, key string) {
 	v, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -132,7 +132,7 @@ func (s *Server) handlePut(w http.ResponseWriter, r *http.Request, key string) {
 		zap.String("value", string(v)),
 		zap.String("component", "http"))
 
-	// 使用同步的 PutWithLease 而不是异步的 Propose，确保写入后立即可读
+	// Use synchronous PutWithLease instead of asynchronous Propose to ensure immediate readability after write
 	ctx := context.Background()
 	_, _, err = s.store.PutWithLease(ctx, key, string(v), 0)
 	if err != nil {
@@ -144,7 +144,7 @@ func (s *Server) handlePut(w http.ResponseWriter, r *http.Request, key string) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleGet 处理 GET 请求（查询键值）
+// handleGet handles GET requests (query key-value)
 func (s *Server) handleGet(w http.ResponseWriter, r *http.Request, key string) {
 	log.Info("HTTP GET request",
 		zap.String("key", key),
@@ -164,7 +164,7 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request, key string) {
 	}
 }
 
-// handleClusterAdd 处理 POST 请求（添加 Raft 节点）
+// handleClusterAdd handles POST requests (add Raft node)
 func (s *Server) handleClusterAdd(w http.ResponseWriter, r *http.Request, key string) {
 	url, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -173,7 +173,7 @@ func (s *Server) handleClusterAdd(w http.ResponseWriter, r *http.Request, key st
 		return
 	}
 
-	// key 已经去掉前导斜杠，直接解析
+	// key already has leading slash removed, parse directly
 	nodeID, err := strconv.ParseUint(key, 0, 64)
 	if err != nil {
 		log.Error("Failed to convert ID for conf change", zap.Error(err), zap.String("component", "http"))
@@ -192,9 +192,9 @@ func (s *Server) handleClusterAdd(w http.ResponseWriter, r *http.Request, key st
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleClusterDelete 处理 DELETE 请求（删除 Raft 节点）
+// handleClusterDelete handles DELETE requests (remove Raft node)
 func (s *Server) handleClusterDelete(w http.ResponseWriter, r *http.Request, key string) {
-	// key 已经去掉前导斜杠，直接解析
+	// key already has leading slash removed, parse directly
 	nodeID, err := strconv.ParseUint(key, 0, 64)
 	if err != nil {
 		log.Error("Failed to convert ID for conf change", zap.Error(err), zap.String("component", "http"))
@@ -212,9 +212,9 @@ func (s *Server) handleClusterDelete(w http.ResponseWriter, r *http.Request, key
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleKeyDelete 处理 DELETE 请求（删除 key-value 对）
+// handleKeyDelete handles DELETE requests (delete key-value pairs)
 func (s *Server) handleKeyDelete(w http.ResponseWriter, r *http.Request, key string) {
-	// 使用 DeleteRange 删除单个 key（rangeEnd 为空表示单键删除）
+	// Use DeleteRange to delete single key (empty rangeEnd means single key deletion)
 	_, _, _, err := s.store.DeleteRange(context.Background(), key, "")
 	if err != nil {
 		log.Error("Failed to delete key", zap.String("key", key), zap.Error(err), zap.String("component", "http"))
@@ -226,7 +226,7 @@ func (s *Server) handleKeyDelete(w http.ResponseWriter, r *http.Request, key str
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// ServeHTTPKVAPI 启动 HTTP KV API（保持向后兼容）
+// ServeHTTPKVAPI starts HTTP KV API (maintains backward compatibility)
 func ServeHTTPKVAPI(kv kvstore.Store, port int, confChangeC chan<- raftpb.ConfChange, errorC <-chan error) {
 	srv := NewServer(Config{
 		Store:       kv,

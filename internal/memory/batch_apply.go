@@ -22,63 +22,63 @@ import (
 	"go.uber.org/zap"
 )
 
-// batch_apply.go 实现批量 Apply 优化 (Phase 2)
+// batch_apply.go implement批量 Apply optimize (Phase 2)
 //
-// 核心优化：减少锁开销
-// - Before: N 个操作 → N 次加锁/解锁 → 锁开销 O(N)
-// - After: N 个操作 → 1 次加锁/解锁 → 锁开销 O(1)
+// 核心optimize：减少lock开销
+// - Before: N 个operation → N 次加lock/unlock → lock开销 O(N)
+// - After: N 个operation → 1 次加lock/unlock → lock开销 O(1)
 //
 // 性能提升原理：
-// 1. 按分片分组操作
-// 2. 对每个分片，一次加锁，批量执行
-// 3. 并行处理不同分片
+// 1. 按shard分groupoperation
+// 2. 对eachshard，一次加lock，批量execute
+// 3. parallelismhandledifferentshard
 //
-// 预期提升: 5-10x (锁开销减少 100x，但受其他因素限制)
+// 预期提升: 5-10x (lock开销减少 100x，但受其他因素limit)
 
-// applyBatch 批量应用 Raft 操作
+// applyBatch 批量应用 Raft operation
 //
-// 核心优化 (Phase 2):
-// - 按分片分组操作
-// - 每个分片一次加锁，批量执行
-// - 不同分片并行处理
+// 核心optimize (Phase 2):
+// - 按shard分groupoperation
+// - eachshard一次加lock，批量execute
+// - differentshardparallelismhandle
 //
-// 示例：
-//   100 个操作 → 分布到 50 个分片
-//   Before: 100 次加锁
-//   After: 50 次加锁 (每个分片 1 次)
+// example：
+//   100 个operation → distributionto 50 个shard
+//   Before: 100 次加lock
+//   After: 50 次加lock (eachshard 1 次)
 //
-// 参数：
-//   - ops: 批量操作列表
+// argument：
+//   - ops: 批量operationlist
 func (m *Memory) applyBatch(ops []RaftOperation) {
 	if len(ops) == 0 {
 		return
 	}
 
-	// 特殊处理：只有 1 个操作，直接应用（避免分组开销）
+	// 特殊handle：只有 1 个operation，直接应用（避免分group开销）
 	if len(ops) == 1 {
 		m.applyOperation(ops[0])
 		return
 	}
 
-	// ✅ Phase 2 核心优化：按顺序处理，批量应用连续的同类型操作
+	// ✅ Phase 2 核心optimize：按orderhandle，批量应用连续同typeoperation
 	//
 	// 设计原则：
-	// 1. 保持操作顺序（保证 revision 正确递增）
-	// 2. 批量应用连续的同类型操作（减少锁开销）
-	// 3. 当操作类型改变时，刷新当前批次
+	// 1. 保持operationorder（保证 revision correct递增）
+	// 2. 批量应用连续同typeoperation（减少lock开销）
+	// 3. whenoperationtype改变时，refreshcurrent批次
 	//
-	// 示例：
+	// example：
 	//   [PUT, PUT, DELETE, PUT, TXN]
 	//   → Batch1: [PUT, PUT] → Batch2: [DELETE] → Batch3: [PUT] → Batch4: [TXN]
 	//
 	// 性能提升原理：
-	//   Before: N 个操作 → N 次加锁
-	//   After: N 个操作 → ~N/avg_batch_size 次加锁
+	//   Before: N 个operation → N 次加lock
+	//   After: N 个operation → ~N/avg_batch_size 次加lock
 
 	var currentBatch []RaftOperation
 	var currentType string
 
-	// flushBatch 刷新当前批次
+	// flushBatch refreshcurrent批次
 	flushBatch := func() {
 		if len(currentBatch) == 0 {
 			return
@@ -90,7 +90,7 @@ func (m *Memory) applyBatch(ops []RaftOperation) {
 		case "DELETE":
 			m.batchApplyDelete(currentBatch)
 		case "TXN":
-			// 事务操作逐个执行（使用全局锁）
+			// transactionoperation逐个execute（usegloballock）
 			for _, op := range currentBatch {
 				txnResp, err := m.MemoryEtcd.applyTxnWithShardLocks(op.Compares, op.ThenOps, op.ElseOps)
 				if err != nil {
@@ -98,7 +98,7 @@ func (m *Memory) applyBatch(ops []RaftOperation) {
 						zap.Error(err),
 						zap.String("component", "storage-memory"))
 				}
-				// 保存事务结果
+				// savetransactionresult
 				if op.SeqNum != "" && txnResp != nil {
 					m.pendingMu.Lock()
 					m.pendingTxnResults[op.SeqNum] = txnResp
@@ -106,34 +106,34 @@ func (m *Memory) applyBatch(ops []RaftOperation) {
 				}
 			}
 		case "LEASE_GRANT", "LEASE_REVOKE":
-			// Lease 操作（使用独立的 leaseMu）
+			// Lease operation（use独立 leaseMu）
 			for _, op := range currentBatch {
 				m.MemoryEtcd.applyLeaseOperationDirect(op.Type, op.LeaseID, op.TTL)
 			}
 		}
 
-		// 清空批次
+		// clear批次
 		currentBatch = nil
 	}
 
-	// 按顺序处理操作，批量应用连续的同类型操作
+	// 按orderhandleoperation，批量应用连续同typeoperation
 	for _, op := range ops {
-		// 操作类型改变，刷新当前批次
+		// operationtype改变，refreshcurrent批次
 		if currentType != op.Type && len(currentBatch) > 0 {
 			flushBatch()
 		}
 
-		// 更新当前类型
+		// updatecurrenttype
 		currentType = op.Type
 
-		// 添加到当前批次
+		// addtocurrent批次
 		currentBatch = append(currentBatch, op)
 	}
 
-	// 刷新最后一个批次
+	// refreshlast一个批次
 	flushBatch()
 
-	// 通知所有等待的客户端
+	// notificationallwaitclient
 	m.pendingMu.Lock()
 	for _, op := range ops {
 		if op.SeqNum != "" {
@@ -146,35 +146,35 @@ func (m *Memory) applyBatch(ops []RaftOperation) {
 	m.pendingMu.Unlock()
 }
 
-// batchApplyPut 批量应用 PUT 操作
+// batchApplyPut 批量应用 PUT operation
 //
-// 核心优化：
-// - 按分片分组
-// - 每个分片一次加锁，批量执行
+// 核心optimize：
+// - 按shard分group
+// - eachshard一次加lock，批量execute
 //
-// 参数：
-//   - ops: PUT 操作列表
+// argument：
+//   - ops: PUT operationlist
 func (m *Memory) batchApplyPut(ops []RaftOperation) {
-	// 按分片分组
+	// 按shard分group
 	shardOps := make(map[uint32][]RaftOperation)
 	for _, op := range ops {
 		shardIdx := m.MemoryEtcd.kvData.getShard(op.Key)
 		shardOps[shardIdx] = append(shardOps[shardIdx], op)
 	}
 
-	// 并行处理每个分片
+	// parallelismhandleeachshard
 	var wg sync.WaitGroup
 	for shardIdx, ops := range shardOps {
 		wg.Add(1)
 		go func(shardIdx uint32, ops []RaftOperation) {
 			defer wg.Done()
 
-			// ✅ 关键优化: 锁定分片一次
+			// ✅ 关keyoptimize: lockshard一次
 			shard := &m.MemoryEtcd.kvData.shards[shardIdx]
 			shard.mu.Lock()
 			defer shard.mu.Unlock()
 
-			// 批量执行 PUT 操作
+			// 批量execute PUT operation
 			for _, op := range ops {
 				m.batchApplyPutNoLock(shard, op)
 			}
@@ -184,22 +184,22 @@ func (m *Memory) batchApplyPut(ops []RaftOperation) {
 	wg.Wait()
 }
 
-// batchApplyPutNoLock 在持有分片锁的情况下执行 PUT
+// batchApplyPutNoLock in持有shardlock情况下execute PUT
 //
-// 注意：调用者必须持有 shard.mu.Lock()
+// 注意：call者must持有 shard.mu.Lock()
 //
-// 参数：
-//   - shard: 分片
-//   - op: PUT 操作
+// argument：
+//   - shard: shard
+//   - op: PUT operation
 func (m *Memory) batchApplyPutNoLock(shard *shard, op RaftOperation) {
-	// 1. 生成新 revision
+	// 1. 生成new revision
 	newRevision := m.MemoryEtcd.revision.Add(1)
 
-	// 2. 获取之前的值
+	// 2. get之前value
 	key := op.Key
 	prevKv, exists := shard.data[key]
 
-	// 3. 创建新 KeyValue
+	// 3. createnew KeyValue
 	var createRevision int64
 	var version int64
 	if exists {
@@ -219,7 +219,7 @@ func (m *Memory) batchApplyPutNoLock(shard *shard, op RaftOperation) {
 		Lease:          op.LeaseID,
 	}
 
-	// 4. 写入分片 (已持有锁，直接操作 data)
+	// 4. writeshard (已持有lock，直接operation data)
 	shard.data[key] = kv
 
 	// 5. 关联 lease
@@ -231,18 +231,18 @@ func (m *Memory) batchApplyPutNoLock(shard *shard, op RaftOperation) {
 		m.MemoryEtcd.leaseMu.Unlock()
 	}
 
-	// 6. 通知 watchers
+	// 6. notification watchers
 	m.MemoryEtcd.notifyWatchers(key, kv, kvstore.EventTypePut)
 }
 
-// batchApplyDelete 批量应用 DELETE 操作
+// batchApplyDelete 批量应用 DELETE operation
 //
-// 核心优化：按分片分组，每个分片一次加锁
+// 核心optimize：按shard分group，eachshard一次加lock
 //
-// 参数：
-//   - ops: DELETE 操作列表
+// argument：
+//   - ops: DELETE operationlist
 func (m *Memory) batchApplyDelete(ops []RaftOperation) {
-	// 分离单键删除和范围删除
+	// 分离单keydeleteandrangedelete
 	var singleKeyOps []RaftOperation
 	var rangeOps []RaftOperation
 
@@ -254,12 +254,12 @@ func (m *Memory) batchApplyDelete(ops []RaftOperation) {
 		}
 	}
 
-	// 批量单键删除（并行）
+	// 批量单keydelete（parallelism）
 	if len(singleKeyOps) > 0 {
 		m.batchApplyDeleteSingleKey(singleKeyOps)
 	}
 
-	// 范围删除（串行，锁定所有分片）
+	// rangedelete（serial，lockallshard）
 	for _, op := range rangeOps {
 		_, _, _, err := m.MemoryEtcd.deleteDirect(op.Key, op.RangeEnd)
 		if err != nil {
@@ -272,28 +272,28 @@ func (m *Memory) batchApplyDelete(ops []RaftOperation) {
 	}
 }
 
-// batchApplyDeleteSingleKey 批量应用单键删除
+// batchApplyDeleteSingleKey 批量应用单keydelete
 func (m *Memory) batchApplyDeleteSingleKey(ops []RaftOperation) {
-	// 按分片分组
+	// 按shard分group
 	shardOps := make(map[uint32][]RaftOperation)
 	for _, op := range ops {
 		shardIdx := m.MemoryEtcd.kvData.getShard(op.Key)
 		shardOps[shardIdx] = append(shardOps[shardIdx], op)
 	}
 
-	// 并行处理每个分片
+	// parallelismhandleeachshard
 	var wg sync.WaitGroup
 	for shardIdx, ops := range shardOps {
 		wg.Add(1)
 		go func(shardIdx uint32, ops []RaftOperation) {
 			defer wg.Done()
 
-			// ✅ 关键优化: 锁定分片一次
+			// ✅ 关keyoptimize: lockshard一次
 			shard := &m.MemoryEtcd.kvData.shards[shardIdx]
 			shard.mu.Lock()
 			defer shard.mu.Unlock()
 
-			// 批量执行 DELETE 操作
+			// 批量execute DELETE operation
 			for _, op := range ops {
 				m.batchApplyDeleteNoLock(shard, op)
 			}
@@ -303,22 +303,22 @@ func (m *Memory) batchApplyDeleteSingleKey(ops []RaftOperation) {
 	wg.Wait()
 }
 
-// batchApplyDeleteNoLock 在持有分片锁的情况下执行 DELETE
+// batchApplyDeleteNoLock in持有shardlock情况下execute DELETE
 //
-// 注意：调用者必须持有 shard.mu.Lock()
+// 注意：call者must持有 shard.mu.Lock()
 func (m *Memory) batchApplyDeleteNoLock(shard *shard, op RaftOperation) {
 	key := op.Key
 
-	// 检查键是否存在
+	// checkkeyisno存in
 	kv, exists := shard.data[key]
 	if !exists {
 		return
 	}
 
-	// 生成新 revision
+	// 生成new revision
 	m.MemoryEtcd.revision.Add(1)
 
-	// 删除键
+	// deletekey
 	delete(shard.data, key)
 
 	// 解除 lease 关联
@@ -330,6 +330,6 @@ func (m *Memory) batchApplyDeleteNoLock(shard *shard, op RaftOperation) {
 		m.MemoryEtcd.leaseMu.Unlock()
 	}
 
-	// 通知 watchers
+	// notification watchers
 	m.MemoryEtcd.notifyWatchers(key, kv, kvstore.EventTypeDelete)
 }

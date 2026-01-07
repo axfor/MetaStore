@@ -22,30 +22,30 @@ import (
 	"sync/atomic"
 )
 
-// WatchManager 管理所有的 watch 订阅
+// WatchManager manages all watch subscriptions
 type WatchManager struct {
 	mu            sync.RWMutex
 	store         kvstore.Store
 	watches       map[int64]*watchStream // watchID -> stream
-	nextID        atomic.Int64           // 下一个 watch ID
-	stopped       atomic.Bool            // 是否已停止
-	maxWatchCount int                    // 最大 Watch 数量限制（0 表示无限制）
+	nextID        atomic.Int64           // next watch ID
+	stopped       atomic.Bool            // whether stopped
+	maxWatchCount int                    // maximum watch count limit (0 means unlimited)
 }
 
-// watchStream 表示一个 watch 流
+// watchStream represents a watch stream
 type watchStream struct {
 	watchID       int64
 	key           string
 	rangeEnd      string
 	startRevision int64
-	eventCh       <-chan kvstore.WatchEvent // 从 store 接收事件
-	cancel        func()                     // 取消函数
+	eventCh       <-chan kvstore.WatchEvent // receives events from store
+	cancel        func()                     // cancel function
 }
 
-// NewWatchManager 创建新的 Watch 管理器
-// 可选参数 cfg 用于设置 Watch 数量限制
+// NewWatchManager creates a new Watch manager
+// Optional parameter cfg is used to set watch count limit
 func NewWatchManager(store kvstore.Store, cfg ...*config.LimitsConfig) *WatchManager {
-	maxWatches := 0 // 默认无限制
+	maxWatches := 0 // default unlimited
 	if len(cfg) > 0 && cfg[0] != nil {
 		maxWatches = cfg[0].MaxWatchCount
 	}
@@ -57,13 +57,13 @@ func NewWatchManager(store kvstore.Store, cfg ...*config.LimitsConfig) *WatchMan
 	}
 }
 
-// Create 创建一个新的 watch
+// Create creates a new watch
 func (wm *WatchManager) Create(key, rangeEnd string, startRevision int64, opts *kvstore.WatchOptions) int64 {
 	watchID := wm.nextID.Add(1)
 	return wm.CreateWithID(watchID, key, rangeEnd, startRevision, opts)
 }
 
-// CreateWithID 使用指定的 watchID 创建 watch
+// CreateWithID creates a watch with specified watchID
 func (wm *WatchManager) CreateWithID(watchID int64, key, rangeEnd string, startRevision int64, opts *kvstore.WatchOptions) int64 {
 	if wm.stopped.Load() {
 		return -1
@@ -87,7 +87,7 @@ func (wm *WatchManager) CreateWithID(watchID int64, key, rangeEnd string, startR
 	}
 	wm.mu.Unlock()
 
-	// 从 store 创建 watch
+	// Create watch from store
 	var eventCh <-chan kvstore.WatchEvent
 	var err error
 
@@ -121,7 +121,7 @@ func (wm *WatchManager) CreateWithID(watchID int64, key, rangeEnd string, startR
 	return watchID
 }
 
-// Cancel 取消一个 watch
+// Cancel cancels a watch
 func (wm *WatchManager) Cancel(watchID int64) error {
 	wm.mu.Lock()
 	_, ok := wm.watches[watchID]
@@ -132,11 +132,11 @@ func (wm *WatchManager) Cancel(watchID int64) error {
 	delete(wm.watches, watchID)
 	wm.mu.Unlock()
 
-	// 取消 store 中的 watch
+	// Cancel watch in store
 	return wm.store.CancelWatch(watchID)
 }
 
-// GetEventChan 获取 watch 的事件通道
+// GetEventChan gets the event channel for a watch
 func (wm *WatchManager) GetEventChan(watchID int64) (<-chan kvstore.WatchEvent, bool) {
 	wm.mu.RLock()
 	defer wm.mu.RUnlock()
@@ -148,7 +148,7 @@ func (wm *WatchManager) GetEventChan(watchID int64) (<-chan kvstore.WatchEvent, 
 	return ws.eventCh, true
 }
 
-// Stop 停止所有 watch
+// Stop stops all watches
 func (wm *WatchManager) Stop() {
 	if !wm.stopped.CompareAndSwap(false, true) {
 		return
@@ -157,7 +157,7 @@ func (wm *WatchManager) Stop() {
 	wm.mu.Lock()
 	defer wm.mu.Unlock()
 
-	// 取消所有 watch
+	// Cancel all watches
 	for watchID := range wm.watches {
 		wm.store.CancelWatch(watchID)
 	}

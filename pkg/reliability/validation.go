@@ -22,23 +22,23 @@ import (
 )
 
 var (
-	// ValidationErrorCounter 验证错误计数器
+	// ValidationErrorCounter verifyincorrectcount器
 	ValidationErrorCounter int64
 )
 
-// DataValidator 数据验证器
+// DataValidator dataverify器
 type DataValidator struct {
 	enableCRC bool
 }
 
-// NewDataValidator 创建数据验证器
+// NewDataValidator createdataverify器
 func NewDataValidator(enableCRC bool) *DataValidator {
 	return &DataValidator{
 		enableCRC: enableCRC,
 	}
 }
 
-// ValidateData 验证数据完整性（使用 CRC32）
+// ValidateData verifydata完整性（use CRC32）
 func (dv *DataValidator) ValidateData(data []byte, expectedCRC uint32) error {
 	if !dv.enableCRC {
 		return nil
@@ -53,7 +53,7 @@ func (dv *DataValidator) ValidateData(data []byte, expectedCRC uint32) error {
 	return nil
 }
 
-// ComputeCRC 计算数据的 CRC32
+// ComputeCRC calculatedata CRC32
 func (dv *DataValidator) ComputeCRC(data []byte) uint32 {
 	if !dv.enableCRC {
 		return 0
@@ -61,7 +61,7 @@ func (dv *DataValidator) ComputeCRC(data []byte) uint32 {
 	return crc32.ChecksumIEEE(data)
 }
 
-// AppendCRC 将 CRC 附加到数据末尾
+// AppendCRC will CRC 附加todata末尾
 func (dv *DataValidator) AppendCRC(data []byte) []byte {
 	if !dv.enableCRC {
 		return data
@@ -75,7 +75,7 @@ func (dv *DataValidator) AppendCRC(data []byte) []byte {
 	return result
 }
 
-// ValidateAndStripCRC 验证并移除数据末尾的 CRC
+// ValidateAndStripCRC verify并移除data末尾 CRC
 func (dv *DataValidator) ValidateAndStripCRC(data []byte) ([]byte, error) {
 	if !dv.enableCRC {
 		return data, nil
@@ -90,7 +90,7 @@ func (dv *DataValidator) ValidateAndStripCRC(data []byte) ([]byte, error) {
 	dataLen := len(data) - 4
 	expectedCRC := binary.LittleEndian.Uint32(data[dataLen:])
 
-	// 验证 CRC
+	// verify CRC
 	actualCRC := crc32.ChecksumIEEE(data[:dataLen])
 	if actualCRC != expectedCRC {
 		atomic.AddInt64(&ValidationErrorCounter, 1)
@@ -100,19 +100,19 @@ func (dv *DataValidator) ValidateAndStripCRC(data []byte) ([]byte, error) {
 	return data[:dataLen], nil
 }
 
-// ValidateKeyValue 验证键值对
+// ValidateKeyValue verifykey-value pair
 func (dv *DataValidator) ValidateKeyValue(key, value []byte) error {
-	// 键不能为空
+	// keynot能asempty
 	if len(key) == 0 {
 		return fmt.Errorf("key cannot be empty")
 	}
 
-	// 键长度限制（etcd 限制为 1.5 KB）
+	// keylengthlimit（etcd limitas 1.5 KB）
 	if len(key) > 1536 {
 		return fmt.Errorf("key too large: %d bytes (max 1536 bytes)", len(key))
 	}
 
-	// 值长度限制（etcd 限制为 1 MB）
+	// valuelengthlimit（etcd limitas 1 MB）
 	if len(value) > 1024*1024 {
 		return fmt.Errorf("value too large: %d bytes (max 1 MB)", len(value))
 	}
@@ -120,7 +120,7 @@ func (dv *DataValidator) ValidateKeyValue(key, value []byte) error {
 	return nil
 }
 
-// ValidateRevision 验证版本号
+// ValidateRevision verifyversion号
 func (dv *DataValidator) ValidateRevision(rev int64) error {
 	if rev < 0 {
 		return fmt.Errorf("revision cannot be negative: %d", rev)
@@ -128,7 +128,7 @@ func (dv *DataValidator) ValidateRevision(rev int64) error {
 	return nil
 }
 
-// ValidateLease 验证租约 ID
+// ValidateLease verifylease ID
 func (dv *DataValidator) ValidateLease(leaseID int64) error {
 	if leaseID < 0 {
 		return fmt.Errorf("lease ID cannot be negative: %d", leaseID)
@@ -136,39 +136,39 @@ func (dv *DataValidator) ValidateLease(leaseID int64) error {
 	return nil
 }
 
-// GetValidationErrorCount 获取验证错误计数
+// GetValidationErrorCount getverifyincorrectcount
 func GetValidationErrorCount() int64 {
 	return atomic.LoadInt64(&ValidationErrorCounter)
 }
 
-// ResetValidationErrorCount 重置验证错误计数
+// ResetValidationErrorCount resetverifyincorrectcount
 func ResetValidationErrorCount() {
 	atomic.StoreInt64(&ValidationErrorCounter, 0)
 }
 
-// SnapshotValidator 快照验证器
+// SnapshotValidator snapshotverify器
 type SnapshotValidator struct {
 	validator *DataValidator
 }
 
-// NewSnapshotValidator 创建快照验证器
+// NewSnapshotValidator createsnapshotverify器
 func NewSnapshotValidator(enableCRC bool) *SnapshotValidator {
 	return &SnapshotValidator{
 		validator: NewDataValidator(enableCRC),
 	}
 }
 
-// ValidateSnapshot 验证快照完整性
+// ValidateSnapshot verifysnapshot完整性
 func (sv *SnapshotValidator) ValidateSnapshot(snapshot []byte) error {
 	if len(snapshot) == 0 {
-		return nil // 空快照有效
+		return nil // emptysnapshotvalid
 	}
 
-	// 验证快照格式和 CRC
+	// verifysnapshotformatand CRC
 	return sv.validator.ValidateData(snapshot[:len(snapshot)-4], binary.LittleEndian.Uint32(snapshot[len(snapshot)-4:]))
 }
 
-// CreateSnapshot 创建带 CRC 的快照
+// CreateSnapshot create带 CRC snapshot
 func (sv *SnapshotValidator) CreateSnapshot(data []byte) []byte {
 	return sv.validator.AppendCRC(data)
 }

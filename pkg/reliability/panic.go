@@ -22,35 +22,35 @@ import (
 )
 
 var (
-	// PanicCounter 全局 panic 计数器
+	// PanicCounter global panic count器
 	PanicCounter int64
-	// PanicHandler 全局 panic 处理器
+	// PanicHandler global panic handle器
 	PanicHandler func(goroutineName string, panicValue interface{}, stack []byte)
 )
 
-// RecoverPanic 恢复 panic 的通用函数
-// 应在所有 goroutine 开头使用 defer RecoverPanic("goroutine-name")
+// RecoverPanic recovery panic generalfunction
+// 应inall goroutine 开头use defer RecoverPanic("goroutine-name")
 func RecoverPanic(goroutineName string) {
 	if r := recover(); r != nil {
 		atomic.AddInt64(&PanicCounter, 1)
 
 		stack := debug.Stack()
 
-		// 记录 panic 信息
+		// record panic info
 		log.Error("Panic recovered",
 			log.Goroutine(goroutineName),
 			log.String("panic_value", fmt.Sprintf("%v", r)),
 			log.String("stack", string(stack)),
 			log.Component("panic-recovery"))
 
-		// 调用自定义处理器（如果有）
+		// callcustomhandle器（if有）
 		if PanicHandler != nil {
 			PanicHandler(goroutineName, r, stack)
 		}
 	}
 }
 
-// SafeGo 安全启动 goroutine，自动恢复 panic
+// SafeGo safestart goroutine，自动recovery panic
 func SafeGo(name string, fn func()) {
 	go func() {
 		defer RecoverPanic(name)
@@ -58,8 +58,8 @@ func SafeGo(name string, fn func()) {
 	}()
 }
 
-// SafeGoWithRestart 启动带自动重启的 goroutine
-// maxRestarts: 最大重启次数，0 表示无限重启
+// SafeGoWithRestart start带自动重启 goroutine
+// maxRestarts: maximum重启times，0 indicatesunlimited重启
 func SafeGoWithRestart(name string, fn func(), maxRestarts int) {
 	restartCount := 0
 
@@ -81,7 +81,7 @@ func SafeGoWithRestart(name string, fn func(), maxRestarts int) {
 					PanicHandler(name, r, stack)
 				}
 
-				// 检查是否应该重启
+				// checkisnoshould重启
 				restartCount++
 				if maxRestarts == 0 || restartCount < maxRestarts {
 					log.Info("Restarting goroutine",
@@ -104,17 +104,17 @@ func SafeGoWithRestart(name string, fn func(), maxRestarts int) {
 	go worker()
 }
 
-// GetPanicCount 获取 panic 计数
+// GetPanicCount get panic count
 func GetPanicCount() int64 {
 	return atomic.LoadInt64(&PanicCounter)
 }
 
-// ResetPanicCount 重置 panic 计数
+// ResetPanicCount reset panic count
 func ResetPanicCount() {
 	atomic.StoreInt64(&PanicCounter, 0)
 }
 
-// PanicMiddleware gRPC 拦截器的 panic 恢复中间件
+// PanicMiddleware gRPC 拦截器 panic recoveryintermediate件
 func PanicMiddleware(handler func() error) (err error) {
 	defer func() {
 		if r := recover(); r != nil {

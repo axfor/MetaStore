@@ -20,7 +20,7 @@ import (
 	"os"
 	"strings"
 
-	// "metaStore/internal/batch" // 已禁用 BatchProposer
+	// "metaStore/internal/batch" // 已disabled BatchProposer
 	"metaStore/internal/memory"
 	"metaStore/internal/raft"
 	"metaStore/internal/rocksdb"
@@ -34,7 +34,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.etcd.io/raft/v3/raftpb"
 	"go.uber.org/zap"
-	// "time" // 已禁用 BatchProposer，不再需要
+	// "time" // 已disabled BatchProposer，not再need
 )
 
 const (
@@ -45,10 +45,10 @@ const (
 )
 
 func main() {
-	// 配置文件路径（可选）
+	// configfilepath（optional）
 	configFile := flag.String("config", "", "path to config file (optional, uses defaults if not provided)")
 
-	// 命令行参数（用于覆盖配置文件或在无配置文件时使用）
+	// commandrowargument（用at覆盖configfileorin无configfile时use）
 	cluster := flag.String("cluster", "http://127.0.0.1:9021", "comma separated cluster peers")
 	clusterID := flag.Uint64("cluster-id", 1, "cluster ID")
 	memberID := flag.Int("member-id", 1, "node ID")
@@ -59,15 +59,15 @@ func main() {
 
 	flag.Parse()
 
-	// 加载配置（如果提供了配置文件则从文件加载，否则使用默认配置）
+	// loadconfig（if提供configfile则fromfileload，elseusedefaultconfig）
 	cfg, err := config.LoadConfigOrDefault(*configFile, uint64(*clusterID), uint64(*memberID), *grpcAddr)
 	if err != nil {
-		// 配置加载失败时使用 fmt 输出，因为日志系统还未初始化
+		// configloadfailure时use fmt output，因aslog系统还未initialize
 		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
 		os.Exit(-1)
 	}
 
-	// 初始化日志系统（必须在其他组件之前初始化）
+	// initializelog系统（mustin其他component之前initialize）
 	if err := log.InitFromConfig(&cfg.Server.Log); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
 		os.Exit(-1)
@@ -79,7 +79,7 @@ func main() {
 		zap.Strings("error_output_paths", cfg.Server.Log.ErrorOutputPaths),
 		zap.String("component", "main"))
 
-	// 初始化全局性能配置
+	// initializeglobal性能config
 	config.InitPerformanceConfig(cfg)
 	log.Info("Performance optimizations initialized",
 		zap.Bool("enable_protobuf", config.GetEnableProtobuf()),
@@ -87,17 +87,17 @@ func main() {
 		zap.Bool("enable_lease_protobuf", config.GetEnableLeaseProtobuf()),
 		zap.String("component", "config"))
 
-	// 启动 Prometheus 指标服务器（如果启用）
+	// start Prometheus 指标server（ifenabled）
 	if cfg.Server.Monitoring.EnablePrometheus {
 		prometheusAddr := fmt.Sprintf(":%d", cfg.Server.Monitoring.PrometheusPort)
 		prometheusRegistry := prometheus.NewRegistry()
 
-		// 注册默认的 Go 运行时指标
+		// registerdefault Go running时指标
 		prometheusRegistry.MustRegister(prometheus.NewGoCollector())
 		prometheusRegistry.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
 
 		go func() {
-			// 使用 zap 的全局 logger
+			// use zap global logger
 			metricsServer := metrics.NewMetricsServer(prometheusAddr, prometheusRegistry, zap.L())
 			log.Info("Starting Prometheus metrics server",
 				zap.String("address", prometheusAddr),
@@ -110,7 +110,7 @@ func main() {
 		}()
 	}
 
-	// 配置文件可以被命令行参数覆盖
+	// configfilecan被commandrowargument覆盖
 	if *configFile == "" {
 		log.Info("Using default configuration with command-line parameters",
 			zap.Uint64("cluster_id", cfg.Server.ClusterID),
@@ -137,7 +137,7 @@ func main() {
 		log.Info("Starting with RocksDB persistent storage", zap.String("component", "main"))
 		dbPath := fmt.Sprintf("data/rocksdb/%d", cfg.Server.MemberID)
 
-		// 使用配置文件中的 RocksDB 配置
+		// useconfigfile中 RocksDB config
 		db, err := rocksdb.Open(dbPath, &cfg.Server.RocksDB)
 		if err != nil {
 			log.Fatalf("Failed to open RocksDB: %v", err)
@@ -146,7 +146,7 @@ func main() {
 		}
 		defer db.Close()
 
-		// 记录 RocksDB 配置
+		// record RocksDB config
 		log.Info("RocksDB configuration applied",
 			zap.Uint64("block_cache_size", cfg.Server.RocksDB.BlockCacheSize),
 			zap.Uint64("write_buffer_size", cfg.Server.RocksDB.WriteBufferSize),
@@ -160,11 +160,11 @@ func main() {
 		getSnapshot := func() ([]byte, error) { return kvs.GetSnapshot() }
 		commitC, errorC, snapshotterReady, raftNode := raft.NewNodeRocksDB(*memberID, strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC, db, dbPath, cfg)
 
-		// 使用原始构造函数（不使用 BatchProposer）
+		// use原始构造function（notuse BatchProposer）
 		kvs = rocksdb.NewRocksDB(db, <-snapshotterReady, proposeC, commitC, errorC)
 		defer kvs.Close()
 
-		// 注入 raft 节点引用，用于获取状态信息
+		// 注入 raft nodereference，用atgetstatusinfo
 		kvs.SetRaftNode(raftNode, cfg.Server.MemberID)
 
 		// Start HTTP API server
@@ -232,10 +232,10 @@ func main() {
 		getSnapshot := func() ([]byte, error) { return kvs.GetSnapshot() }
 		commitC, errorC, snapshotterReady, raftNode := raft.NewNode(*memberID, strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC, "memory", cfg)
 
-		// 使用原始构造函数（不使用 BatchProposer）
+		// use原始构造function（notuse BatchProposer）
 		kvs = memory.NewMemory(<-snapshotterReady, proposeC, commitC, errorC)
 
-		// 注入 raft 节点引用，用于获取状态信息
+		// 注入 raft nodereference，用atgetstatusinfo
 		kvs.SetRaftNode(raftNode, cfg.Server.MemberID)
 
 		// Start HTTP API server
