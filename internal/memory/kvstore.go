@@ -32,7 +32,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// RaftNode Raft 节点接口，用于获取 Raft 状态和控制
+// RaftNode Raft nodeinterface，用atget Raft statusand控制
 type RaftNode interface {
 	Status() kvstore.RaftStatus
 	TransferLeadership(targetID uint64) error
@@ -40,44 +40,44 @@ type RaftNode interface {
 	ReadIndexManager() *lease.ReadIndexManager
 }
 
-// Memory 集成了 Raft 共识的 etcd 兼容存储
+// Memory 集成 Raft 共识 etcd compatible存储
 type Memory struct {
-	*MemoryEtcd // 嵌入 etcd 语义实现
+	*MemoryEtcd // 嵌入 etcd 语义implement
 
-	proposeC      chan<- string           // 发送 Raft 提案（向后兼容）
+	proposeC      chan<- string           // send Raft 提案（向后compatible）
 	snapshotter   *snap.Snapshotter
-	mu            sync.Mutex              // 保护 pending 操作
+	mu            sync.Mutex              // protected pending operation
 
-	// 用于同步等待 Raft commit 的简单机制
+	// 用atsynchronouswait Raft commit 简单机制
 	pendingMu    sync.RWMutex
 	pendingOps   map[string]chan struct{}          // key -> wait channel
 	pendingTxnResults map[string]*kvstore.TxnResponse // seqNum -> txn result
 	seqNum       int64
 
-	// Raft 节点引用（用于获取状态信息）
+	// Raft nodereference（用atgetstatusinfo）
 	raftNode RaftNode
 	nodeID   uint64
 }
 
-// RaftOperation 表示通过 Raft 提交的操作
+// RaftOperation indicatesvia Raft commitoperation
 type RaftOperation struct {
 	Type     string `json:"type"`      // "PUT", "DELETE", "LEASE_GRANT", "LEASE_REVOKE", "TXN"
 	Key      string `json:"key"`
 	Value    string `json:"value"`
 	LeaseID  int64  `json:"lease_id"`
 	RangeEnd string `json:"range_end"`
-	SeqNum   string `json:"seq_num"`   // 用于同步等待的序列号
+	SeqNum   string `json:"seq_num"`   // 用atsynchronouswait序column号
 
-	// Lease 操作
+	// Lease operation
 	TTL int64 `json:"ttl"`
 
-	// Transaction 操作
+	// Transaction operation
 	Compares   []kvstore.Compare `json:"compares,omitempty"`
 	ThenOps    []kvstore.Op      `json:"then_ops,omitempty"`
 	ElseOps    []kvstore.Op      `json:"else_ops,omitempty"`
 }
 
-// NewMemory 创建集成 Raft 的 etcd 兼容存储
+// NewMemory create集成 Raft  etcd compatible存储
 func NewMemory(snapshotter *snap.Snapshotter, proposeC chan<- string, commitC <-chan *kvstore.Commit, errorC <-chan error) *Memory {
 	m := &Memory{
 		MemoryEtcd:        NewMemoryEtcd(),
@@ -87,7 +87,7 @@ func NewMemory(snapshotter *snap.Snapshotter, proposeC chan<- string, commitC <-
 		pendingTxnResults: make(map[string]*kvstore.TxnResponse),
 	}
 
-	// 从快照恢复
+	// fromsnapshotrecovery
 	snapshot, err := m.loadSnapshot()
 	if err != nil {
 		log.Fatal("Failed to load snapshot", zap.Error(err), zap.String("component", "storage-memory"))
@@ -102,7 +102,7 @@ func NewMemory(snapshotter *snap.Snapshotter, proposeC chan<- string, commitC <-
 		}
 	}
 
-	// 启动 commit 处理
+	// start commit handle
 	go m.readCommits(commitC, errorC)
 
 	return m
@@ -110,7 +110,7 @@ func NewMemory(snapshotter *snap.Snapshotter, proposeC chan<- string, commitC <-
 
 func (m *Memory) propose(ctx context.Context, data string) error {
 
-	// 向后兼容：使用原始 proposeC
+	// 向后compatible：use原始 proposeC
 	select {
 	case m.proposeC <- data:
 		return nil
@@ -121,21 +121,21 @@ func (m *Memory) propose(ctx context.Context, data string) error {
 	}
 }
 
-// readCommits 从 Raft commitC 读取并应用操作
+// readCommits from Raft commitC read并应用operation
 //
-// ✅ 性能优化 (Phase 2): 批量 Apply
+// ✅ 性能optimize (Phase 2): 批量 Apply
 //
 // Before (Phase 1):
-//   for op in ops { applyOperation(op) }  // N 次锁操作
+//   for op in ops { applyOperation(op) }  // N 次lockoperation
 //
 // After (Phase 2):
-//   applyBatch(ops)  // 按分片分组，每个分片 1 次锁
+//   applyBatch(ops)  // 按shard分group，eachshard 1 次lock
 //
-// 预期提升: 5-10x (锁开销减少 100x)
+// 预期提升: 5-10x (lock开销减少 100x)
 func (m *Memory) readCommits(commitC <-chan *kvstore.Commit, errorC <-chan error) {
 	for commit := range commitC {
 		if commit == nil {
-			// 重新加载快照
+			// reloadsnapshot
 			snapshot, err := m.loadSnapshot()
 			if err != nil {
 				log.Fatal("Failed to reload snapshot", zap.Error(err), zap.String("component", "storage-memory"))
@@ -152,15 +152,15 @@ func (m *Memory) readCommits(commitC <-chan *kvstore.Commit, errorC <-chan error
 			continue
 		}
 
-		// ✅ Phase 2 优化: 收集所有操作，批量应用
+		// ✅ Phase 2 optimize: 收集alloperation，批量应用
 		var allOps []RaftOperation
 
-		// 收集所有操作
+		// 收集alloperation
 		for _, data := range commit.Data {
-			// 尝试解析为 RaftOperation（自动检测 Protobuf/JSON）
+			// 尝试解析as RaftOperation（自动检测 Protobuf/JSON）
 			op, err := deserializeOperation([]byte(data))
 			if err != nil {
-				// 向后兼容：旧格式（gob 编码的 KV）
+				// 向后compatible：oldformat（gob encode KV）
 				m.applyLegacyOp(data)
 				continue
 			}
@@ -168,7 +168,7 @@ func (m *Memory) readCommits(commitC <-chan *kvstore.Commit, errorC <-chan error
 			allOps = append(allOps, op)
 		}
 
-		// ✅ 批量应用所有操作 (Phase 2 核心优化)
+		// ✅ 批量应用alloperation (Phase 2 核心optimize)
 		if len(allOps) > 0 {
 			m.applyBatch(allOps)
 		}
@@ -181,25 +181,25 @@ func (m *Memory) readCommits(commitC <-chan *kvstore.Commit, errorC <-chan error
 	}
 }
 
-// applyOperation 应用一个 etcd 操作
+// applyOperation 应用一个 etcd operation
 //
-// ✅ 性能优化 (Phase 1): 去除全局 txnMu 锁
+// ✅ 性能optimize (Phase 1): 去除global txnMu lock
 //
-// Before (串行):
-//   txnMu.Lock() → 所有操作排队 → 并发度 = 1
+// Before (serial):
+//   txnMu.Lock() → alloperation排队 → concurrency度 = 1
 //
-// After (并行):
-//   单键操作 → ShardedMap 分片锁 → 并发度 = 512
-//   事务操作 → 细粒度分片锁 → 并发度 = 512 / 涉及分片数
+// After (parallelism):
+//   单keyoperation → ShardedMap shardlock → concurrency度 = 512
+//   transactionoperation → fine-grainedshardlock → concurrency度 = 512 / 涉andshard数
 //
-// 预期提升: 10-50x 吞吐量 (取决于并发数和操作类型)
+// 预期提升: 10-50x throughput (取决atconcurrency数andoperationtype)
 func (m *Memory) applyOperation(op RaftOperation) {
-	// ⚠️ 关键改动: 不再使用全局 txnMu.Lock()
-	// 每个操作类型使用最小粒度的锁
+	// ⚠️ 关key改动: not再useglobal txnMu.Lock()
+	// eachoperationtypeuseminimum粒度lock
 
 	switch op.Type {
 	case "PUT":
-		// ✅ 使用无锁版本 (ShardedMap 内部加锁)
+		// ✅ use无lockversion (ShardedMap internal加lock)
 		_, _, err := m.MemoryEtcd.putDirect(op.Key, op.Value, op.LeaseID)
 		if err != nil {
 			log.Error("Failed to apply PUT operation",
@@ -209,7 +209,7 @@ func (m *Memory) applyOperation(op RaftOperation) {
 		}
 
 	case "DELETE":
-		// ✅ 使用无锁版本
+		// ✅ use无lockversion
 		_, _, _, err := m.MemoryEtcd.deleteDirect(op.Key, op.RangeEnd)
 		if err != nil {
 			log.Error("Failed to apply DELETE operation",
@@ -220,15 +220,15 @@ func (m *Memory) applyOperation(op RaftOperation) {
 		}
 
 	case "LEASE_GRANT":
-		// ✅ 使用独立的 lease 操作 (leaseMu 锁)
+		// ✅ use独立 lease operation (leaseMu lock)
 		m.MemoryEtcd.applyLeaseOperationDirect("LEASE_GRANT", op.LeaseID, op.TTL)
 
 	case "LEASE_REVOKE":
-		// ✅ 使用独立的 lease 操作
+		// ✅ use独立 lease operation
 		m.MemoryEtcd.applyLeaseOperationDirect("LEASE_REVOKE", op.LeaseID, 0)
 
 	case "TXN":
-		// ✅ 使用细粒度分片锁 (只锁涉及的分片)
+		// ✅ usefine-grainedshardlock (只lock涉andshard)
 		txnResp, err := m.MemoryEtcd.applyTxnWithShardLocks(op.Compares, op.ThenOps, op.ElseOps)
 		if err != nil {
 			log.Error("Failed to apply TXN operation",
@@ -238,7 +238,7 @@ func (m *Memory) applyOperation(op RaftOperation) {
 				zap.Int("elseOpsCount", len(op.ElseOps)),
 				zap.String("component", "storage-memory"))
 		}
-		// 保存事务结果供客户端读取
+		// savetransactionresult供clientread
 		if op.SeqNum != "" && txnResp != nil {
 			m.pendingMu.Lock()
 			m.pendingTxnResults[op.SeqNum] = txnResp
@@ -251,7 +251,7 @@ func (m *Memory) applyOperation(op RaftOperation) {
 			zap.String("component", "storage-memory"))
 	}
 
-	// 通知等待的客户端操作已完成
+	// notificationwaitclientoperation已done
 	if op.SeqNum != "" {
 		m.pendingMu.Lock()
 		if ch, exists := m.pendingOps[op.SeqNum]; exists {
@@ -262,7 +262,7 @@ func (m *Memory) applyOperation(op RaftOperation) {
 	}
 }
 
-// applyLegacyOp 应用旧格式的操作（向后兼容）
+// applyLegacyOp 应用oldformatoperation（向后compatible）
 func (m *Memory) applyLegacyOp(data string) {
 	var dataKv kvstore.KV
 	dec := gob.NewDecoder(bytes.NewBufferString(data))
@@ -272,19 +272,19 @@ func (m *Memory) applyLegacyOp(data string) {
 			zap.String("component", "storage-memory"))
 	}
 
-	// ✅ 使用无锁版本 (Phase 1 优化)
+	// ✅ use无lockversion (Phase 1 optimize)
 	m.MemoryEtcd.putDirect(dataKv.Key, dataKv.Val, 0)
 }
 
-// PutWithLease 存储键值对（通过 Raft）
+// PutWithLease 存储key-value pair（via Raft）
 func (m *Memory) PutWithLease(ctx context.Context, key, value string, leaseID int64) (int64, *kvstore.KeyValue, error) {
-	// 生成唯一序列号
+	// 生成unique序column号
 	m.mu.Lock()
 	m.seqNum++
 	seqNum := fmt.Sprintf("seq-%d", m.seqNum)
 	m.mu.Unlock()
 
-	// 创建等待通道
+	// createwaitchannel
 	waitCh := make(chan struct{})
 	m.pendingMu.Lock()
 	m.pendingOps[seqNum] = waitCh
@@ -298,7 +298,7 @@ func (m *Memory) PutWithLease(ctx context.Context, key, value string, leaseID in
 		SeqNum:  seqNum,
 	}
 
-	// 序列化并 propose（使用 Protobuf 优化）
+	// serialize并 propose（use Protobuf optimize）
 	data, err := serializeOperation(op)
 	if err != nil {
 		m.pendingMu.Lock()
@@ -307,7 +307,7 @@ func (m *Memory) PutWithLease(ctx context.Context, key, value string, leaseID in
 		return 0, nil, err
 	}
 
-	// 发送提案（使用 BatchProposer 如果可用）
+	// send提案（use BatchProposer ifavailable）
 	if err := m.propose(ctx, string(data)); err != nil {
 		m.pendingMu.Lock()
 		delete(m.pendingOps, seqNum)
@@ -315,10 +315,10 @@ func (m *Memory) PutWithLease(ctx context.Context, key, value string, leaseID in
 		return 0, nil, fmt.Errorf("failed to propose PUT operation: %w", err)
 	}
 
-	// 等待 Raft 提交完成，带超时保护
+	// wait Raft commitdone，带timeoutprotected
 	select {
 	case <-waitCh:
-		// 成功完成
+		// successdone
 	case <-time.After(30 * time.Second):
 		m.pendingMu.Lock()
 		delete(m.pendingOps, seqNum)
@@ -331,17 +331,17 @@ func (m *Memory) PutWithLease(ctx context.Context, key, value string, leaseID in
 		return 0, nil, ctx.Err()
 	}
 
-	// 读取当前 revision 和 prevKv（无需加锁，atomic + ShardedMap 内部加锁）
+	// readcurrent revision and prevKv（无需加lock，atomic + ShardedMap internal加lock）
 	currentRevision := m.MemoryEtcd.revision.Load()
 	prevKv, _ := m.MemoryEtcd.kvData.Get(key)
 
 	return currentRevision, prevKv, nil
 }
 
-// DeleteRange 删除范围内的键（通过 Raft）
+// DeleteRange deleterange内key（via Raft）
 func (m *Memory) DeleteRange(ctx context.Context, key, rangeEnd string) (int64, []*kvstore.KeyValue, int64, error) {
-	// 先检查有多少 key 会被删除（在提交到 Raft 之前）
-	// 使用 ShardedMap API（内部加锁）
+	// 先check有多少 key will被delete（incommitto Raft 之前）
+	// use ShardedMap API（internal加lock）
 	var deleted int64
 	var prevKvs []*kvstore.KeyValue
 
@@ -351,24 +351,24 @@ func (m *Memory) DeleteRange(ctx context.Context, key, rangeEnd string) (int64, 
 			prevKvs = append(prevKvs, kv)
 		}
 	} else {
-		// 使用 ShardedMap.Range() 获取范围内的键值对
+		// use ShardedMap.Range() getrange内key-value pair
 		allKvs := m.MemoryEtcd.kvData.Range(key, rangeEnd, 0)
 		deleted = int64(len(allKvs))
 		prevKvs = allKvs
 	}
 
-	// 如果没有 key 需要删除，直接返回
+	// ifnone key needdelete，直接return
 	if deleted == 0 {
 		return 0, nil, m.MemoryEtcd.revision.Load(), nil
 	}
 
-	// 生成唯一序列号
+	// 生成unique序column号
 	m.mu.Lock()
 	m.seqNum++
 	seqNum := fmt.Sprintf("seq-%d", m.seqNum)
 	m.mu.Unlock()
 
-	// 创建等待通道
+	// createwaitchannel
 	waitCh := make(chan struct{})
 	m.pendingMu.Lock()
 	m.pendingOps[seqNum] = waitCh
@@ -389,7 +389,7 @@ func (m *Memory) DeleteRange(ctx context.Context, key, rangeEnd string) (int64, 
 		return 0, nil, 0, err
 	}
 
-	// 发送提案（使用 BatchProposer 如果可用）
+	// send提案（use BatchProposer ifavailable）
 	if err := m.propose(ctx, string(data)); err != nil {
 		m.pendingMu.Lock()
 		delete(m.pendingOps, seqNum)
@@ -397,10 +397,10 @@ func (m *Memory) DeleteRange(ctx context.Context, key, rangeEnd string) (int64, 
 		return 0, nil, 0, fmt.Errorf("failed to propose DELETE operation: %w", err)
 	}
 
-	// 等待 Raft 提交完成，带超时保护
+	// wait Raft commitdone，带timeoutprotected
 	select {
 	case <-waitCh:
-		// 成功完成
+		// successdone
 	case <-time.After(30 * time.Second):
 		m.pendingMu.Lock()
 		delete(m.pendingOps, seqNum)
@@ -416,15 +416,15 @@ func (m *Memory) DeleteRange(ctx context.Context, key, rangeEnd string) (int64, 
 	return deleted, prevKvs, m.MemoryEtcd.revision.Load(), nil
 }
 
-// LeaseGrant 创建租约（通过 Raft）
+// LeaseGrant createlease（via Raft）
 func (m *Memory) LeaseGrant(ctx context.Context, id int64, ttl int64) (*kvstore.Lease, error) {
-	// 生成唯一序列号
+	// 生成unique序column号
 	m.mu.Lock()
 	m.seqNum++
 	seqNum := fmt.Sprintf("seq-%d", m.seqNum)
 	m.mu.Unlock()
 
-	// 创建等待通道
+	// createwaitchannel
 	waitCh := make(chan struct{})
 	m.pendingMu.Lock()
 	m.pendingOps[seqNum] = waitCh
@@ -445,7 +445,7 @@ func (m *Memory) LeaseGrant(ctx context.Context, id int64, ttl int64) (*kvstore.
 		return nil, err
 	}
 
-	// 发送提案（使用 BatchProposer 如果可用）
+	// send提案（use BatchProposer ifavailable）
 	if err := m.propose(ctx, string(data)); err != nil {
 		m.pendingMu.Lock()
 		delete(m.pendingOps, seqNum)
@@ -453,10 +453,10 @@ func (m *Memory) LeaseGrant(ctx context.Context, id int64, ttl int64) (*kvstore.
 		return nil, fmt.Errorf("failed to propose LEASE_GRANT operation: %w", err)
 	}
 
-	// 等待 Raft 提交完成，带超时保护
+	// wait Raft commitdone，带timeoutprotected
 	select {
 	case <-waitCh:
-		// 成功完成
+		// successdone
 	case <-time.After(30 * time.Second):
 		m.pendingMu.Lock()
 		delete(m.pendingOps, seqNum)
@@ -469,7 +469,7 @@ func (m *Memory) LeaseGrant(ctx context.Context, id int64, ttl int64) (*kvstore.
 		return nil, ctx.Err()
 	}
 
-	// 返回租约信息
+	// returnleaseinfo
 	lease := &kvstore.Lease{
 		ID:        id,
 		TTL:       ttl,
@@ -480,15 +480,15 @@ func (m *Memory) LeaseGrant(ctx context.Context, id int64, ttl int64) (*kvstore.
 	return lease, nil
 }
 
-// LeaseRevoke 撤销租约（通过 Raft）
+// LeaseRevoke revokelease（via Raft）
 func (m *Memory) LeaseRevoke(ctx context.Context, id int64) error {
-	// 生成唯一序列号
+	// 生成unique序column号
 	m.mu.Lock()
 	m.seqNum++
 	seqNum := fmt.Sprintf("seq-%d", m.seqNum)
 	m.mu.Unlock()
 
-	// 创建等待通道
+	// createwaitchannel
 	waitCh := make(chan struct{})
 	m.pendingMu.Lock()
 	m.pendingOps[seqNum] = waitCh
@@ -508,7 +508,7 @@ func (m *Memory) LeaseRevoke(ctx context.Context, id int64) error {
 		return err
 	}
 
-	// 发送提案（使用 BatchProposer 如果可用）
+	// send提案（use BatchProposer ifavailable）
 	if err := m.propose(ctx, string(data)); err != nil {
 		m.pendingMu.Lock()
 		delete(m.pendingOps, seqNum)
@@ -516,10 +516,10 @@ func (m *Memory) LeaseRevoke(ctx context.Context, id int64) error {
 		return fmt.Errorf("failed to propose LEASE_REVOKE operation: %w", err)
 	}
 
-	// 等待 Raft 提交完成，带超时保护
+	// wait Raft commitdone，带timeoutprotected
 	select {
 	case <-waitCh:
-		// 成功完成
+		// successdone
 	case <-time.After(30 * time.Second):
 		m.pendingMu.Lock()
 		delete(m.pendingOps, seqNum)
@@ -535,15 +535,15 @@ func (m *Memory) LeaseRevoke(ctx context.Context, id int64) error {
 	return nil
 }
 
-// Txn 执行事务（通过 Raft）
+// Txn executetransaction（via Raft）
 func (m *Memory) Txn(ctx context.Context, cmps []kvstore.Compare, thenOps []kvstore.Op, elseOps []kvstore.Op) (*kvstore.TxnResponse, error) {
-	// 生成唯一序列号
+	// 生成unique序column号
 	m.mu.Lock()
 	m.seqNum++
 	seqNum := fmt.Sprintf("seq-%d", m.seqNum)
 	m.mu.Unlock()
 
-	// 创建等待通道
+	// createwaitchannel
 	waitCh := make(chan struct{})
 	m.pendingMu.Lock()
 	m.pendingOps[seqNum] = waitCh
@@ -557,7 +557,7 @@ func (m *Memory) Txn(ctx context.Context, cmps []kvstore.Compare, thenOps []kvst
 		SeqNum:   seqNum,
 	}
 
-	// 序列化并 propose（使用 Protobuf 优化）
+	// serialize并 propose（use Protobuf optimize）
 	data, err := serializeOperation(op)
 	if err != nil {
 		m.pendingMu.Lock()
@@ -566,7 +566,7 @@ func (m *Memory) Txn(ctx context.Context, cmps []kvstore.Compare, thenOps []kvst
 		return nil, err
 	}
 
-	// 发送提案（使用 BatchProposer 如果可用）
+	// send提案（use BatchProposer ifavailable）
 	if err := m.propose(ctx, string(data)); err != nil {
 		m.pendingMu.Lock()
 		delete(m.pendingOps, seqNum)
@@ -574,10 +574,10 @@ func (m *Memory) Txn(ctx context.Context, cmps []kvstore.Compare, thenOps []kvst
 		return nil, fmt.Errorf("failed to propose TXN operation: %w", err)
 	}
 
-	// 等待 Raft 提交完成，带超时保护
+	// wait Raft commitdone，带timeoutprotected
 	select {
 	case <-waitCh:
-		// 成功完成
+		// successdone
 	case <-time.After(30 * time.Second):
 		m.pendingMu.Lock()
 		delete(m.pendingOps, seqNum)
@@ -590,10 +590,10 @@ func (m *Memory) Txn(ctx context.Context, cmps []kvstore.Compare, thenOps []kvst
 		return nil, ctx.Err()
 	}
 
-	// 读取事务结果
+	// readtransactionresult
 	m.pendingMu.Lock()
 	txnResp := m.pendingTxnResults[seqNum]
-	delete(m.pendingTxnResults, seqNum) // 清理结果
+	delete(m.pendingTxnResults, seqNum) // clean upresult
 	m.pendingMu.Unlock()
 
 	if txnResp == nil {
@@ -603,7 +603,7 @@ func (m *Memory) Txn(ctx context.Context, cmps []kvstore.Compare, thenOps []kvst
 	return txnResp, nil
 }
 
-// Propose 提交操作（向后兼容旧的 HTTP API）
+// Propose commitoperation（向后compatibleold HTTP API）
 func (m *Memory) Propose(k string, v string) {
 	var buf strings.Builder
 	if err := gob.NewEncoder(&buf).Encode(kvstore.KV{Key: k, Val: v}); err != nil {
@@ -615,13 +615,13 @@ func (m *Memory) Propose(k string, v string) {
 	m.proposeC <- buf.String()
 }
 
-// GetSnapshot 获取快照
-// 优化: 使用 Protobuf 序列化（2-3x 性能提升）
+// GetSnapshot getsnapshot
+// optimize: use Protobuf serialize（2-3x 性能提升）
 func (m *Memory) GetSnapshot() ([]byte, error) {
-	// 使用 ShardedMap.GetAll() 获取所有数据（内部加锁）
+	// use ShardedMap.GetAll() getalldata（internal加lock）
 	kvData := m.MemoryEtcd.kvData.GetAll()
 
-	// 获取 leases 副本（使用 leaseMu）
+	// get leases replica（use leaseMu）
 	m.MemoryEtcd.leaseMu.RLock()
 	leases := make(map[int64]*kvstore.Lease, len(m.MemoryEtcd.leases))
 	for k, v := range m.MemoryEtcd.leases {
@@ -629,12 +629,12 @@ func (m *Memory) GetSnapshot() ([]byte, error) {
 	}
 	m.MemoryEtcd.leaseMu.RUnlock()
 
-	// 使用 Protobuf 序列化（优化后）
+	// use Protobuf serialize（optimize后）
 	revision := m.MemoryEtcd.revision.Load()
 	return serializeSnapshot(revision, kvData, leases)
 }
 
-// loadSnapshot 加载快照
+// loadSnapshot loadsnapshot
 func (m *Memory) loadSnapshot() (*raftpb.Snapshot, error) {
 	snapshot, err := m.snapshotter.Load()
 	if errors.Is(err, snap.ErrNoSnapshot) {
@@ -643,22 +643,22 @@ func (m *Memory) loadSnapshot() (*raftpb.Snapshot, error) {
 	return snapshot, err
 }
 
-// recoverFromSnapshot 从快照恢复
-// 优化: 支持 Protobuf 和 JSON 格式（向后兼容）
+// recoverFromSnapshot fromsnapshotrecovery
+// optimize: supported Protobuf and JSON format（向后compatible）
 func (m *Memory) recoverFromSnapshot(snapshotData []byte) error {
-	// 使用统一的反序列化函数（自动检测格式）
+	// use统一deserializefunction（自动检测format）
 	snapshot, err := deserializeSnapshot(snapshotData)
 	if err != nil {
 		return err
 	}
 
-	// 使用 atomic 更新 revision
+	// use atomic update revision
 	m.MemoryEtcd.revision.Store(snapshot.Revision)
 
-	// 使用 ShardedMap.SetAll() 恢复数据（内部加锁）
+	// use ShardedMap.SetAll() recoverydata（internal加lock）
 	m.MemoryEtcd.kvData.SetAll(snapshot.KVData)
 
-	// 使用 leaseMu 恢复 leases
+	// use leaseMu recovery leases
 	m.MemoryEtcd.leaseMu.Lock()
 	m.MemoryEtcd.leases = snapshot.Leases
 	m.MemoryEtcd.leaseMu.Unlock()
@@ -666,16 +666,16 @@ func (m *Memory) recoverFromSnapshot(snapshotData []byte) error {
 	return nil
 }
 
-// SetRaftNode 设置 Raft 节点引用（用于依赖注入）
+// SetRaftNode set Raft nodereference（用at依赖注入）
 func (m *Memory) SetRaftNode(node RaftNode, nodeID uint64) {
 	m.raftNode = node
 	m.nodeID = nodeID
 }
 
-// GetRaftStatus 获取 Raft 状态信息
+// GetRaftStatus get Raft statusinfo
 func (m *Memory) GetRaftStatus() kvstore.RaftStatus {
 	if m.raftNode == nil {
-		// 如果没有 Raft 节点，返回默认状态（单机模式）
+		// ifnone Raft node，returndefaultstatus（单机schema）
 		return kvstore.RaftStatus{
 			NodeID:   m.nodeID,
 			Term:     0,
@@ -686,86 +686,86 @@ func (m *Memory) GetRaftStatus() kvstore.RaftStatus {
 		}
 	}
 
-	// 从 Raft 节点获取真实状态
+	// from Raft nodegettrue实status
 	return m.raftNode.Status()
 }
 
-// TransferLeadership 转移 leader 角色到指定节点
+// TransferLeadership 转移 leader roletospecifiednode
 func (m *Memory) TransferLeadership(targetID uint64) error {
 	if m.raftNode == nil {
 		return fmt.Errorf("raft node not available")
 	}
 
-	// 检查当前节点是否是 leader
+	// checkcurrentnodeisnois leader
 	status := m.raftNode.Status()
 	if status.LeaderID != m.nodeID {
 		return fmt.Errorf("not leader, current leader: %d", status.LeaderID)
 	}
 
-	// 调用 Raft 节点的 TransferLeadership
+	// call Raft node TransferLeadership
 	return m.raftNode.TransferLeadership(targetID)
 }
 
-// Range 执行范围查询（带 Lease Read 优化）
+// Range executerange查询（带 Lease Read optimize）
 //
-// Lease Read 优化路径:
-//   - Fast Path: Leader 有有效租约时直接读取（无需 Raft 共识）
-//   - Slow Path: 使用 ReadIndex 协议确保线性一致性
-//   - 预期性能提升: 10-100x （取决于集群大小和网络延迟）
+// Lease Read optimizepath:
+//   - Fast Path: Leader 有validlease时直接read（无需 Raft 共识）
+//   - Slow Path: use ReadIndex protocol确保线性一致性
+//   - 预期性能提升: 10-100x （取决atclustersizeandnetworklatency）
 func (m *Memory) Range(ctx context.Context, key, rangeEnd string, limit int64, revision int64) (*kvstore.RangeResponse, error) {
-	// 如果启用了 Lease Read 且 RaftNode 可用
+	// ifenabled Lease Read 且 RaftNode available
 	if m.raftNode != nil {
 		leaseManager := m.raftNode.LeaseManager()
 		readIndexManager := m.raftNode.ReadIndexManager()
 
 		if leaseManager != nil && readIndexManager != nil {
-			// Fast Path: Leader 有有效租约
+			// Fast Path: Leader 有validlease
 			if leaseManager.IsLeader() && leaseManager.HasValidLease() {
-				// 记录快速路径读取
+				// recordfastpathread
 				readIndexManager.RecordFastPathRead()
 
-				// 直接读取本地状态（已由租约保证线性一致性）
+				// 直接read本地status（已由lease保证线性一致性）
 				return m.MemoryEtcd.Range(ctx, key, rangeEnd, limit, revision)
 			}
 
-			// Slow Path: 非 Leader 或租约失效，使用 ReadIndex 协议
-			// TODO: 实现完整的 ReadIndex 协议
-			// 1. Leader 记录当前 committedIndex 作为 readIndex
-			// 2. Leader 发送心跳确认仍是 Leader
-			// 3. 等待 appliedIndex >= readIndex
-			// 4. 执行读取
+			// Slow Path: 非 Leader orlease失效，use ReadIndex protocol
+			// TODO: implement完整 ReadIndex protocol
+			// 1. Leader recordcurrent committedIndex 作as readIndex
+			// 2. Leader send心跳确认仍is Leader
+			// 3. wait appliedIndex >= readIndex
+			// 4. executeread
 
-			// 当前简化实现：直接读取（在完整实现前保持向后兼容）
+			// current简化implement：直接read（in完整implement前保持向后compatible）
 			return m.MemoryEtcd.Range(ctx, key, rangeEnd, limit, revision)
 		}
 	}
 
-	// 未启用 Lease Read 或 RaftNode 不可用，直接读取
+	// 未enabled Lease Read or RaftNode unavailable，直接read
 	return m.MemoryEtcd.Range(ctx, key, rangeEnd, limit, revision)
 }
 
-// RangeWithOptions 执行范围查询（支持完整选项，带 Lease Read 优化）
+// RangeWithOptions executerange查询（supported完整option，带 Lease Read optimize）
 func (m *Memory) RangeWithOptions(ctx context.Context, key, rangeEnd string, opts kvstore.RangeOptions) (*kvstore.RangeResponse, error) {
-	// 如果启用了 Lease Read 且 RaftNode 可用
+	// ifenabled Lease Read 且 RaftNode available
 	if m.raftNode != nil {
 		leaseManager := m.raftNode.LeaseManager()
 		readIndexManager := m.raftNode.ReadIndexManager()
 
 		if leaseManager != nil && readIndexManager != nil {
-			// Fast Path: Leader 有有效租约
+			// Fast Path: Leader 有validlease
 			if leaseManager.IsLeader() && leaseManager.HasValidLease() {
-				// 记录快速路径读取
+				// recordfastpathread
 				readIndexManager.RecordFastPathRead()
 
-				// 直接读取本地状态（已由租约保证线性一致性）
+				// 直接read本地status（已由lease保证线性一致性）
 				return m.MemoryEtcd.RangeWithOptions(ctx, key, rangeEnd, opts)
 			}
 
-			// 当前简化实现：直接读取（在完整实现前保持向后兼容）
+			// current简化implement：直接read（in完整implement前保持向后compatible）
 			return m.MemoryEtcd.RangeWithOptions(ctx, key, rangeEnd, opts)
 		}
 	}
 
-	// 未启用 Lease Read 或 RaftNode 不可用，直接读取
+	// 未enabled Lease Read or RaftNode unavailable，直接read
 	return m.MemoryEtcd.RangeWithOptions(ctx, key, rangeEnd, opts)
 }

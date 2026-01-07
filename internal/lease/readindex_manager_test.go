@@ -24,7 +24,7 @@ import (
 
 // TestReadIndexManager_Creation tests creating a new ReadIndex manager
 func TestReadIndexManager_Creation(t *testing.T) {
-	rm := NewReadIndexManager(nil, zap.NewNop()) // nil = 总是启用
+	rm := NewReadIndexManager(nil, zap.NewNop()) // nil = alwaysenabled
 
 	if rm == nil {
 		t.Fatal("NewReadIndexManager returned nil")
@@ -41,7 +41,7 @@ func TestReadIndexManager_Creation(t *testing.T) {
 
 // TestReadIndexManager_ImmediateRead tests reading with already applied index
 func TestReadIndexManager_ImmediateRead(t *testing.T) {
-	rm := NewReadIndexManager(nil, zap.NewNop()) // nil = 总是启用
+	rm := NewReadIndexManager(nil, zap.NewNop()) // nil = alwaysenabled
 
 	// Set last applied index
 	rm.NotifyApplied(10)
@@ -66,7 +66,7 @@ func TestReadIndexManager_ImmediateRead(t *testing.T) {
 
 // TestReadIndexManager_WaitForApply tests waiting for index to be applied
 func TestReadIndexManager_WaitForApply(t *testing.T) {
-	rm := NewReadIndexManager(nil, zap.NewNop()) // nil = 总是启用
+	rm := NewReadIndexManager(nil, zap.NewNop()) // nil = alwaysenabled
 
 	// Set initial applied index
 	rm.NotifyApplied(5)
@@ -122,7 +122,7 @@ func TestReadIndexManager_WaitForApply(t *testing.T) {
 
 // TestReadIndexManager_MultiplePendingReads tests multiple concurrent reads
 func TestReadIndexManager_MultiplePendingReads(t *testing.T) {
-	rm := NewReadIndexManager(nil, zap.NewNop()) // nil = 总是启用
+	rm := NewReadIndexManager(nil, zap.NewNop()) // nil = alwaysenabled
 
 	// Set initial applied index
 	rm.NotifyApplied(5)
@@ -187,7 +187,7 @@ func TestReadIndexManager_MultiplePendingReads(t *testing.T) {
 
 // TestReadIndexManager_PartialNotify tests partial notification of pending reads
 func TestReadIndexManager_PartialNotify(t *testing.T) {
-	rm := NewReadIndexManager(nil, zap.NewNop()) // nil = 总是启用
+	rm := NewReadIndexManager(nil, zap.NewNop()) // nil = alwaysenabled
 
 	// Launch 3 read requests with different indexes
 	resultCs := make([]chan struct {
@@ -268,7 +268,7 @@ func TestReadIndexManager_PartialNotify(t *testing.T) {
 
 // TestReadIndexManager_Timeout tests read request timeout
 func TestReadIndexManager_Timeout(t *testing.T) {
-	rm := NewReadIndexManager(nil, zap.NewNop()) // nil = 总是启用
+	rm := NewReadIndexManager(nil, zap.NewNop()) // nil = alwaysenabled
 
 	// Request read with short timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -290,7 +290,7 @@ func TestReadIndexManager_Timeout(t *testing.T) {
 
 // TestReadIndexManager_RecordFastPath tests fast path recording
 func TestReadIndexManager_RecordFastPath(t *testing.T) {
-	rm := NewReadIndexManager(nil, zap.NewNop()) // nil = 总是启用
+	rm := NewReadIndexManager(nil, zap.NewNop()) // nil = alwaysenabled
 
 	// Record 5 fast path reads
 	for i := 0; i < 5; i++ {
@@ -310,7 +310,7 @@ func TestReadIndexManager_RecordFastPath(t *testing.T) {
 
 // TestReadIndexManager_RecordForwarded tests forwarded read recording
 func TestReadIndexManager_RecordForwarded(t *testing.T) {
-	rm := NewReadIndexManager(nil, zap.NewNop()) // nil = 总是启用
+	rm := NewReadIndexManager(nil, zap.NewNop()) // nil = alwaysenabled
 
 	// Record 3 forwarded reads
 	for i := 0; i < 3; i++ {
@@ -325,7 +325,7 @@ func TestReadIndexManager_RecordForwarded(t *testing.T) {
 
 // TestReadIndexManager_Stats tests statistics calculation
 func TestReadIndexManager_Stats(t *testing.T) {
-	rm := NewReadIndexManager(nil, zap.NewNop()) // nil = 总是启用
+	rm := NewReadIndexManager(nil, zap.NewNop()) // nil = alwaysenabled
 
 	// Initial stats
 	stats := rm.Stats()
@@ -397,7 +397,7 @@ func TestReadIndexManager_Stats(t *testing.T) {
 
 // TestReadIndexManager_MixedWorkload tests a mix of fast and slow path reads
 func TestReadIndexManager_MixedWorkload(t *testing.T) {
-	rm := NewReadIndexManager(nil, zap.NewNop()) // nil = 总是启用
+	rm := NewReadIndexManager(nil, zap.NewNop()) // nil = alwaysenabled
 
 	// Set initial applied index
 	rm.NotifyApplied(10)

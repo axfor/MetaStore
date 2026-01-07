@@ -21,44 +21,44 @@ import (
 	"go.uber.org/zap"
 )
 
-// HealthChecker 自动检测 Lease Read 系统健康状态
+// HealthChecker 自动检测 Lease Read 系统healthystatus
 type HealthChecker struct {
 	leaseManager     *LeaseManager
 	readIndexManager *ReadIndexManager
 	logger           *zap.Logger
 
-	// 配置
+	// config
 	checkInterval    time.Duration
-	alertThreshold   int // 连续失败次数阈值
+	alertThreshold   int // 连续failuretimesthreshold
 
-	// 状态
+	// status
 	consecutiveFailures int
 	lastCheckTime       time.Time
 	lastAlertTime       time.Time
 }
 
-// HealthStatus Lease Read 健康状态
+// HealthStatus Lease Read healthystatus
 type HealthStatus struct {
 	Healthy           bool
 	Issues            []string
 	LeaseEstablished  bool
-	LeaseRenewRate    float64 // 续期成功率
-	FastPathRate      float64 // 快速路径使用率
+	LeaseRenewRate    float64 // 续期success率
+	FastPathRate      float64 // fastpathuse率
 	Timestamp         time.Time
 }
 
-// NewHealthChecker 创建健康检查器
+// NewHealthChecker createhealthycheck器
 func NewHealthChecker(lm *LeaseManager, rim *ReadIndexManager, logger *zap.Logger) *HealthChecker {
 	return &HealthChecker{
 		leaseManager:     lm,
 		readIndexManager: rim,
 		logger:           logger,
-		checkInterval:    30 * time.Second, // 默认 30 秒检查一次
-		alertThreshold:   3,                 // 连续 3 次失败才报警
+		checkInterval:    30 * time.Second, // default 30 秒check一次
+		alertThreshold:   3,                 // 连续 3 次failure才报警
 	}
 }
 
-// Check 执行健康检查
+// Check executehealthycheck
 func (hc *HealthChecker) Check() HealthStatus {
 	hc.lastCheckTime = time.Now()
 
@@ -68,7 +68,7 @@ func (hc *HealthChecker) Check() HealthStatus {
 		Timestamp: hc.lastCheckTime,
 	}
 
-	// 检查 1: Lease 是否建立（仅对 Leader）
+	// check 1: Lease isno建立（仅对 Leader）
 	if hc.leaseManager != nil && hc.leaseManager.IsLeader() {
 		leaseStats := hc.leaseManager.Stats()
 		status.LeaseEstablished = leaseStats.HasValidLease
@@ -79,21 +79,21 @@ func (hc *HealthChecker) Check() HealthStatus {
 			status.Issues = append(status.Issues, issue)
 			status.Healthy = false
 
-			// 特殊情况：单节点集群
-			// 如果是单节点，这是已知限制，降级为警告
+			// 特殊情况：单nodecluster
+			// ifis单node，这isknownlimit，degradationaswarning
 			if hc.isSingleNodeScenario() {
 				hc.logger.Warn("Lease not established in single-node scenario (known limitation)",
 					zap.Int64("renew_count", leaseStats.LeaseRenewCount))
-				status.Healthy = true // 标记为健康，但保留 issue
+				status.Healthy = true // markerashealthy，但保留 issue
 			}
 		}
 
-		// 计算续期成功率
+		// calculate续期success率
 		totalAttempts := leaseStats.LeaseRenewCount + leaseStats.LeaseExpireCount
 		if totalAttempts > 0 {
 			status.LeaseRenewRate = float64(leaseStats.LeaseRenewCount) / float64(totalAttempts)
 
-			// 检查续期成功率是否过低
+			// check续期success率isno过low
 			if status.LeaseRenewRate < 0.8 && totalAttempts > 10 {
 				issue := fmt.Sprintf("Low lease renew rate: %.2f%% (expected >80%%)",
 					status.LeaseRenewRate*100)
@@ -103,14 +103,14 @@ func (hc *HealthChecker) Check() HealthStatus {
 		}
 	}
 
-	// 检查 2: ReadIndex 使用情况
+	// check 2: ReadIndex use情况
 	if hc.readIndexManager != nil {
 		readStats := hc.readIndexManager.Stats()
 		status.FastPathRate = readStats.FastPathRate
 
-		// 如果有读请求但快速路径使用率为 0，可能有问题
+		// if有读request但fastpathuse率as 0，may有问题
 		if readStats.TotalRequests > 100 && readStats.FastPathRate == 0 {
-			// 但如果不是 Leader 或租约未建立，这是正常的
+			// 但ifnotis Leader orlease未建立，这is正常
 			if hc.leaseManager != nil && hc.leaseManager.IsLeader() && hc.leaseManager.HasValidLease() {
 				issue := fmt.Sprintf("Fast path not used despite valid lease (Total=%d, FastPath=%d)",
 					readStats.TotalRequests, readStats.FastPathReads)
@@ -119,7 +119,7 @@ func (hc *HealthChecker) Check() HealthStatus {
 			}
 		}
 
-		// 检查待处理读请求是否过多
+		// check待handle读requestisno过多
 		if readStats.PendingReads > 1000 {
 			issue := fmt.Sprintf("Too many pending reads: %d (may indicate performance issue)",
 				readStats.PendingReads)
@@ -128,14 +128,14 @@ func (hc *HealthChecker) Check() HealthStatus {
 		}
 	}
 
-	// 更新连续失败计数
+	// update连续failurecount
 	if !status.Healthy {
 		hc.consecutiveFailures++
 
-		// 达到阈值时发出警报
+		// 达tothreshold时发出警报
 		if hc.consecutiveFailures >= hc.alertThreshold {
 			hc.alert(status)
-			hc.consecutiveFailures = 0 // 重置计数
+			hc.consecutiveFailures = 0 // resetcount
 		}
 	} else {
 		hc.consecutiveFailures = 0
@@ -144,18 +144,18 @@ func (hc *HealthChecker) Check() HealthStatus {
 	return status
 }
 
-// isSingleNodeScenario 检测是否是单节点场景
+// isSingleNodeScenario 检测isnois单node场景
 func (hc *HealthChecker) isSingleNodeScenario() bool {
-	// TODO: 实现实际的节点数检测
-	// 这需要访问 Raft 集群配置信息
-	// 当前简化实现：如果续期次数很少但没有过期，可能是单节点
+	// TODO: implement实际node数检测
+	// 这need访问 Raft clusterconfiginfo
+	// current简化implement：if续期timesrarely但noneexpiration，mayis单node
 	stats := hc.leaseManager.Stats()
 	return stats.LeaseRenewCount > 0 && stats.LeaseExpireCount == 0 && stats.LeaseRenewCount < 10
 }
 
-// alert 发出健康警报
+// alert 发出healthy警报
 func (hc *HealthChecker) alert(status HealthStatus) {
-	// 避免频繁报警（至少间隔 5 分钟）
+	// 避免频繁报警（至少interval 5 分钟）
 	if time.Since(hc.lastAlertTime) < 5*time.Minute {
 		return
 	}
@@ -170,13 +170,13 @@ func (hc *HealthChecker) alert(status HealthStatus) {
 		zap.Float64("fast_path_rate", status.FastPathRate),
 		zap.Int("consecutive_failures", hc.consecutiveFailures))
 
-	// TODO: 集成告警系统
-	// - 发送 Prometheus Alert
-	// - 发送邮件/短信
-	// - 记录到监控系统
+	// TODO: 集成alarm系统
+	// - send Prometheus Alert
+	// - send邮件/短信
+	// - recordto监控系统
 }
 
-// StartMonitoring 启动后台健康监控
+// StartMonitoring start后台healthy监控
 func (hc *HealthChecker) StartMonitoring(stopC <-chan struct{}) {
 	ticker := time.NewTicker(hc.checkInterval)
 	defer ticker.Stop()
@@ -190,7 +190,7 @@ func (hc *HealthChecker) StartMonitoring(stopC <-chan struct{}) {
 		case <-ticker.C:
 			status := hc.Check()
 
-			// 定期记录健康状态
+			// 定期recordhealthystatus
 			if status.Healthy {
 				hc.logger.Debug("Lease Read health check passed",
 					zap.Bool("lease_established", status.LeaseEstablished),
@@ -207,36 +207,36 @@ func (hc *HealthChecker) StartMonitoring(stopC <-chan struct{}) {
 	}
 }
 
-// GetMetrics 获取 Prometheus 格式的指标
+// GetMetrics get Prometheus format指标
 func (hc *HealthChecker) GetMetrics() map[string]float64 {
 	status := hc.Check()
 
 	metrics := make(map[string]float64)
 
-	// 健康状态（0 = 不健康，1 = 健康）
+	// healthystatus（0 = unhealthy，1 = healthy）
 	if status.Healthy {
 		metrics["lease_read_healthy"] = 1.0
 	} else {
 		metrics["lease_read_healthy"] = 0.0
 	}
 
-	// 租约建立状态
+	// lease建立status
 	if status.LeaseEstablished {
 		metrics["lease_established"] = 1.0
 	} else {
 		metrics["lease_established"] = 0.0
 	}
 
-	// 续期成功率
+	// 续期success率
 	metrics["lease_renew_rate"] = status.LeaseRenewRate
 
-	// 快速路径使用率
+	// fastpathuse率
 	metrics["lease_fast_path_rate"] = status.FastPathRate
 
-	// 问题数量
+	// 问题quantity
 	metrics["lease_issues_count"] = float64(len(status.Issues))
 
-	// 连续失败次数
+	// 连续failuretimes
 	metrics["lease_consecutive_failures"] = float64(hc.consecutiveFailures)
 
 	return metrics

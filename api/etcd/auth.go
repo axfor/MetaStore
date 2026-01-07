@@ -22,13 +22,13 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 )
 
-// AuthServer 实现 etcd Auth 服务
+// AuthServer implements etcd Auth service
 type AuthServer struct {
 	pb.UnimplementedAuthServer
 	server *Server
 }
 
-// AuthEnable 启用认证
+// AuthEnable enables authentication
 func (s *AuthServer) AuthEnable(ctx context.Context, req *pb.AuthEnableRequest) (*pb.AuthEnableResponse, error) {
 	err := s.server.authMgr.Enable()
 	if err != nil {
@@ -40,9 +40,9 @@ func (s *AuthServer) AuthEnable(ctx context.Context, req *pb.AuthEnableRequest) 
 	}, nil
 }
 
-// AuthDisable 禁用认证
+// AuthDisable disables authentication
 func (s *AuthServer) AuthDisable(ctx context.Context, req *pb.AuthDisableRequest) (*pb.AuthDisableResponse, error) {
-	// TODO: 验证调用者是 root (从 context 获取用户信息)
+	// TODO: verify caller is root (get user info from context)
 	err := s.server.authMgr.Disable()
 	if err != nil {
 		return nil, toGRPCError(err)
@@ -53,7 +53,7 @@ func (s *AuthServer) AuthDisable(ctx context.Context, req *pb.AuthDisableRequest
 	}, nil
 }
 
-// AuthStatus 查询认证状态
+// AuthStatus queries authentication status
 func (s *AuthServer) AuthStatus(ctx context.Context, req *pb.AuthStatusRequest) (*pb.AuthStatusResponse, error) {
 	enabled := s.server.authMgr.IsEnabled()
 	return &pb.AuthStatusResponse{
@@ -62,7 +62,7 @@ func (s *AuthServer) AuthStatus(ctx context.Context, req *pb.AuthStatusRequest) 
 	}, nil
 }
 
-// Authenticate 用户认证
+// Authenticate user authentication
 func (s *AuthServer) Authenticate(ctx context.Context, req *pb.AuthenticateRequest) (*pb.AuthenticateResponse, error) {
 	token, err := s.server.authMgr.Authenticate(req.Name, req.Password)
 	if err != nil {
@@ -75,9 +75,9 @@ func (s *AuthServer) Authenticate(ctx context.Context, req *pb.AuthenticateReque
 	}, nil
 }
 
-// UserAdd 添加用户
+// UserAdd adds a user
 func (s *AuthServer) UserAdd(ctx context.Context, req *pb.AuthUserAddRequest) (*pb.AuthUserAddResponse, error) {
-	// TODO: 验证权限 (从 context 获取用户信息)
+	// TODO: verify permissions (get user info from context)
 	err := s.server.authMgr.AddUser(req.Name, req.Password)
 	if err != nil {
 		return nil, toGRPCError(err)
@@ -88,7 +88,7 @@ func (s *AuthServer) UserAdd(ctx context.Context, req *pb.AuthUserAddRequest) (*
 	}, nil
 }
 
-// UserDelete 删除用户
+// UserDelete deletes a user
 func (s *AuthServer) UserDelete(ctx context.Context, req *pb.AuthUserDeleteRequest) (*pb.AuthUserDeleteResponse, error) {
 	err := s.server.authMgr.DeleteUser(req.Name)
 	if err != nil {
@@ -100,7 +100,7 @@ func (s *AuthServer) UserDelete(ctx context.Context, req *pb.AuthUserDeleteReque
 	}, nil
 }
 
-// UserGet 获取用户信息
+// UserGet gets user information
 func (s *AuthServer) UserGet(ctx context.Context, req *pb.AuthUserGetRequest) (*pb.AuthUserGetResponse, error) {
 	user, err := s.server.authMgr.GetUser(req.Name)
 	if err != nil {
@@ -113,7 +113,7 @@ func (s *AuthServer) UserGet(ctx context.Context, req *pb.AuthUserGetRequest) (*
 	}, nil
 }
 
-// UserList 列出所有用户
+// UserList lists all users
 func (s *AuthServer) UserList(ctx context.Context, req *pb.AuthUserListRequest) (*pb.AuthUserListResponse, error) {
 	users, err := s.server.authMgr.ListUsers()
 	if err != nil {
@@ -131,7 +131,7 @@ func (s *AuthServer) UserList(ctx context.Context, req *pb.AuthUserListRequest) 
 	}, nil
 }
 
-// UserChangePassword 修改密码
+// UserChangePassword changes password
 func (s *AuthServer) UserChangePassword(ctx context.Context, req *pb.AuthUserChangePasswordRequest) (*pb.AuthUserChangePasswordResponse, error) {
 	err := s.server.authMgr.ChangePassword(req.Name, req.Password)
 	if err != nil {
@@ -143,7 +143,7 @@ func (s *AuthServer) UserChangePassword(ctx context.Context, req *pb.AuthUserCha
 	}, nil
 }
 
-// UserGrantRole 授予角色
+// UserGrantRole grants a role
 func (s *AuthServer) UserGrantRole(ctx context.Context, req *pb.AuthUserGrantRoleRequest) (*pb.AuthUserGrantRoleResponse, error) {
 	err := s.server.authMgr.GrantRole(req.User, req.Role)
 	if err != nil {
@@ -155,7 +155,7 @@ func (s *AuthServer) UserGrantRole(ctx context.Context, req *pb.AuthUserGrantRol
 	}, nil
 }
 
-// UserRevokeRole 撤销角色
+// UserRevokeRole revokes a role
 func (s *AuthServer) UserRevokeRole(ctx context.Context, req *pb.AuthUserRevokeRoleRequest) (*pb.AuthUserRevokeRoleResponse, error) {
 	err := s.server.authMgr.RevokeRole(req.Name, req.Role)
 	if err != nil {
@@ -167,7 +167,7 @@ func (s *AuthServer) UserRevokeRole(ctx context.Context, req *pb.AuthUserRevokeR
 	}, nil
 }
 
-// RoleAdd 添加角色
+// RoleAdd adds a role
 func (s *AuthServer) RoleAdd(ctx context.Context, req *pb.AuthRoleAddRequest) (*pb.AuthRoleAddResponse, error) {
 	err := s.server.authMgr.AddRole(req.Name)
 	if err != nil {
@@ -179,7 +179,7 @@ func (s *AuthServer) RoleAdd(ctx context.Context, req *pb.AuthRoleAddRequest) (*
 	}, nil
 }
 
-// RoleDelete 删除角色
+// RoleDelete deletes a role
 func (s *AuthServer) RoleDelete(ctx context.Context, req *pb.AuthRoleDeleteRequest) (*pb.AuthRoleDeleteResponse, error) {
 	err := s.server.authMgr.DeleteRole(req.Role)
 	if err != nil {
@@ -191,14 +191,14 @@ func (s *AuthServer) RoleDelete(ctx context.Context, req *pb.AuthRoleDeleteReque
 	}, nil
 }
 
-// RoleGet 获取角色信息
+// RoleGet gets role information
 func (s *AuthServer) RoleGet(ctx context.Context, req *pb.AuthRoleGetRequest) (*pb.AuthRoleGetResponse, error) {
 	role, err := s.server.authMgr.GetRole(req.Role)
 	if err != nil {
 		return nil, toGRPCError(err)
 	}
 
-	// 转换权限列表
+	// Convert permission list
 	pbPerms := make([]*authpb.Permission, len(role.Permissions))
 	for i, perm := range role.Permissions {
 		pbPerms[i] = &authpb.Permission{
@@ -214,7 +214,7 @@ func (s *AuthServer) RoleGet(ctx context.Context, req *pb.AuthRoleGetRequest) (*
 	}, nil
 }
 
-// RoleList 列出所有角色
+// RoleList lists all roles
 func (s *AuthServer) RoleList(ctx context.Context, req *pb.AuthRoleListRequest) (*pb.AuthRoleListResponse, error) {
 	roles, err := s.server.authMgr.ListRoles()
 	if err != nil {
@@ -232,7 +232,7 @@ func (s *AuthServer) RoleList(ctx context.Context, req *pb.AuthRoleListRequest) 
 	}, nil
 }
 
-// RoleGrantPermission 授予权限
+// RoleGrantPermission grants permission
 func (s *AuthServer) RoleGrantPermission(ctx context.Context, req *pb.AuthRoleGrantPermissionRequest) (*pb.AuthRoleGrantPermissionResponse, error) {
 	if req.Perm == nil {
 		return nil, toGRPCError(fmt.Errorf("permission is required"))
@@ -254,7 +254,7 @@ func (s *AuthServer) RoleGrantPermission(ctx context.Context, req *pb.AuthRoleGr
 	}, nil
 }
 
-// RoleRevokePermission 撤销权限
+// RoleRevokePermission revokes permission
 func (s *AuthServer) RoleRevokePermission(ctx context.Context, req *pb.AuthRoleRevokePermissionRequest) (*pb.AuthRoleRevokePermissionResponse, error) {
 	err := s.server.authMgr.RevokePermission(req.Role, req.Key, req.RangeEnd)
 	if err != nil {

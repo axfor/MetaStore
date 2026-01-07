@@ -45,14 +45,14 @@ type ReadIndexManager struct {
 	slowPathReads      atomic.Int64 // ReadIndex reads (slow path)
 	forwardedReads     atomic.Int64 // Forwarded reads
 
-	// Smart configuration (支持动态扩缩容)
-	smartConfig *SmartLeaseConfig // nil 表示总是启用
+	// Smart configuration (supporteddynamic扩缩容)
+	smartConfig *SmartLeaseConfig // nil indicatesalwaysenabled
 
 	logger *zap.Logger
 }
 
 // NewReadIndexManager creates a new ReadIndex manager
-// smartConfig: 传入 nil 表示总是启用，传入非 nil 则根据智能配置决定
+// smartConfig: 传入 nil indicatesalwaysenabled，传入非 nil 则root据智能config决定
 func NewReadIndexManager(smartConfig *SmartLeaseConfig, logger *zap.Logger) *ReadIndexManager {
 	return &ReadIndexManager{
 		pendingReads: make(map[string]*ReadIndexRequest),
@@ -135,8 +135,8 @@ func (rm *ReadIndexManager) NotifyApplied(appliedIndex uint64) {
 
 // RecordFastPathRead records a fast path read (lease read)
 func (rm *ReadIndexManager) RecordFastPathRead() {
-	// 运行时检查：如果智能配置禁用，不记录快速路径
-	// 这避免了统计数据的误导性
+	// running时check：if智能configdisabled，notrecordfastpath
+	// 这避免statisticsdata误导性
 	if rm.smartConfig != nil && !rm.smartConfig.IsEnabled() {
 		return
 	}

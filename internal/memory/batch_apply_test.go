@@ -23,9 +23,9 @@ import (
 	"go.etcd.io/etcd/server/v3/etcdserver/api/snap"
 )
 
-// TestBatchApplyPut 测试批量 PUT 的正确性
+// TestBatchApplyPut test批量 PUT correct性
 func TestBatchApplyPut(t *testing.T) {
-	// 创建测试存储
+	// createtest存储
 	proposeC := make(chan string)
 	commitC := make(chan *kvstore.Commit)
 	errorC := make(chan error)
@@ -33,7 +33,7 @@ func TestBatchApplyPut(t *testing.T) {
 
 	m := NewMemory(snapshotter, proposeC, commitC, errorC)
 
-	// 创建批量操作
+	// create批量operation
 	ops := make([]RaftOperation, 100)
 	for i := 0; i < 100; i++ {
 		ops[i] = RaftOperation{
@@ -47,7 +47,7 @@ func TestBatchApplyPut(t *testing.T) {
 	// 批量应用
 	m.applyBatch(ops)
 
-	// 验证所有键都被写入
+	// verifyallkey都被write
 	for i := 0; i < 100; i++ {
 		key := fmt.Sprintf("key-%d", i)
 		kv, exists := m.MemoryEtcd.kvData.Get(key)
@@ -62,7 +62,7 @@ func TestBatchApplyPut(t *testing.T) {
 		}
 	}
 
-	// 验证 revision 正确
+	// verify revision correct
 	expectedRevision := int64(100)
 	actualRevision := m.MemoryEtcd.revision.Load()
 	if actualRevision != expectedRevision {
@@ -70,9 +70,9 @@ func TestBatchApplyPut(t *testing.T) {
 	}
 }
 
-// TestBatchApplyDelete 测试批量 DELETE 的正确性
+// TestBatchApplyDelete test批量 DELETE correct性
 func TestBatchApplyDelete(t *testing.T) {
-	// 创建测试存储
+	// createtest存储
 	proposeC := make(chan string)
 	commitC := make(chan *kvstore.Commit)
 	errorC := make(chan error)
@@ -80,7 +80,7 @@ func TestBatchApplyDelete(t *testing.T) {
 
 	m := NewMemory(snapshotter, proposeC, commitC, errorC)
 
-	// 先写入数据
+	// 先writedata
 	putOps := make([]RaftOperation, 100)
 	for i := 0; i < 100; i++ {
 		putOps[i] = RaftOperation{
@@ -92,7 +92,7 @@ func TestBatchApplyDelete(t *testing.T) {
 	}
 	m.applyBatch(putOps)
 
-	// 批量删除
+	// 批量delete
 	deleteOps := make([]RaftOperation, 100)
 	for i := 0; i < 100; i++ {
 		deleteOps[i] = RaftOperation{
@@ -103,7 +103,7 @@ func TestBatchApplyDelete(t *testing.T) {
 	}
 	m.applyBatch(deleteOps)
 
-	// 验证所有键都被删除
+	// verifyallkey都被delete
 	for i := 0; i < 100; i++ {
 		key := fmt.Sprintf("key-%d", i)
 		_, exists := m.MemoryEtcd.kvData.Get(key)
@@ -113,9 +113,9 @@ func TestBatchApplyDelete(t *testing.T) {
 	}
 }
 
-// TestBatchApplyMixed 测试批量混合操作
+// TestBatchApplyMixed test批量混合operation
 func TestBatchApplyMixed(t *testing.T) {
-	// 创建测试存储
+	// createtest存储
 	proposeC := make(chan string)
 	commitC := make(chan *kvstore.Commit)
 	errorC := make(chan error)
@@ -123,7 +123,7 @@ func TestBatchApplyMixed(t *testing.T) {
 
 	m := NewMemory(snapshotter, proposeC, commitC, errorC)
 
-	// 创建混合操作: 50 PUT + 30 DELETE + 20 LEASE_GRANT
+	// create混合operation: 50 PUT + 30 DELETE + 20 LEASE_GRANT
 	ops := make([]RaftOperation, 100)
 
 	// 50 PUT
@@ -136,7 +136,7 @@ func TestBatchApplyMixed(t *testing.T) {
 		}
 	}
 
-	// 先写入一些数据供删除
+	// 先writesomedata供delete
 	for i := 50; i < 80; i++ {
 		m.MemoryEtcd.putDirect(fmt.Sprintf("key-%d", i), "old-value", 0)
 	}
@@ -163,7 +163,7 @@ func TestBatchApplyMixed(t *testing.T) {
 	// 批量应用
 	m.applyBatch(ops)
 
-	// 验证 PUT 操作
+	// verify PUT operation
 	for i := 0; i < 50; i++ {
 		key := fmt.Sprintf("key-%d", i)
 		kv, exists := m.MemoryEtcd.kvData.Get(key)
@@ -174,7 +174,7 @@ func TestBatchApplyMixed(t *testing.T) {
 		}
 	}
 
-	// 验证 DELETE 操作
+	// verify DELETE operation
 	for i := 50; i < 80; i++ {
 		key := fmt.Sprintf("key-%d", i)
 		_, exists := m.MemoryEtcd.kvData.Get(key)
@@ -183,7 +183,7 @@ func TestBatchApplyMixed(t *testing.T) {
 		}
 	}
 
-	// 验证 LEASE_GRANT 操作
+	// verify LEASE_GRANT operation
 	for i := 80; i < 100; i++ {
 		leaseID := int64(i)
 		m.MemoryEtcd.leaseMu.RLock()
@@ -196,9 +196,9 @@ func TestBatchApplyMixed(t *testing.T) {
 	}
 }
 
-// TestBatchApplyCorrectnessVsSingle 测试批量和单个应用的等价性
+// TestBatchApplyCorrectnessVsSingle test批量and单个应用等价性
 func TestBatchApplyCorrectnessVsSingle(t *testing.T) {
-	// 测试数据
+	// testdata
 	testOps := []RaftOperation{
 		{Type: "PUT", Key: "key1", Value: "value1", SeqNum: "seq1"},
 		{Type: "PUT", Key: "key2", Value: "value2", SeqNum: "seq2"},
@@ -227,7 +227,7 @@ func TestBatchApplyCorrectnessVsSingle(t *testing.T) {
 
 	m2.applyBatch(testOps)
 
-	// 验证两种方式结果一致
+	// verify两种方式result一致
 	keys := []string{"key1", "key2", "key3"}
 	for _, key := range keys {
 		kv1, exists1 := m1.MemoryEtcd.kvData.Get(key)
@@ -244,14 +244,14 @@ func TestBatchApplyCorrectnessVsSingle(t *testing.T) {
 		}
 	}
 
-	// 验证 revision 一致
+	// verify revision 一致
 	if m1.MemoryEtcd.revision.Load() != m2.MemoryEtcd.revision.Load() {
 		t.Errorf("Revision mismatch: single=%d, batch=%d",
 			m1.MemoryEtcd.revision.Load(), m2.MemoryEtcd.revision.Load())
 	}
 }
 
-// BenchmarkBatchApplyVsSingle 对比批量和单个应用的性能
+// BenchmarkBatchApplyVsSingle 对比批量and单个应用性能
 func BenchmarkBatchApplyVsSingle(b *testing.B) {
 	b.Run("Single", func(b *testing.B) {
 		proposeC := make(chan string)
@@ -260,7 +260,7 @@ func BenchmarkBatchApplyVsSingle(b *testing.B) {
 		snapshotter := snap.New(nil, b.TempDir())
 		m := NewMemory(snapshotter, proposeC, commitC, errorC)
 
-		// 准备操作
+		// 准备operation
 		ops := make([]RaftOperation, 100)
 		for i := 0; i < 100; i++ {
 			ops[i] = RaftOperation{
@@ -286,7 +286,7 @@ func BenchmarkBatchApplyVsSingle(b *testing.B) {
 		snapshotter := snap.New(nil, b.TempDir())
 		m := NewMemory(snapshotter, proposeC, commitC, errorC)
 
-		// 准备操作
+		// 准备operation
 		ops := make([]RaftOperation, 100)
 		for i := 0; i < 100; i++ {
 			ops[i] = RaftOperation{
@@ -304,7 +304,7 @@ func BenchmarkBatchApplyVsSingle(b *testing.B) {
 	})
 }
 
-// TestBatchApplyEmptyOps 测试空操作列表
+// TestBatchApplyEmptyOps testemptyoperationlist
 func TestBatchApplyEmptyOps(t *testing.T) {
 	proposeC := make(chan string)
 	commitC := make(chan *kvstore.Commit)
@@ -312,16 +312,16 @@ func TestBatchApplyEmptyOps(t *testing.T) {
 	snapshotter := snap.New(nil, t.TempDir())
 	m := NewMemory(snapshotter, proposeC, commitC, errorC)
 
-	// 空操作列表
+	// emptyoperationlist
 	m.applyBatch([]RaftOperation{})
 
-	// 验证无副作用
+	// verify无副作用
 	if m.MemoryEtcd.revision.Load() != 0 {
 		t.Errorf("Expected revision 0, got %d", m.MemoryEtcd.revision.Load())
 	}
 }
 
-// TestBatchApplySingleOp 测试单个操作优化路径
+// TestBatchApplySingleOp test单个operationoptimizepath
 func TestBatchApplySingleOp(t *testing.T) {
 	proposeC := make(chan string)
 	commitC := make(chan *kvstore.Commit)
@@ -329,14 +329,14 @@ func TestBatchApplySingleOp(t *testing.T) {
 	snapshotter := snap.New(nil, t.TempDir())
 	m := NewMemory(snapshotter, proposeC, commitC, errorC)
 
-	// 单个操作
+	// 单个operation
 	ops := []RaftOperation{
 		{Type: "PUT", Key: "key1", Value: "value1", SeqNum: "seq1"},
 	}
 
 	m.applyBatch(ops)
 
-	// 验证操作成功
+	// verifyoperationsuccess
 	kv, exists := m.MemoryEtcd.kvData.Get("key1")
 	if !exists {
 		t.Error("Key key1 not found")
@@ -346,7 +346,7 @@ func TestBatchApplySingleOp(t *testing.T) {
 	}
 }
 
-// TestBatchApplyStressTest 压力测试
+// TestBatchApplyStressTest 压力test
 func TestBatchApplyStressTest(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping stress test in short mode")
@@ -358,13 +358,13 @@ func TestBatchApplyStressTest(t *testing.T) {
 	snapshotter := snap.New(nil, t.TempDir())
 	m := NewMemory(snapshotter, proposeC, commitC, errorC)
 
-	// 大批量操作
+	// 大批量operation
 	numOps := 10000
 	ops := make([]RaftOperation, numOps)
 	for i := 0; i < numOps; i++ {
 		ops[i] = RaftOperation{
 			Type:   "PUT",
-			Key:    fmt.Sprintf("key-%d", i%1000), // 重复写入相同的 key
+			Key:    fmt.Sprintf("key-%d", i%1000), // duplicatewritesame key
 			Value:  fmt.Sprintf("value-%d", i),
 			SeqNum: fmt.Sprintf("seq-%d", i),
 		}
@@ -377,7 +377,7 @@ func TestBatchApplyStressTest(t *testing.T) {
 	t.Logf("Applied %d operations in %v", numOps, duration)
 	t.Logf("Throughput: %.2f ops/sec", float64(numOps)/duration.Seconds())
 
-	// 验证最终状态
+	// verifyfinalstatus
 	finalRevision := m.MemoryEtcd.revision.Load()
 	if finalRevision != int64(numOps) {
 		t.Errorf("Expected revision %d, got %d", numOps, finalRevision)

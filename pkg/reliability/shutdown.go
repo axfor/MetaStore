@@ -25,41 +25,41 @@ import (
 	"time"
 )
 
-// ShutdownHook 关闭钩子函数类型
+// ShutdownHook close钩子functiontype
 type ShutdownHook func(ctx context.Context) error
 
-// ShutdownPhase 关闭阶段
+// ShutdownPhase close阶segment
 type ShutdownPhase int
 
 const (
-	// PhaseStopAccepting 停止接受新请求
+	// PhaseStopAccepting stopped接受newrequest
 	PhaseStopAccepting ShutdownPhase = iota
-	// PhaseDrainConnections 排空现有连接
+	// PhaseDrainConnections 排empty现有connection
 	PhaseDrainConnections
-	// PhasePersistState 持久化状态
+	// PhasePersistState persistent化status
 	PhasePersistState
-	// PhaseCloseResources 关闭资源
+	// PhaseCloseResources closeresource
 	PhaseCloseResources
 )
 
-// GracefulShutdown 优雅关闭管理器
+// GracefulShutdown 优雅closemanager
 type GracefulShutdown struct {
 	mu           sync.RWMutex
 	hooks        map[ShutdownPhase][]ShutdownHook
-	timeout      time.Duration // 总超时时间
-	drainTimeout time.Duration // 排空连接的专用超时
+	timeout      time.Duration // 总timeouttime
+	drainTimeout time.Duration // 排emptyconnection专用timeout
 	done         chan struct{}
 	signals      chan os.Signal
 }
 
-// NewGracefulShutdown 创建优雅关闭管理器
-// timeout: 总关闭超时，drainTimeout: 排空连接的超时（可选）
+// NewGracefulShutdown create优雅closemanager
+// timeout: 总closetimeout，drainTimeout: 排emptyconnectiontimeout（optional）
 func NewGracefulShutdown(timeout time.Duration, drainTimeout ...time.Duration) *GracefulShutdown {
 	if timeout == 0 {
-		timeout = 30 * time.Second // 默认 30 秒总超时
+		timeout = 30 * time.Second // default 30 秒总timeout
 	}
 
-	dt := 5 * time.Second // 默认 5 秒排空超时
+	dt := 5 * time.Second // default 5 秒排emptytimeout
 	if len(drainTimeout) > 0 && drainTimeout[0] > 0 {
 		dt = drainTimeout[0]
 	}
@@ -72,13 +72,13 @@ func NewGracefulShutdown(timeout time.Duration, drainTimeout ...time.Duration) *
 		signals:      make(chan os.Signal, 1),
 	}
 
-	// 注册系统信号
+	// register系统信号
 	signal.Notify(gs.signals, syscall.SIGTERM, syscall.SIGINT)
 
 	return gs
 }
 
-// RegisterHook 注册关闭钩子
+// RegisterHook registerclose钩子
 func (gs *GracefulShutdown) RegisterHook(phase ShutdownPhase, hook ShutdownHook) {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
@@ -86,7 +86,7 @@ func (gs *GracefulShutdown) RegisterHook(phase ShutdownPhase, hook ShutdownHook)
 	gs.hooks[phase] = append(gs.hooks[phase], hook)
 }
 
-// Wait 等待关闭信号
+// Wait waitclose信号
 func (gs *GracefulShutdown) Wait() {
 	sig := <-gs.signals
 	log.Info("Received shutdown signal",
@@ -95,12 +95,12 @@ func (gs *GracefulShutdown) Wait() {
 	gs.Shutdown()
 }
 
-// Shutdown 执行优雅关闭
+// Shutdown execute优雅close
 func (gs *GracefulShutdown) Shutdown() {
 	gs.mu.Lock()
 	select {
 	case <-gs.done:
-		// 已经在关闭中
+		// alreadyinclose中
 		gs.mu.Unlock()
 		return
 	default:
@@ -108,7 +108,7 @@ func (gs *GracefulShutdown) Shutdown() {
 	}
 	gs.mu.Unlock()
 
-	// 创建带超时的 context
+	// create带timeout context
 	ctx, cancel := context.WithTimeout(context.Background(), gs.timeout)
 	defer cancel()
 
@@ -129,7 +129,7 @@ func (gs *GracefulShutdown) Shutdown() {
 		hooks := gs.hooks[phase]
 		gs.mu.RUnlock()
 
-		// 为排空连接阶段使用专用超时
+		// as排emptyconnection阶segmentuse专用timeout
 		phaseCtx := ctx
 		if phase == PhaseDrainConnections {
 			var cancel context.CancelFunc
@@ -137,13 +137,13 @@ func (gs *GracefulShutdown) Shutdown() {
 			defer cancel()
 		}
 
-		// 并发执行同一阶段的所有钩子
+		// concurrencyexecute同一阶segmentall钩子
 		if err := gs.executeHooks(phaseCtx, hooks, phaseName); err != nil {
 			log.Error("Shutdown phase failed",
 				log.Phase(phaseName),
 				log.Err(err),
 				log.Component("shutdown"))
-			// 继续执行后续阶段，确保资源被清理
+			// continueexecute后续阶segment，确保resource被clean up
 		}
 	}
 
@@ -151,7 +151,7 @@ func (gs *GracefulShutdown) Shutdown() {
 		log.Component("shutdown"))
 }
 
-// executeHooks 执行一组钩子
+// executeHooks execute一group钩子
 func (gs *GracefulShutdown) executeHooks(ctx context.Context, hooks []ShutdownHook, phaseName string) error {
 	if len(hooks) == 0 {
 		return nil
@@ -172,7 +172,7 @@ func (gs *GracefulShutdown) executeHooks(ctx context.Context, hooks []ShutdownHo
 		}(i, hook)
 	}
 
-	// 等待所有钩子完成
+	// waitall钩子done
 	done := make(chan struct{})
 	go func() {
 		wg.Wait()
@@ -182,7 +182,7 @@ func (gs *GracefulShutdown) executeHooks(ctx context.Context, hooks []ShutdownHo
 	select {
 	case <-done:
 		close(errChan)
-		// 收集所有错误
+		// 收集allincorrect
 		var errs []error
 		for err := range errChan {
 			errs = append(errs, err)
@@ -197,7 +197,7 @@ func (gs *GracefulShutdown) executeHooks(ctx context.Context, hooks []ShutdownHo
 	}
 }
 
-// phaseName 返回阶段名称
+// phaseName return阶segment名称
 func (gs *GracefulShutdown) phaseName(phase ShutdownPhase) string {
 	switch phase {
 	case PhaseStopAccepting:
@@ -213,12 +213,12 @@ func (gs *GracefulShutdown) phaseName(phase ShutdownPhase) string {
 	}
 }
 
-// Done 返回关闭完成 channel
+// Done returnclosedone channel
 func (gs *GracefulShutdown) Done() <-chan struct{} {
 	return gs.done
 }
 
-// IsShuttingDown 检查是否正在关闭
+// IsShuttingDown checkisnocurrentlyclose
 func (gs *GracefulShutdown) IsShuttingDown() bool {
 	select {
 	case <-gs.done:

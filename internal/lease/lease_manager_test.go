@@ -29,7 +29,7 @@ func TestLeaseManager_Creation(t *testing.T) {
 		ClockDrift:      500 * time.Millisecond,
 	}
 
-	lm := NewLeaseManager(config, nil, zap.NewNop()) // nil = 总是启用
+	lm := NewLeaseManager(config, nil, zap.NewNop()) // nil = alwaysenabled
 
 	if lm == nil {
 		t.Fatal("NewLeaseManager returned nil")
@@ -66,7 +66,7 @@ func TestLeaseManager_DefaultClockDrift(t *testing.T) {
 		// ClockDrift not set, should default to 500ms
 	}
 
-	lm := NewLeaseManager(config, nil, zap.NewNop()) // nil = 总是启用
+	lm := NewLeaseManager(config, nil, zap.NewNop()) // nil = alwaysenabled
 
 	expectedDrift := 500 * time.Millisecond
 	if lm.clockDrift != expectedDrift {
@@ -81,7 +81,7 @@ func TestLeaseManager_BecomeLeader(t *testing.T) {
 		HeartbeatTick:   100 * time.Millisecond,
 	}
 
-	lm := NewLeaseManager(config, nil, zap.NewNop()) // nil = 总是启用
+	lm := NewLeaseManager(config, nil, zap.NewNop()) // nil = alwaysenabled
 
 	// Initially not leader
 	if lm.IsLeader() {
@@ -110,7 +110,7 @@ func TestLeaseManager_BecomeFollower(t *testing.T) {
 		ClockDrift:      100 * time.Millisecond, // Smaller drift for testing
 	}
 
-	lm := NewLeaseManager(config, nil, zap.NewNop()) // nil = 总是启用
+	lm := NewLeaseManager(config, nil, zap.NewNop()) // nil = alwaysenabled
 
 	// Become leader first
 	lm.OnBecomeLeader()
@@ -148,7 +148,7 @@ func TestLeaseManager_RenewLease_Success(t *testing.T) {
 		ClockDrift:      100 * time.Millisecond, // Smaller drift for testing
 	}
 
-	lm := NewLeaseManager(config, nil, zap.NewNop()) // nil = 总是启用
+	lm := NewLeaseManager(config, nil, zap.NewNop()) // nil = alwaysenabled
 	lm.OnBecomeLeader()
 
 	// Renew lease with majority acks
@@ -185,7 +185,7 @@ func TestLeaseManager_RenewLease_InsufficientAcks(t *testing.T) {
 		HeartbeatTick:   100 * time.Millisecond,
 	}
 
-	lm := NewLeaseManager(config, nil, zap.NewNop()) // nil = 总是启用
+	lm := NewLeaseManager(config, nil, zap.NewNop()) // nil = alwaysenabled
 	lm.OnBecomeLeader()
 
 	// Try to renew with insufficient acks
@@ -210,7 +210,7 @@ func TestLeaseManager_RenewLease_NotLeader(t *testing.T) {
 		HeartbeatTick:   100 * time.Millisecond,
 	}
 
-	lm := NewLeaseManager(config, nil, zap.NewNop()) // nil = 总是启用
+	lm := NewLeaseManager(config, nil, zap.NewNop()) // nil = alwaysenabled
 	// Not leader
 
 	// Try to renew lease
@@ -228,7 +228,7 @@ func TestLeaseManager_LeaseExpiration(t *testing.T) {
 		ClockDrift:      20 * time.Millisecond,
 	}
 
-	lm := NewLeaseManager(config, nil, zap.NewNop()) // nil = 总是启用
+	lm := NewLeaseManager(config, nil, zap.NewNop()) // nil = alwaysenabled
 	lm.OnBecomeLeader()
 
 	// Renew lease
@@ -263,7 +263,7 @@ func TestLeaseManager_MultipleRenewals(t *testing.T) {
 		ClockDrift:      100 * time.Millisecond,
 	}
 
-	lm := NewLeaseManager(config, nil, zap.NewNop()) // nil = 总是启用
+	lm := NewLeaseManager(config, nil, zap.NewNop()) // nil = alwaysenabled
 	lm.OnBecomeLeader()
 
 	// Renew lease multiple times
@@ -296,7 +296,7 @@ func TestLeaseManager_LeaseRemaining(t *testing.T) {
 		ClockDrift:      100 * time.Millisecond,
 	}
 
-	lm := NewLeaseManager(config, nil, zap.NewNop()) // nil = 总是启用
+	lm := NewLeaseManager(config, nil, zap.NewNop()) // nil = alwaysenabled
 
 	// Not leader: should return 0
 	remaining := lm.GetLeaseRemaining()
@@ -339,7 +339,7 @@ func TestLeaseManager_Stats(t *testing.T) {
 		ClockDrift:      20 * time.Millisecond,
 	}
 
-	lm := NewLeaseManager(config, nil, zap.NewNop()) // nil = 总是启用
+	lm := NewLeaseManager(config, nil, zap.NewNop()) // nil = alwaysenabled
 	lm.OnBecomeLeader()
 
 	// Initial stats

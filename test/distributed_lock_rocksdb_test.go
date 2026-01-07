@@ -48,10 +48,10 @@ func startRocksDBLockTestServer(t *testing.T) (*clientv3.Client, func()) {
 	require.NoError(t, err)
 
 	return cli, func() {
-		// 关键：给 Session 清理留出时间，避免 "connection is closing" 错误
+		// 关key：给 Session clean up留出time，避免 "connection is closing" incorrect
 		time.Sleep(500 * time.Millisecond)
-		cleanup() // 先关闭服务器
-		cli.Close() // 再关闭客户端
+		cleanup() // 先closeserver
+		cli.Close() // 再closeclient
 	}
 }
 
@@ -304,9 +304,9 @@ func TestRocksDB_MutexFIFOOrder(t *testing.T) {
 	var orderMu sync.Mutex
 	acquireOrder := make([]int, 0, numClients)
 
-	// 关键：使用两阶段信号
-	// 1. startSignals: 通知 goroutine 开始创建 Session
-	// 2. sessionReady: Session 创建完成，可以启动下一个
+	// 关key：use两阶segment信号
+	// 1. startSignals: notification goroutine startcreate Session
+	// 2. sessionReady: Session createdone，canstartnext
 	startSignals := make([]chan struct{}, numClients)
 	sessionReady := make([]chan struct{}, numClients)
 	for i := range startSignals {
@@ -326,7 +326,7 @@ func TestRocksDB_MutexFIFOOrder(t *testing.T) {
 			require.NoError(t, err)
 			defer session.Close()
 
-			// Session 创建完成，通知主线程
+			// Session createdone，notification主thread
 			close(sessionReady[id])
 
 			mutex := concurrency.NewMutex(session, "/rocksdb/test/fifo")
@@ -346,11 +346,11 @@ func TestRocksDB_MutexFIFOOrder(t *testing.T) {
 		}(i)
 	}
 
-	// 按顺序启动客户端，并等待每个 Session 创建完成再启动下一个
+	// 按orderstartclient，并waiteach Session createdone再startnext
 	for i := 0; i < numClients; i++ {
 		close(startSignals[i])
-		<-sessionReady[i] // 等待 Session 创建完成（此时 Lease 已经通过 Raft 共识）
-		time.Sleep(10 * time.Millisecond) // 小延迟确保顺序
+		<-sessionReady[i] // wait Session createdone（此时 Lease alreadyvia Raft 共识）
+		time.Sleep(10 * time.Millisecond) // 小latency确保order
 	}
 
 	wg.Wait()
@@ -494,7 +494,7 @@ func TestRocksDB_MutexReleaseOnSessionClose(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	session1, err := concurrency.NewSession(cli, concurrency.WithTTL(3)) // 缩短 TTL 到 3 秒
+	session1, err := concurrency.NewSession(cli, concurrency.WithTTL(3)) // 缩短 TTL to 3 秒
 	require.NoError(t, err)
 	lease1ID := session1.Lease()
 	t.Logf("Session1 created with lease ID: %x", lease1ID)
@@ -548,7 +548,7 @@ func TestRocksDB_MutexReleaseOnSessionClose(t *testing.T) {
 	case <-acquired:
 		t.Log("RocksDB Second session acquired lock after first session closed")
 		assert.True(t, mutex2.IsOwner())
-	case <-time.After(10 * time.Second): // 增加超时到 10 秒，给 Raft 共识和 Lease 撤销足够时间
+	case <-time.After(10 * time.Second): // 增加timeoutto 10 秒，给 Raft 共识and Lease revoke足够time
 		// Check state before failing
 		ttl3, _ := cli.TimeToLive(ctx, lease1ID)
 		t.Logf("Final Session1 lease TTL: %d", ttl3.TTL)
