@@ -25,7 +25,7 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 )
 
-// Mutex implementdistributed mutex
+// Mutex implements distributed mutex
 type Mutex struct {
 	s   *Session
 	pfx string // key prefix
@@ -37,7 +37,7 @@ type Mutex struct {
 	mu sync.Mutex
 }
 
-// NewMutex createnewmutex
+// NewMutex creates a new mutex
 func NewMutex(s *Session, pfx string) *Mutex {
 	return &Mutex{
 		s:   s,
@@ -282,7 +282,7 @@ func (m *Mutex) TryLock(ctx context.Context) error {
 	return concurrency.ErrLocked
 }
 
-// Unlock releaselock
+// Unlock releases the lock
 func (m *Mutex) Unlock(ctx context.Context) error {
 	m.mu.Lock()
 	if m.myKey == "" {
@@ -297,21 +297,21 @@ func (m *Mutex) Unlock(ctx context.Context) error {
 	return err
 }
 
-// IsOwner checkcurrentwhether holdinglock
+// IsOwner checks whether currently holding the lock
 func (m *Mutex) IsOwner() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.myKey != ""
 }
 
-// Key returnlock key
+// Key returns the lock key
 func (m *Mutex) Key() string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.myKey
 }
 
-// Header returnlockresponse header at creation time
+// Header returns the lock response header at creation time
 func (m *Mutex) Header() *pb.ResponseHeader {
 	m.mu.Lock()
 	defer m.mu.Unlock()

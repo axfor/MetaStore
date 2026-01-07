@@ -51,7 +51,7 @@ func (m *MemoryEtcd) putDirect(key, value string, leaseID int64) (int64, *kvstor
 	// 2. getbeforevalue (ShardedMap internallock)
 	prevKv, exists := m.kvData.Get(key)
 
-	// 3. createnew KeyValue
+	// 3. create new KeyValue
 	var createRevision int64
 	var version int64
 	if exists {

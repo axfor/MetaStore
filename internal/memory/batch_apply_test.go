@@ -47,7 +47,7 @@ func TestBatchApplyPut(t *testing.T) {
 	// applied
 	m.applyBatch(ops)
 
-	// verifyallkeyallbewrite
+	// verify allkeyall bewrite
 	for i := 0; i < 100; i++ {
 		key := fmt.Sprintf("key-%d", i)
 		kv, exists := m.MemoryEtcd.kvData.Get(key)
@@ -103,7 +103,7 @@ func TestBatchApplyDelete(t *testing.T) {
 	}
 	m.applyBatch(deleteOps)
 
-	// verifyallkeyallbedelete
+	// verify allkeyall bedelete
 	for i := 0; i < 100; i++ {
 		key := fmt.Sprintf("key-%d", i)
 		_, exists := m.MemoryEtcd.kvData.Get(key)
@@ -260,7 +260,7 @@ func BenchmarkBatchApplyVsSingle(b *testing.B) {
 		snapshotter := snap.New(nil, b.TempDir())
 		m := NewMemory(snapshotter, proposeC, commitC, errorC)
 
-		// prepareprepareoperation
+		// prepareoperation
 		ops := make([]RaftOperation, 100)
 		for i := 0; i < 100; i++ {
 			ops[i] = RaftOperation{
@@ -286,7 +286,7 @@ func BenchmarkBatchApplyVsSingle(b *testing.B) {
 		snapshotter := snap.New(nil, b.TempDir())
 		m := NewMemory(snapshotter, proposeC, commitC, errorC)
 
-		// prepareprepareoperation
+		// prepareoperation
 		ops := make([]RaftOperation, 100)
 		for i := 0; i < 100; i++ {
 			ops[i] = RaftOperation{

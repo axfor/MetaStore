@@ -68,7 +68,7 @@ func WithContext(ctx context.Context) SessionOption {
 	}
 }
 
-// NewSession createnewsession
+// NewSession create newsession
 func NewSession(client *clientv3.Client, opts ...SessionOption) (*Session, error) {
 	options := &sessionOptions{
 		ttl: 60, // default 60 seconds
@@ -86,7 +86,7 @@ func NewSession(client *clientv3.Client, opts ...SessionOption) (*Session, error
 		cancel: cancel,
 	}
 
-	// ifnone LeaseID，createnew Lease
+	// ifnone LeaseID，create new Lease
 	if options.leaseID == clientv3.NoLease {
 		resp, err := s.lease.Grant(ctx, int64(options.ttl))
 		if err != nil {
@@ -145,7 +145,7 @@ func (s *Session) keepAliveLoop(ctx context.Context, donec chan struct{}) {
 	}
 }
 
-// Close closesessionandrevoked Lease
+// Close close sessionandrevoked Lease
 func (s *Session) Close() error {
 	s.mu.Lock()
 	if s.closed {

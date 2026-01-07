@@ -42,7 +42,7 @@ type Election struct {
 	mu     sync.Mutex
 }
 
-// NewElection createnewelectelection
+// NewElection create newelectelection
 func NewElection(s *Session, pfx string) *Election {
 	return &Election{
 		s:   s,
@@ -50,7 +50,7 @@ func NewElection(s *Session, pfx string) *Election {
 	}
 }
 
-// Campaign andcompeteelect，blockinguntilbecomeas Leader
+// Campaign andcampaign，blockinguntilbecomeas Leader
 func (e *Election) Campaign(ctx context.Context, val string) error {
 	s := e.s
 	client := s.client
@@ -63,7 +63,7 @@ func (e *Election) Campaign(ctx context.Context, val string) error {
 	}
 	e.mu.Unlock()
 
-	// createcompeteelect key
+	// createcampaign key
 	// key format: prefix/lease_id
 	myKey := fmt.Sprintf("%s%x", e.pfx, s.Lease())
 	
@@ -107,7 +107,7 @@ func (e *Election) waitLeader(ctx context.Context, myKey string, myRev int64) er
 	client := e.s.client
 
 	for {
-		// checksessionisnostillvalid
+		// checksessionisnostill valid
 		select {
 		case <-e.s.Done():
 			return errors.New("session expired")
@@ -308,7 +308,7 @@ func (e *Election) Rev() int64 {
 	return e.leaderRev
 }
 
-// Header returncompeteelectsuccesswhenresponse
+// Header returncampaignsuccesswhenresponse
 func (e *Election) Header() *pb.ResponseHeader {
 	e.mu.Lock()
 	defer e.mu.Unlock()

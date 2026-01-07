@@ -181,7 +181,7 @@ func WithBatchProposal(minBatch, maxBatch int, minTimeout, maxTimeout time.Durat
 	}
 }
 
-// WithoutBatchProposal disabled(for preparetestandperformanceto)
+// WithoutBatchProposal disabled(for prepare testandperformanceto)
 // usefunctioncantestnotenabledoptimizewhenperformance，astoprepare
 func WithoutBatchProposal() func(*config.Config) {
 	return func(cfg *config.Config) {

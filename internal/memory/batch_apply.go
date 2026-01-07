@@ -199,7 +199,7 @@ func (m *Memory) batchApplyPutNoLock(shard *shard, op RaftOperation) {
 	key := op.Key
 	prevKv, exists := shard.data[key]
 
-	// 3. createnew KeyValue
+	// 3. create new KeyValue
 	var createRevision int64
 	var version int64
 	if exists {

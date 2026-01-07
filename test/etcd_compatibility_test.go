@@ -180,7 +180,7 @@ func TestBasicPutGet(t *testing.T) {
 	assert.Equal(t, "bar", string(getResp.Kvs[0].Value))
 }
 
-// TestPrefixRange testprefixquery
+// TestPrefixRange test special character prefixquery
 func TestPrefixRange(t *testing.T) {
 	_, cli := startTestServer(t)
 
@@ -434,7 +434,7 @@ func TestBasicPutGet_RocksDB(t *testing.T) {
 	assert.Equal(t, "bar", string(getResp.Kvs[0].Value))
 }
 
-// TestPrefixRange_RocksDB testprefixquery (RocksDB)
+// TestPrefixRange_RocksDB test special character prefixquery (RocksDB)
 func TestPrefixRange_RocksDB(t *testing.T) {
 	_, cli, _ := startTestServerRocksDB(t)
 
@@ -744,7 +744,7 @@ func TestWatchPrefix_RocksDB(t *testing.T) {
 			require.Len(t, wresp.Events, 1)
 			event := wresp.Events[0]
 
-			// verifyevent
+			// verify event
 			key := string(event.Kv.Key)
 			if event.PrevKv != nil {
 				key = string(event.PrevKv.Key)
