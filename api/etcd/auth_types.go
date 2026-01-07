@@ -14,7 +14,7 @@
 
 package etcd
 
-// UserInfo 用户信息
+// UserInfo user information
 type UserInfo struct {
 	Name         string   `json:"name"`
 	PasswordHash string   `json:"password_hash"` // bcrypt hash
@@ -22,21 +22,21 @@ type UserInfo struct {
 	CreatedAt    int64    `json:"created_at"`
 }
 
-// RoleInfo 角色信息
+// RoleInfo role information
 type RoleInfo struct {
 	Name        string       `json:"name"`
 	Permissions []Permission `json:"permissions"`
 	CreatedAt   int64        `json:"created_at"`
 }
 
-// Permission 权限定义
+// Permission permission definition
 type Permission struct {
 	Type     PermissionType `json:"type"`      // READ, WRITE, READWRITE
-	Key      []byte         `json:"key"`       // 键范围开始
-	RangeEnd []byte         `json:"range_end"` // 键范围结束
+	Key      []byte         `json:"key"`       // key range start
+	RangeEnd []byte         `json:"range_end"` // key range end
 }
 
-// PermissionType 权限类型
+// PermissionType permission type
 type PermissionType int
 
 const (
@@ -45,14 +45,14 @@ const (
 	PermissionReadWrite PermissionType = 2
 )
 
-// TokenInfo Token 信息
+// TokenInfo token information
 type TokenInfo struct {
 	Token     string `json:"token"`
 	Username  string `json:"username"`
 	ExpiresAt int64  `json:"expires_at"`
 }
 
-// 存储键前缀
+// Storage key prefixes
 const (
 	authEnabledKey  = "/__auth/enabled"
 	authUserPrefix  = "/__auth/users/"

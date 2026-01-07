@@ -23,7 +23,7 @@ import (
 	"time"
 )
 
-// TestPutDirectConcurrent 测试 putDirect 的并发安全性
+// TestPutDirectConcurrent test putDirect concurrencysafe
 func TestPutDirectConcurrent(t *testing.T) {
 	m := NewMemoryEtcd()
 
@@ -33,16 +33,16 @@ func TestPutDirectConcurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	startCh := make(chan struct{})
 
-	// 启动多个 goroutine 并发写入
+	// startmany  goroutine concurrencywrite
 	for i := 0; i < concurrency; i++ {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
 
-			// 等待所有 goroutine 就绪
+			// wait all goroutine ready
 			<-startCh
 
-			// 每个 goroutine 写入不同的 key
+			// each goroutine writedifferent key
 			for j := 0; j < operationsPerGoroutine; j++ {
 				key := fmt.Sprintf("key-%d-%d", id, j)
 				value := fmt.Sprintf("value-%d-%d", id, j)
@@ -55,11 +55,11 @@ func TestPutDirectConcurrent(t *testing.T) {
 		}(i)
 	}
 
-	// 同时启动所有 goroutine
+	// simultaneously start all goroutines
 	close(startCh)
 	wg.Wait()
 
-	// 验证所有 key 都被正确写入
+	// verify all key all becorrectwrite
 	expectedCount := concurrency * operationsPerGoroutine
 	actualCount := m.kvData.Len()
 
@@ -67,7 +67,7 @@ func TestPutDirectConcurrent(t *testing.T) {
 		t.Errorf("Expected %d keys, got %d", expectedCount, actualCount)
 	}
 
-	// 验证每个 key 的值
+	// verify each key value
 	for i := 0; i < concurrency; i++ {
 		for j := 0; j < operationsPerGoroutine; j++ {
 			key := fmt.Sprintf("key-%d-%d", i, j)
@@ -86,7 +86,7 @@ func TestPutDirectConcurrent(t *testing.T) {
 	}
 }
 
-// TestPutDirectSameKeyConcurrent 测试并发写入同一个 key
+// TestPutDirectSameKeyConcurrent testconcurrencywritesame key
 func TestPutDirectSameKeyConcurrent(t *testing.T) {
 	m := NewMemoryEtcd()
 
@@ -96,7 +96,7 @@ func TestPutDirectSameKeyConcurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	startCh := make(chan struct{})
 
-	// 启动多个 goroutine 并发写入同一个 key
+	// startmany  goroutine concurrencywritesame key
 	for i := 0; i < concurrency; i++ {
 		wg.Add(1)
 		go func(id int) {
@@ -112,13 +112,13 @@ func TestPutDirectSameKeyConcurrent(t *testing.T) {
 	close(startCh)
 	wg.Wait()
 
-	// 验证 key 存在
+	// verify key in
 	kv, exists := m.kvData.Get(key)
 	if !exists {
 		t.Errorf("Key %s not found", key)
 	}
 
-	// 验证 revision 正确递增
+	// verify revision correctincrease
 	expectedRevision := int64(concurrency)
 	actualRevision := m.revision.Load()
 
@@ -126,8 +126,8 @@ func TestPutDirectSameKeyConcurrent(t *testing.T) {
 		t.Errorf("Expected revision %d, got %d", expectedRevision, actualRevision)
 	}
 
-	// 验证 version 递增（但由于并发竞争，可能小于 concurrency）
-	// 注意：这是测试环境特有的问题，实际使用中 Raft apply 是串行的
+	// verify version increase(becauseconcurrencycompete，mayless than concurrency)
+	// note：istestenvironmenthave，usein Raft apply isserial
 	if kv.Version < 1 || kv.Version > int64(concurrency) {
 		t.Errorf("Version out of range: got %d, expected 1-%d", kv.Version, concurrency)
 	}
@@ -135,11 +135,11 @@ func TestPutDirectSameKeyConcurrent(t *testing.T) {
 	t.Logf("Concurrent writes: revision=%d, version=%d (race window expected)", actualRevision, kv.Version)
 }
 
-// TestDeleteDirectConcurrent 测试 deleteDirect 的并发安全性
+// TestDeleteDirectConcurrent test deleteDirect concurrencysafe
 func TestDeleteDirectConcurrent(t *testing.T) {
 	m := NewMemoryEtcd()
 
-	// 先写入数据
+	// writedata
 	numKeys := 1000
 	for i := 0; i < numKeys; i++ {
 		key := fmt.Sprintf("key-%d", i)
@@ -150,7 +150,7 @@ func TestDeleteDirectConcurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	startCh := make(chan struct{})
 
-	// 并发删除
+	// concurrencydelete
 	for i := 0; i < concurrency; i++ {
 		wg.Add(1)
 		go func(id int) {
@@ -158,7 +158,7 @@ func TestDeleteDirectConcurrent(t *testing.T) {
 
 			<-startCh
 
-			// 每个 goroutine 删除一部分 key
+			// each goroutine deletefirstpartially key
 			for j := id * (numKeys / concurrency); j < (id+1)*(numKeys/concurrency); j++ {
 				key := fmt.Sprintf("key-%d", j)
 				m.deleteDirect(key, "")
@@ -169,22 +169,22 @@ func TestDeleteDirectConcurrent(t *testing.T) {
 	close(startCh)
 	wg.Wait()
 
-	// 验证所有 key 都被删除
+	// verify all key all bedelete
 	remainingKeys := m.kvData.Len()
 	if remainingKeys != 0 {
 		t.Errorf("Expected 0 keys remaining, got %d", remainingKeys)
 	}
 }
 
-// TestApplyTxnWithShardLocks 测试事务的细粒度锁
+// TestApplyTxnWithShardLocks testtransactionfine-grainedlock
 func TestApplyTxnWithShardLocks(t *testing.T) {
 	m := NewMemoryEtcd()
 
-	// 写入初始数据
+	// writeinitialdata
 	m.putDirect("key1", "value1", 0)
 	m.putDirect("key2", "value2", 0)
 
-	// 测试事务: if key1 == "value1" then put key2 = "updated"
+	// testtransaction: if key1 == "value1" then put key2 = "updated"
 	compares := []kvstore.Compare{
 		{
 			Key:    []byte("key1"),
@@ -215,7 +215,7 @@ func TestApplyTxnWithShardLocks(t *testing.T) {
 		t.Error("Transaction should have succeeded")
 	}
 
-	// 验证 key2 被更新
+	// verify key2 beupdate
 	kv, exists := m.kvData.Get("key2")
 	if !exists {
 		t.Error("key2 not found")
@@ -226,11 +226,11 @@ func TestApplyTxnWithShardLocks(t *testing.T) {
 	}
 }
 
-// TestConcurrentTransactions 测试并发事务
+// TestConcurrentTransactions testconcurrencytransaction
 func TestConcurrentTransactions(t *testing.T) {
 	m := NewMemoryEtcd()
 
-	// 初始化计数器
+	// initializecount
 	m.putDirect("counter", "0", 0)
 
 	concurrency := 100
@@ -238,7 +238,7 @@ func TestConcurrentTransactions(t *testing.T) {
 	startCh := make(chan struct{})
 	var successCount atomic.Int64
 
-	// 并发执行事务: 递增计数器
+	// concurrencyexecutetransaction: increasecount
 	for i := 0; i < concurrency; i++ {
 		wg.Add(1)
 		go func() {
@@ -246,16 +246,16 @@ func TestConcurrentTransactions(t *testing.T) {
 
 			<-startCh
 
-			// 读取当前值
+			// readcurrentvalue
 			kv, exists := m.kvData.Get("counter")
 			if !exists {
 				return
 			}
 
 			currentValue := string(kv.Value)
-			newValue := fmt.Sprintf("%s1", currentValue) // 简单追加 "1"
+			newValue := fmt.Sprintf("%s1", currentValue) // single "1"
 
-			// 事务: if counter == currentValue then counter = newValue
+			// transaction: if counter == currentValue then counter = newValue
 			compares := []kvstore.Compare{
 				{
 					Key:    []byte("counter"),
@@ -285,8 +285,8 @@ func TestConcurrentTransactions(t *testing.T) {
 	close(startCh)
 	wg.Wait()
 
-	// 验证至少有一些事务成功
-	// (因为并发冲突，不是所有事务都会成功)
+	// verifytofewhavesometransactionsuccess
+	// (asconcurrency，notisalltransactionallwillsuccess)
 	if successCount.Load() == 0 {
 		t.Error("Expected at least some transactions to succeed")
 	}
@@ -294,7 +294,7 @@ func TestConcurrentTransactions(t *testing.T) {
 	t.Logf("Successful transactions: %d / %d", successCount.Load(), concurrency)
 }
 
-// TestLeaseOperationsConcurrent 测试并发 lease 操作
+// TestLeaseOperationsConcurrent testconcurrency lease operation
 func TestLeaseOperationsConcurrent(t *testing.T) {
 	m := NewMemoryEtcd()
 
@@ -302,7 +302,7 @@ func TestLeaseOperationsConcurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	startCh := make(chan struct{})
 
-	// 并发创建 lease
+	// concurrencycreate lease
 	for i := 0; i < concurrency; i++ {
 		wg.Add(1)
 		go func(id int) {
@@ -318,7 +318,7 @@ func TestLeaseOperationsConcurrent(t *testing.T) {
 	close(startCh)
 	wg.Wait()
 
-	// 验证所有 lease 都被创建
+	// verify all lease all becreate
 	m.leaseMu.RLock()
 	leaseCount := len(m.leases)
 	m.leaseMu.RUnlock()
@@ -327,7 +327,7 @@ func TestLeaseOperationsConcurrent(t *testing.T) {
 		t.Errorf("Expected %d leases, got %d", concurrency, leaseCount)
 	}
 
-	// 并发撤销 lease
+	// concurrencyrevoked lease
 	startCh2 := make(chan struct{})
 	for i := 0; i < concurrency; i++ {
 		wg.Add(1)
@@ -344,7 +344,7 @@ func TestLeaseOperationsConcurrent(t *testing.T) {
 	close(startCh2)
 	wg.Wait()
 
-	// 验证所有 lease 都被撤销
+	// verify all lease all berevoked
 	m.leaseMu.RLock()
 	leaseCount = len(m.leases)
 	m.leaseMu.RUnlock()
@@ -354,7 +354,7 @@ func TestLeaseOperationsConcurrent(t *testing.T) {
 	}
 }
 
-// BenchmarkPutDirectSequential 基准测试: 串行写入
+// BenchmarkPutDirectSequential prepare test: serialwrite
 func BenchmarkPutDirectSequential(b *testing.B) {
 	m := NewMemoryEtcd()
 
@@ -365,7 +365,7 @@ func BenchmarkPutDirectSequential(b *testing.B) {
 	}
 }
 
-// BenchmarkPutDirectParallel 基准测试: 并行写入
+// BenchmarkPutDirectParallel prepare test: parallelismwrite
 func BenchmarkPutDirectParallel(b *testing.B) {
 	m := NewMemoryEtcd()
 
@@ -380,11 +380,11 @@ func BenchmarkPutDirectParallel(b *testing.B) {
 	})
 }
 
-// BenchmarkTxnWithShardLocks 基准测试: 事务操作
+// BenchmarkTxnWithShardLocks prepare test: transactionoperation
 func BenchmarkTxnWithShardLocks(b *testing.B) {
 	m := NewMemoryEtcd()
 
-	// 初始化数据
+	// initializedata
 	m.putDirect("key1", "value1", 0)
 
 	compares := []kvstore.Compare{
@@ -412,7 +412,7 @@ func BenchmarkTxnWithShardLocks(b *testing.B) {
 	}
 }
 
-// TestRaceConditions 压力测试: 混合操作
+// TestRaceConditions test: mergeoperation
 func TestRaceConditions(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping race condition test in short mode")
@@ -426,7 +426,7 @@ func TestRaceConditions(t *testing.T) {
 
 	var totalOps atomic.Int64
 
-	// 启动多个 goroutine 执行不同类型的操作
+	// startmany  goroutine executedifferenttypeoperation
 	var wg sync.WaitGroup
 
 	// Put operations
@@ -487,7 +487,7 @@ func TestRaceConditions(t *testing.T) {
 		}(i)
 	}
 
-	// 运行指定时间
+	// runningschedule
 	time.Sleep(duration)
 	close(stopCh)
 	wg.Wait()

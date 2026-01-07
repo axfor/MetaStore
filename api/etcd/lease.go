@@ -21,23 +21,23 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 )
 
-// LeaseServer 实现 etcd Lease 服务
+// LeaseServer implement etcd Lease 
 type LeaseServer struct {
 	pb.UnimplementedLeaseServer
 	server *Server
 }
 
-// LeaseGrant 创建租约
+// LeaseGrant createlease
 func (s *LeaseServer) LeaseGrant(ctx context.Context, req *pb.LeaseGrantRequest) (*pb.LeaseGrantResponse, error) {
 	ttl := req.TTL
 	id := req.ID
 
-	// 如果没有指定 ID，自动生成唯一 ID
+	// ifnonespecified ID，becomeunique ID
 	if id == 0 {
 		id = s.server.leaseMgr.GenerateLeaseID()
 	}
 
-	// 创建 lease
+	// create lease
 	lease, err := s.server.leaseMgr.Grant(id, ttl)
 	if err != nil {
 		return nil, toGRPCError(err)
@@ -50,11 +50,11 @@ func (s *LeaseServer) LeaseGrant(ctx context.Context, req *pb.LeaseGrantRequest)
 	}, nil
 }
 
-// LeaseRevoke 撤销租约
+// LeaseRevoke revokedlease
 func (s *LeaseServer) LeaseRevoke(ctx context.Context, req *pb.LeaseRevokeRequest) (*pb.LeaseRevokeResponse, error) {
 	id := req.ID
 
-	// 撤销 lease
+	// revoked lease
 	if err := s.server.leaseMgr.Revoke(id); err != nil {
 		return nil, toGRPCError(err)
 	}
@@ -64,7 +64,7 @@ func (s *LeaseServer) LeaseRevoke(ctx context.Context, req *pb.LeaseRevokeReques
 	}, nil
 }
 
-// LeaseKeepAlive 续约（流式）
+// LeaseKeepAlive renewal(streamed)
 func (s *LeaseServer) LeaseKeepAlive(stream pb.Lease_LeaseKeepAliveServer) error {
 	for {
 		req, err := stream.Recv()
@@ -74,14 +74,14 @@ func (s *LeaseServer) LeaseKeepAlive(stream pb.Lease_LeaseKeepAliveServer) error
 
 		id := req.ID
 
-		// 续约 lease
+		// renewal lease
 		lease, err := s.server.leaseMgr.Renew(id)
 		if err != nil {
-			// 如果 lease 不存在或过期，发送错误
+			// if lease does not existorexpiration，sendincorrect
 			return toGRPCError(err)
 		}
 
-		// 发送续约响应
+		// sendrenewalresponse
 		if err := stream.Send(&pb.LeaseKeepAliveResponse{
 			Header: s.server.getResponseHeader(),
 			ID:     lease.ID,
@@ -92,15 +92,15 @@ func (s *LeaseServer) LeaseKeepAlive(stream pb.Lease_LeaseKeepAliveServer) error
 	}
 }
 
-// LeaseTimeToLive 获取租约剩余时间
+// LeaseTimeToLive getleasetime
 func (s *LeaseServer) LeaseTimeToLive(ctx context.Context, req *pb.LeaseTimeToLiveRequest) (*pb.LeaseTimeToLiveResponse, error) {
 	id := req.ID
 
-	// 获取 lease 信息
+	// get lease info
 	lease, err := s.server.leaseMgr.TimeToLive(id)
 	if err != nil {
-		// 对于不存在的 Lease，etcd 返回 TTL=-1 而不是错误
-		// 这符合 etcd 客户端的期望行为
+		// fordoes not exist Lease，etcd return TTL=-1 notisincorrect
+		// merge etcd clientrowas
 		if errors.Is(err, ErrLeaseNotFound) {
 			return &pb.LeaseTimeToLiveResponse{
 				Header:     s.server.getResponseHeader(),
@@ -119,7 +119,7 @@ func (s *LeaseServer) LeaseTimeToLive(ctx context.Context, req *pb.LeaseTimeToLi
 		GrantedTTL: lease.TTL,
 	}
 
-	// 如果请求包含关联的键
+	// ifrequestpackageclosekey
 	if req.Keys {
 		resp.Keys = make([][]byte, 0, len(lease.Keys))
 		for key := range lease.Keys {
@@ -130,7 +130,7 @@ func (s *LeaseServer) LeaseTimeToLive(ctx context.Context, req *pb.LeaseTimeToLi
 	return resp, nil
 }
 
-// Leases 列出所有租约
+// Leases listalllease
 func (s *LeaseServer) Leases(ctx context.Context, req *pb.LeaseLeasesRequest) (*pb.LeaseLeasesResponse, error) {
 	leases, err := s.server.leaseMgr.Leases()
 	if err != nil {

@@ -24,33 +24,33 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// 功能开关：启用 Protobuf 序列化优化
+// featureswitch：enabled Protobuf serializeoptimize
 func enableProtobuf() bool { return config.GetEnableProtobuf() }
 
-// serializeOperation 序列化 RaftOperation
-// 优先使用 Protobuf（3-5x 性能提升），回退到 JSON（向后兼容）
+// serializeOperation serialize RaftOperation
+// use Protobuf(3-5x performance)，to JSON(aftercompatible)
 func serializeOperation(op RaftOperation) ([]byte, error) {
 	if enableProtobuf() {
-		// 使用 Protobuf 序列化
+		// use Protobuf serialize
 		pbOp := raftOperationToProto(op)
 		data, err := proto.Marshal(pbOp)
 		if err != nil {
 			return nil, fmt.Errorf("protobuf marshal failed: %w", err)
 		}
-		// 添加 Protobuf 标记前缀（用于反序列化时识别）
+		// add Protobuf markerprefix(for deserializewhen)
 		return append([]byte("PB:"), data...), nil
 	}
 
-	// 回退到 JSON（向后兼容）
+	// to JSON(aftercompatible)
 	return json.Marshal(op)
 }
 
-// deserializeOperation 反序列化 RaftOperation
-// 自动检测 Protobuf 或 JSON 格式
+// deserializeOperation deserialize RaftOperation
+// test Protobuf or JSON format
 func deserializeOperation(data []byte) (RaftOperation, error) {
-	// 检查是否为 Protobuf 格式（以 "PB:" 前缀标识）
+	// checkisnoas Protobuf format( "PB:" prefix)
 	if len(data) > 3 && data[0] == 'P' && data[1] == 'B' && data[2] == ':' {
-		// Protobuf 格式
+		// Protobuf format
 		pbOp := &raftpb.RaftOperation{}
 		if err := proto.Unmarshal(data[3:], pbOp); err != nil {
 			return RaftOperation{}, fmt.Errorf("protobuf unmarshal failed: %w", err)
@@ -58,7 +58,7 @@ func deserializeOperation(data []byte) (RaftOperation, error) {
 		return protoToRaftOperation(pbOp), nil
 	}
 
-	// JSON 格式（向后兼容）
+	// JSON format(aftercompatible)
 	var op RaftOperation
 	if err := json.Unmarshal(data, &op); err != nil {
 		return RaftOperation{}, fmt.Errorf("json unmarshal failed: %w", err)
@@ -66,7 +66,7 @@ func deserializeOperation(data []byte) (RaftOperation, error) {
 	return op, nil
 }
 
-// raftOperationToProto 将 RaftOperation 转换为 Protobuf 格式
+// raftOperationToProto will RaftOperation convertas Protobuf format
 func raftOperationToProto(op RaftOperation) *raftpb.RaftOperation {
 	pbOp := &raftpb.RaftOperation{
 		Type:     op.Type,
@@ -78,7 +78,7 @@ func raftOperationToProto(op RaftOperation) *raftpb.RaftOperation {
 		SeqNum:   op.SeqNum,
 	}
 
-	// 转换 Compares
+	// convert Compares
 	if len(op.Compares) > 0 {
 		pbOp.Compares = make([]*raftpb.Compare, len(op.Compares))
 		for i, cmp := range op.Compares {
@@ -86,7 +86,7 @@ func raftOperationToProto(op RaftOperation) *raftpb.RaftOperation {
 		}
 	}
 
-	// 转换 ThenOps
+	// convert ThenOps
 	if len(op.ThenOps) > 0 {
 		pbOp.ThenOps = make([]*raftpb.Op, len(op.ThenOps))
 		for i, txnOp := range op.ThenOps {
@@ -94,7 +94,7 @@ func raftOperationToProto(op RaftOperation) *raftpb.RaftOperation {
 		}
 	}
 
-	// 转换 ElseOps
+	// convert ElseOps
 	if len(op.ElseOps) > 0 {
 		pbOp.ElseOps = make([]*raftpb.Op, len(op.ElseOps))
 		for i, txnOp := range op.ElseOps {
@@ -105,7 +105,7 @@ func raftOperationToProto(op RaftOperation) *raftpb.RaftOperation {
 	return pbOp
 }
 
-// protoToRaftOperation 将 Protobuf 格式转换为 RaftOperation
+// protoToRaftOperation will Protobuf formatconvertas RaftOperation
 func protoToRaftOperation(pbOp *raftpb.RaftOperation) RaftOperation {
 	op := RaftOperation{
 		Type:     pbOp.Type,
@@ -117,7 +117,7 @@ func protoToRaftOperation(pbOp *raftpb.RaftOperation) RaftOperation {
 		SeqNum:   pbOp.SeqNum,
 	}
 
-	// 转换 Compares
+	// convert Compares
 	if len(pbOp.Compares) > 0 {
 		op.Compares = make([]kvstore.Compare, len(pbOp.Compares))
 		for i, pbCmp := range pbOp.Compares {
@@ -125,7 +125,7 @@ func protoToRaftOperation(pbOp *raftpb.RaftOperation) RaftOperation {
 		}
 	}
 
-	// 转换 ThenOps
+	// convert ThenOps
 	if len(pbOp.ThenOps) > 0 {
 		op.ThenOps = make([]kvstore.Op, len(pbOp.ThenOps))
 		for i, pbTxnOp := range pbOp.ThenOps {
@@ -133,7 +133,7 @@ func protoToRaftOperation(pbOp *raftpb.RaftOperation) RaftOperation {
 		}
 	}
 
-	// 转换 ElseOps
+	// convert ElseOps
 	if len(pbOp.ElseOps) > 0 {
 		op.ElseOps = make([]kvstore.Op, len(pbOp.ElseOps))
 		for i, pbTxnOp := range pbOp.ElseOps {
@@ -144,7 +144,7 @@ func protoToRaftOperation(pbOp *raftpb.RaftOperation) RaftOperation {
 	return op
 }
 
-// compareToProto 将 kvstore.Compare 转换为 Protobuf 格式
+// compareToProto will kvstore.Compare convertas Protobuf format
 func compareToProto(cmp kvstore.Compare) *raftpb.Compare {
 	pbCmp := &raftpb.Compare{
 		Key:    string(cmp.Key),
@@ -152,7 +152,7 @@ func compareToProto(cmp kvstore.Compare) *raftpb.Compare {
 		Target: raftpb.Compare_CompareTarget(cmp.Target),
 	}
 
-	// 转换 TargetUnion（使用 oneof）
+	// convert TargetUnion(use oneof)
 	switch cmp.Target {
 	case kvstore.CompareVersion:
 		pbCmp.TargetUnion = &raftpb.Compare_Version{Version: cmp.TargetUnion.Version}
@@ -169,7 +169,7 @@ func compareToProto(cmp kvstore.Compare) *raftpb.Compare {
 	return pbCmp
 }
 
-// protoToCompare 将 Protobuf 格式转换为 kvstore.Compare
+// protoToCompare will Protobuf formatconvertas kvstore.Compare
 func protoToCompare(pbCmp *raftpb.Compare) kvstore.Compare {
 	cmp := kvstore.Compare{
 		Target: kvstore.CompareTarget(pbCmp.Target),
@@ -177,7 +177,7 @@ func protoToCompare(pbCmp *raftpb.Compare) kvstore.Compare {
 		Key:    []byte(pbCmp.Key),
 	}
 
-	// 转换 TargetUnion（从 oneof）
+	// convert TargetUnion(from oneof)
 	switch v := pbCmp.TargetUnion.(type) {
 	case *raftpb.Compare_Version:
 		cmp.TargetUnion.Version = v.Version
@@ -194,7 +194,7 @@ func protoToCompare(pbCmp *raftpb.Compare) kvstore.Compare {
 	return cmp
 }
 
-// opToProto 将 kvstore.Op 转换为 Protobuf 格式
+// opToProto will kvstore.Op convertas Protobuf format
 func opToProto(op kvstore.Op) *raftpb.Op {
 	return &raftpb.Op{
 		Type:     raftpb.Op_OpType(op.Type),
@@ -205,7 +205,7 @@ func opToProto(op kvstore.Op) *raftpb.Op {
 	}
 }
 
-// protoToOp 将 Protobuf 格式转换为 kvstore.Op
+// protoToOp will Protobuf formatconvertas kvstore.Op
 func protoToOp(pbOp *raftpb.Op) kvstore.Op {
 	return kvstore.Op{
 		Type:     kvstore.OpType(pbOp.Type),

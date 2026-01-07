@@ -21,8 +21,8 @@ import (
 	"go.uber.org/zap"
 )
 
-// TestSingleNodeLeaseRenewal_Debug 调试单节点续期问题
-// 模拟单节点场景，观察续期行为
+// TestSingleNodeLeaseRenewal_Debug debugsinglenode
+// singlenodescenarioscene，observewatchrowas
 func TestSingleNodeLeaseRenewal_Debug(t *testing.T) {
 	config := LeaseConfig{
 		ElectionTimeout: 1 * time.Second,
@@ -30,19 +30,19 @@ func TestSingleNodeLeaseRenewal_Debug(t *testing.T) {
 		ClockDrift:      100 * time.Millisecond,
 	}
 
-	// 不使用 SmartConfig（nil = 总是启用）
+	// notuse SmartConfig(nil = alwaysenabled)
 	lm := NewLeaseManager(config, nil, zap.NewNop())
 	lm.OnBecomeLeader()
 
-	t.Log("=== 测试场景 1: totalNodes=0, receivedAcks=0 ===")
+	t.Log("=== testscenarioscene 1: totalNodes=0, receivedAcks=0 ===")
 	renewed := lm.RenewLease(0, 0)
 	t.Logf("Result: %v (expected: false, majority=1, 0 < 1)", renewed)
 
-	t.Log("\n=== 测试场景 2: totalNodes=1, receivedAcks=0 ===")
+	t.Log("\n=== testscenarioscene 2: totalNodes=1, receivedAcks=0 ===")
 	renewed = lm.RenewLease(0, 1)
 	t.Logf("Result: %v (expected: false, majority=1, 0 < 1)", renewed)
 
-	t.Log("\n=== 测试场景 3: totalNodes=1, receivedAcks=1 ===")
+	t.Log("\n=== testscenarioscene 3: totalNodes=1, receivedAcks=1 ===")
 	renewed = lm.RenewLease(1, 1)
 	t.Logf("Result: %v (expected: true, majority=1, 1 >= 1)", renewed)
 	t.Logf("HasValidLease: %v", lm.HasValidLease())
@@ -58,7 +58,7 @@ func TestSingleNodeLeaseRenewal_Debug(t *testing.T) {
 	}
 }
 
-// TestSingleNodeWithSmartConfig 测试单节点 + SmartConfig 的行为
+// TestSingleNodeWithSmartConfig testsinglenode + SmartConfig rowas
 func TestSingleNodeWithSmartConfig(t *testing.T) {
 	config := LeaseConfig{
 		ElectionTimeout: 1 * time.Second,
@@ -66,7 +66,7 @@ func TestSingleNodeWithSmartConfig(t *testing.T) {
 		ClockDrift:      100 * time.Millisecond,
 	}
 
-	t.Log("=== 新实现：SmartConfig 启用单节点（etcd 兼容）===")
+	t.Log("=== newimplement：SmartConfig enabledsinglenode(etcd compatible)===")
 	smartConfig := NewSmartLeaseConfig(true, zap.NewNop())
 	smartConfig.UpdateClusterSize(1)
 
@@ -75,7 +75,7 @@ func TestSingleNodeWithSmartConfig(t *testing.T) {
 	lm := NewLeaseManager(config, smartConfig, zap.NewNop())
 	lm.OnBecomeLeader()
 
-	t.Log("\n尝试续期：totalNodes=1, receivedAcks=1")
+	t.Log("\ntest：totalNodes=1, receivedAcks=1")
 	renewed := lm.RenewLease(1, 1)
 	t.Logf("Result: %v (expected: true, etcd-compatible single-node support)", renewed)
 
@@ -87,7 +87,7 @@ func TestSingleNodeWithSmartConfig(t *testing.T) {
 	}
 }
 
-// TestSingleNodeWithoutSmartConfig 测试单节点不使用 SmartConfig
+// TestSingleNodeWithoutSmartConfig testsinglenodenotuse SmartConfig
 func TestSingleNodeWithoutSmartConfig(t *testing.T) {
 	config := LeaseConfig{
 		ElectionTimeout: 1 * time.Second,
@@ -95,11 +95,11 @@ func TestSingleNodeWithoutSmartConfig(t *testing.T) {
 		ClockDrift:      100 * time.Millisecond,
 	}
 
-	t.Log("=== 不使用 SmartConfig (nil) ===")
+	t.Log("=== notuse SmartConfig (nil) ===")
 	lm := NewLeaseManager(config, nil, zap.NewNop())
 	lm.OnBecomeLeader()
 
-	t.Log("\n尝试续期：totalNodes=1, receivedAcks=1")
+	t.Log("\ntest：totalNodes=1, receivedAcks=1")
 	renewed := lm.RenewLease(1, 1)
 	t.Logf("Result: %v (expected: true)", renewed)
 	t.Logf("HasValidLease: %v", lm.HasValidLease())
@@ -111,10 +111,10 @@ func TestSingleNodeWithoutSmartConfig(t *testing.T) {
 		t.Error("Should have valid lease after successful renewal")
 	}
 
-	// 验证可以多次续期
+	// verifycanmultiple
 	time.Sleep(50 * time.Millisecond)
 	renewed = lm.RenewLease(1, 1)
-	t.Logf("\n第二次续期 Result: %v", renewed)
+	t.Logf("\nthe second time Result: %v", renewed)
 	if !renewed {
 		t.Error("Should be able to renew multiple times")
 	}
@@ -128,7 +128,7 @@ func TestSingleNodeWithoutSmartConfig(t *testing.T) {
 	}
 }
 
-// TestMajorityCalculation 测试多数计算逻辑
+// TestMajorityCalculation testmanycalculate
 func TestMajorityCalculation(t *testing.T) {
 	testCases := []struct {
 		totalNodes int

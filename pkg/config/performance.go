@@ -16,7 +16,7 @@ package config
 
 import "sync/atomic"
 
-// 全局性能配置（使用 atomic 保证并发安全）
+// globalperformanceconfig(use atomic certifyconcurrencysafe)
 var (
 	globalEnableProtobuf         atomic.Bool
 	globalEnableSnapshotProtobuf atomic.Bool
@@ -24,46 +24,46 @@ var (
 )
 
 func init() {
-	// 默认启用所有 Protobuf 优化
+	// defaultenabledall Protobuf optimize
 	globalEnableProtobuf.Store(true)
 	globalEnableSnapshotProtobuf.Store(true)
 	globalEnableLeaseProtobuf.Store(true)
 }
 
-// InitPerformanceConfig 初始化全局性能配置
-// 应该在加载配置后立即调用
+// InitPerformanceConfig initializeglobalperformanceconfig
+// shouldinload configaftercall
 func InitPerformanceConfig(cfg *Config) {
 	globalEnableProtobuf.Store(cfg.Server.Performance.EnableProtobuf)
 	globalEnableSnapshotProtobuf.Store(cfg.Server.Performance.EnableSnapshotProtobuf)
 	globalEnableLeaseProtobuf.Store(cfg.Server.Performance.EnableLeaseProtobuf)
 }
 
-// GetEnableProtobuf 获取是否启用 Raft 操作 Protobuf 序列化
+// GetEnableProtobuf getisnoenabled Raft operation Protobuf serialize
 func GetEnableProtobuf() bool {
 	return globalEnableProtobuf.Load()
 }
 
-// GetEnableSnapshotProtobuf 获取是否启用快照 Protobuf 序列化
+// GetEnableSnapshotProtobuf getisnoenabledsnapshot Protobuf serialize
 func GetEnableSnapshotProtobuf() bool {
 	return globalEnableSnapshotProtobuf.Load()
 }
 
-// GetEnableLeaseProtobuf 获取是否启用 Lease Protobuf 序列化
+// GetEnableLeaseProtobuf getisnoenabled Lease Protobuf serialize
 func GetEnableLeaseProtobuf() bool {
 	return globalEnableLeaseProtobuf.Load()
 }
 
-// SetEnableProtobuf 运行时设置是否启用 Raft 操作 Protobuf 序列化
+// SetEnableProtobuf runningwhensetisnoenabled Raft operation Protobuf serialize
 func SetEnableProtobuf(enable bool) {
 	globalEnableProtobuf.Store(enable)
 }
 
-// SetEnableSnapshotProtobuf 运行时设置是否启用快照 Protobuf 序列化
+// SetEnableSnapshotProtobuf runningwhensetisnoenabledsnapshot Protobuf serialize
 func SetEnableSnapshotProtobuf(enable bool) {
 	globalEnableSnapshotProtobuf.Store(enable)
 }
 
-// SetEnableLeaseProtobuf 运行时设置是否启用 Lease Protobuf 序列化
+// SetEnableLeaseProtobuf runningwhensetisnoenabled Lease Protobuf serialize
 func SetEnableLeaseProtobuf(enable bool) {
 	globalEnableLeaseProtobuf.Store(enable)
 }

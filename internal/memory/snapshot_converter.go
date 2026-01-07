@@ -25,34 +25,34 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// 功能开关：启用 Protobuf 快照序列化优化
-// TODO: 未来移到配置文件中 (configs/config.yaml)
+// featureswitch：enabled Protobuf snapshotserializeoptimize
+// TODO: not cometoconfigfilein (configs/config.yaml)
 func enableSnapshotProtobuf() bool { return config.GetEnableSnapshotProtobuf() }
 
-// SnapshotData 快照数据结构（用于 JSON 向后兼容）
+// SnapshotData snapshotdatastructure(for  JSON aftercompatible)
 type SnapshotData struct {
 	Revision int64
 	KVData   map[string]*kvstore.KeyValue
 	Leases   map[int64]*kvstore.Lease
 }
 
-// serializeSnapshot 序列化快照
-// 优先使用 Protobuf（2-3x 性能提升），回退到 JSON（向后兼容）
+// serializeSnapshot serializesnapshot
+// use Protobuf(2-3x performance)，to JSON(aftercompatible)
 func serializeSnapshot(revision int64, kvData map[string]*kvstore.KeyValue, leases map[int64]*kvstore.Lease) ([]byte, error) {
 	if enableSnapshotProtobuf() {
-		// 使用 Protobuf 序列化
+		// use Protobuf serialize
 		pbSnapshot := &raftpb.StoreSnapshot{
 			Revision: revision,
 			KvData:   make(map[string]*raftpb.KeyValueProto),
 			Leases:   make(map[int64]*raftpb.LeaseProto),
 		}
 
-		// 转换 KV 数据
+		// convert KV data
 		for k, v := range kvData {
 			pbSnapshot.KvData[k] = keyValueToProto(v)
 		}
 
-		// 转换 Lease 数据
+		// convert Lease data
 		for id, lease := range leases {
 			pbSnapshot.Leases[id] = leaseToProto(lease)
 		}
@@ -63,11 +63,11 @@ func serializeSnapshot(revision int64, kvData map[string]*kvstore.KeyValue, leas
 			return nil, fmt.Errorf("protobuf marshal snapshot failed: %w", err)
 		}
 
-		// 添加 Protobuf 标记前缀（用于反序列化时识别）
+		// add Protobuf markerprefix(for deserializewhen)
 		return append([]byte("SNAP-PB:"), data...), nil
 	}
 
-	// 回退到 JSON（向后兼容）
+	// to JSON(aftercompatible)
 	snapshot := SnapshotData{
 		Revision: revision,
 		KVData:   kvData,
@@ -76,31 +76,31 @@ func serializeSnapshot(revision int64, kvData map[string]*kvstore.KeyValue, leas
 	return json.Marshal(snapshot)
 }
 
-// deserializeSnapshot 反序列化快照
-// 自动检测 Protobuf 或 JSON 格式
+// deserializeSnapshot deserializesnapshot
+// test Protobuf or JSON format
 func deserializeSnapshot(data []byte) (*SnapshotData, error) {
-	// 检查是否为 Protobuf 格式（以 "SNAP-PB:" 前缀标识）
+	// checkisnoas Protobuf format( "SNAP-PB:" prefix)
 	const pbPrefix = "SNAP-PB:"
 	if len(data) >= len(pbPrefix) && string(data[:len(pbPrefix)]) == pbPrefix {
-		// Protobuf 格式（包括空快照的情况）
+		// Protobuf format(packageemptysnapshot)
 		pbSnapshot := &raftpb.StoreSnapshot{}
 		if err := proto.Unmarshal(data[len(pbPrefix):], pbSnapshot); err != nil {
 			return nil, fmt.Errorf("protobuf unmarshal snapshot failed: %w", err)
 		}
 
-		// 转换回 Go 结构
+		// convert Go structure
 		snapshot := &SnapshotData{
 			Revision: pbSnapshot.Revision,
 			KVData:   make(map[string]*kvstore.KeyValue),
 			Leases:   make(map[int64]*kvstore.Lease),
 		}
 
-		// 转换 KV 数据
+		// convert KV data
 		for k, v := range pbSnapshot.KvData {
 			snapshot.KVData[k] = protoToKeyValue(v)
 		}
 
-		// 转换 Lease 数据
+		// convert Lease data
 		for id, lease := range pbSnapshot.Leases {
 			snapshot.Leases[id] = protoToLease(lease)
 		}
@@ -108,7 +108,7 @@ func deserializeSnapshot(data []byte) (*SnapshotData, error) {
 		return snapshot, nil
 	}
 
-	// JSON 格式（向后兼容）
+	// JSON format(aftercompatible)
 	var snapshot SnapshotData
 	if err := json.Unmarshal(data, &snapshot); err != nil {
 		return nil, fmt.Errorf("json unmarshal snapshot failed: %w", err)
@@ -117,7 +117,7 @@ func deserializeSnapshot(data []byte) (*SnapshotData, error) {
 	return &snapshot, nil
 }
 
-// keyValueToProto 将 kvstore.KeyValue 转换为 Protobuf
+// keyValueToProto will kvstore.KeyValue convertas Protobuf
 func keyValueToProto(kv *kvstore.KeyValue) *raftpb.KeyValueProto {
 	if kv == nil {
 		return nil
@@ -132,7 +132,7 @@ func keyValueToProto(kv *kvstore.KeyValue) *raftpb.KeyValueProto {
 	}
 }
 
-// protoToKeyValue 将 Protobuf 转换为 kvstore.KeyValue
+// protoToKeyValue will Protobuf convertas kvstore.KeyValue
 func protoToKeyValue(pbKv *raftpb.KeyValueProto) *kvstore.KeyValue {
 	if pbKv == nil {
 		return nil
@@ -147,14 +147,14 @@ func protoToKeyValue(pbKv *raftpb.KeyValueProto) *kvstore.KeyValue {
 	}
 }
 
-// leaseToProto 将 kvstore.Lease 转换为 Protobuf
-// 复用 common 包的实现
+// leaseToProto will kvstore.Lease convertas Protobuf
+//  common packageimplement
 func leaseToProto(lease *kvstore.Lease) *raftpb.LeaseProto {
 	return common.LeaseToProto(lease)
 }
 
-// protoToLease 将 Protobuf 转换为 kvstore.Lease
-// 复用 common 包的实现
+// protoToLease will Protobuf convertas kvstore.Lease
+//  common packageimplement
 func protoToLease(pbLease *raftpb.LeaseProto) *kvstore.Lease {
 	return common.ProtoToLease(pbLease)
 }

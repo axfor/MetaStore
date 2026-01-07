@@ -14,7 +14,7 @@
 
 package etcd
 
-// MemberInfo 成员信息
+// MemberInfo member information
 type MemberInfo struct {
 	ID         uint64   `json:"id"`
 	Name       string   `json:"name"`

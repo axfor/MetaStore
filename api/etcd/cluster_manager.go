@@ -23,16 +23,16 @@ import (
 	"go.etcd.io/raft/v3/raftpb"
 )
 
-// ClusterManager 管理集群成员
+// ClusterManager managementclustermember
 type ClusterManager struct {
 	mu      sync.RWMutex
 	members map[uint64]*MemberInfo
 
-	// Raft 配置变更通道
+	// Raft configchangechannel
 	confChangeC chan<- raftpb.ConfChange
 }
 
-// NewClusterManager 创建 Cluster 管理器
+// NewClusterManager create Cluster manager
 func NewClusterManager(confChangeC chan<- raftpb.ConfChange) *ClusterManager {
 	return &ClusterManager{
 		members:     make(map[uint64]*MemberInfo),
@@ -40,7 +40,7 @@ func NewClusterManager(confChangeC chan<- raftpb.ConfChange) *ClusterManager {
 	}
 }
 
-// ListMembers 列出所有成员
+// ListMembers listallmember
 func (cm *ClusterManager) ListMembers() []*MemberInfo {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
@@ -52,24 +52,24 @@ func (cm *ClusterManager) ListMembers() []*MemberInfo {
 	return members
 }
 
-// AddMember 添加成员
+// AddMember addmember
 func (cm *ClusterManager) AddMember(peerURLs []string, isLearner bool) (*MemberInfo, error) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
-	// 1. 生成新的成员 ID
+	// 1. becomenewmember ID
 	memberID := generateMemberID()
 
-	// 2. 创建成员信息
+	// 2. creatememberinfo
 	member := &MemberInfo{
 		ID:         memberID,
 		Name:       fmt.Sprintf("node-%d", memberID),
 		PeerURLs:   peerURLs,
-		ClientURLs: []string{}, // 初始为空，稍后可通过 Update 设置
+		ClientURLs: []string{}, // initialasempty，aftercanvia Update set
 		IsLearner:  isLearner,
 	}
 
-	// 3. 创建 ConfChange
+	// 3. create ConfChange
 	var ccType raftpb.ConfChangeType
 	if isLearner {
 		ccType = raftpb.ConfChangeAddLearnerNode
@@ -77,10 +77,10 @@ func (cm *ClusterManager) AddMember(peerURLs []string, isLearner bool) (*MemberI
 		ccType = raftpb.ConfChangeAddNode
 	}
 
-	// 构造 Context（PeerURLs）
+	//  Context(PeerURLs)
 	context := []byte{}
 	if len(peerURLs) > 0 {
-		context = []byte(peerURLs[0]) // 使用第一个 PeerURL
+		context = []byte(peerURLs[0]) // usefirst PeerURL
 	}
 
 	cc := raftpb.ConfChange{
@@ -89,20 +89,20 @@ func (cm *ClusterManager) AddMember(peerURLs []string, isLearner bool) (*MemberI
 		Context: context,
 	}
 
-	// 4. 发送到 confChangeC（异步）
+	// 4. sendto confChangeC(asynchronous)
 	if cm.confChangeC != nil {
 		select {
 		case cm.confChangeC <- cc:
-			// 成功发送
+			// successsend
 		default:
 			return nil, fmt.Errorf("confChange channel full")
 		}
 	}
 
-	// 5. 添加到 members map
+	// 5. addto members map
 	cm.members[memberID] = member
 
-	// 6. 返回成员信息
+	// 6. returnmemberinfo
 	return member, nil
 }
 
@@ -156,53 +156,53 @@ func (cm *ClusterManager) AddWitnessMember(peerURLs []string) (*MemberInfo, erro
 	return member, nil
 }
 
-// RemoveMember 移除成员
+// RemoveMember member
 func (cm *ClusterManager) RemoveMember(id uint64) error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
-	// 1. 检查成员是否存在
+	// 1. checkmemberisnoin
 	if _, exists := cm.members[id]; !exists {
 		return fmt.Errorf("member %d not found", id)
 	}
 
-	// 2. 创建 ConfChange
+	// 2. create ConfChange
 	cc := raftpb.ConfChange{
 		Type:   raftpb.ConfChangeRemoveNode,
 		NodeID: id,
 	}
 
-	// 3. 发送到 confChangeC
+	// 3. sendto confChangeC
 	if cm.confChangeC != nil {
 		select {
 		case cm.confChangeC <- cc:
-			// 成功发送
+			// successsend
 		default:
 			return fmt.Errorf("confChange channel full")
 		}
 	}
 
-	// 4. 从 members map 删除
+	// 4. from members map delete
 	delete(cm.members, id)
 
 	return nil
 }
 
-// UpdateMember 更新成员信息
+// UpdateMember updatememberinfo
 func (cm *ClusterManager) UpdateMember(id uint64, peerURLs []string) error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
-	// 1. 检查成员是否存在
+	// 1. checkmemberisnoin
 	member, exists := cm.members[id]
 	if !exists {
 		return fmt.Errorf("member %d not found", id)
 	}
 
-	// 2. 更新 PeerURLs
+	// 2. update PeerURLs
 	member.PeerURLs = peerURLs
 
-	// 3. 创建 ConfChange（etcd 的 UpdateMember 也会触发 ConfChange）
+	// 3. create ConfChange(etcd  UpdateMember willtrigger ConfChange)
 	context := []byte{}
 	if len(peerURLs) > 0 {
 		context = []byte(peerURLs[0])
@@ -214,11 +214,11 @@ func (cm *ClusterManager) UpdateMember(id uint64, peerURLs []string) error {
 		Context: context,
 	}
 
-	// 发送到 confChangeC
+	// sendto confChangeC
 	if cm.confChangeC != nil {
 		select {
 		case cm.confChangeC <- cc:
-			// 成功发送
+			// successsend
 		default:
 			return fmt.Errorf("confChange channel full")
 		}
@@ -227,12 +227,12 @@ func (cm *ClusterManager) UpdateMember(id uint64, peerURLs []string) error {
 	return nil
 }
 
-// PromoteMember 提升 learner 为 voting 成员
+// PromoteMember  learner as voting member
 func (cm *ClusterManager) PromoteMember(id uint64) error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
-	// 1. 检查成员是否存在且是 learner
+	// 1. checkmemberisnoinis learner
 	member, exists := cm.members[id]
 	if !exists {
 		return fmt.Errorf("member %d not found", id)
@@ -242,42 +242,42 @@ func (cm *ClusterManager) PromoteMember(id uint64) error {
 		return fmt.Errorf("member %d is already a voting member", id)
 	}
 
-	// 2. 创建 ConfChange
+	// 2. create ConfChange
 	cc := raftpb.ConfChange{
-		Type:   raftpb.ConfChangeAddNode, // 提升 learner 使用 AddNode
+		Type:   raftpb.ConfChangeAddNode, //  learner use AddNode
 		NodeID: id,
 	}
 
-	// 3. 发送到 confChangeC
+	// 3. sendto confChangeC
 	if cm.confChangeC != nil {
 		select {
 		case cm.confChangeC <- cc:
-			// 成功发送
+			// successsend
 		default:
 			return fmt.Errorf("confChange channel full")
 		}
 	}
 
-	// 4. 更新成员状态
+	// 4. updatememberstatus
 	member.IsLearner = false
 
 	return nil
 }
 
-// ApplyConfChange 应用配置变更（由 Raft 回调）
+// ApplyConfChange appliedconfigchange( Raft )
 func (cm *ClusterManager) ApplyConfChange(cc raftpb.ConfChange, confState raftpb.ConfState) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
-	// 根据 ConfChange 类型更新 members map
+	// root ConfChange typeupdate members map
 	switch cc.Type {
 	case raftpb.ConfChangeAddNode:
-		// 添加 voting 成员或提升 learner
+		// add voting memberor learner
 		if member, exists := cm.members[cc.NodeID]; exists {
-			// 已存在，是提升操作
+			// exists，isoperation
 			member.IsLearner = false
 		} else {
-			// 新增成员
+			// newincreasemember
 			peerURL := ""
 			if len(cc.Context) > 0 {
 				peerURL = string(cc.Context)
@@ -292,7 +292,7 @@ func (cm *ClusterManager) ApplyConfChange(cc raftpb.ConfChange, confState raftpb
 		}
 
 	case raftpb.ConfChangeAddLearnerNode:
-		// 添加 learner 成员
+		// add learner member
 		peerURL := ""
 		if len(cc.Context) > 0 {
 			peerURL = string(cc.Context)
@@ -306,11 +306,11 @@ func (cm *ClusterManager) ApplyConfChange(cc raftpb.ConfChange, confState raftpb
 		}
 
 	case raftpb.ConfChangeRemoveNode:
-		// 移除成员
+		// member
 		delete(cm.members, cc.NodeID)
 
 	case raftpb.ConfChangeUpdateNode:
-		// 更新成员
+		// updatemember
 		if member, exists := cm.members[cc.NodeID]; exists {
 			if len(cc.Context) > 0 {
 				member.PeerURLs = []string{string(cc.Context)}
@@ -319,17 +319,17 @@ func (cm *ClusterManager) ApplyConfChange(cc raftpb.ConfChange, confState raftpb
 	}
 }
 
-// generateMemberID 生成新的成员 ID（使用加密随机数）
+// generateMemberID becomenewmember ID(useencryptrandom)
 func generateMemberID() uint64 {
 	var b [8]byte
 	if _, err := rand.Read(b[:]); err != nil {
-		// Fallback: 使用纳秒时间戳
+		// Fallback: usesecondstime
 		return uint64(binary.BigEndian.Uint64(b[:]))
 	}
 	return binary.BigEndian.Uint64(b[:])
 }
 
-// GetMember 获取成员信息
+// GetMember getmemberinfo
 func (cm *ClusterManager) GetMember(id uint64) (*MemberInfo, error) {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
@@ -341,7 +341,7 @@ func (cm *ClusterManager) GetMember(id uint64) (*MemberInfo, error) {
 	return member, nil
 }
 
-// InitialMembers 初始化成员列表（启动时从配置加载）
+// InitialMembers initializememberlist(startwhenfromconfigload)
 func (cm *ClusterManager) InitialMembers(members []*MemberInfo) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()

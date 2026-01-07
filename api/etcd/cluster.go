@@ -22,14 +22,14 @@ import (
 	"go.uber.org/zap"
 )
 
-// ClusterServer 实现 etcd Cluster 服务
-// 注意: 委托给 MaintenanceServer 的实现，因为 Member 方法已在那里实现
+// ClusterServer implements etcd Cluster service
+// Note: delegates to MaintenanceServer's implementation since Member methods are already implemented there
 type ClusterServer struct {
 	pb.UnimplementedClusterServer
 	maintenance *MaintenanceServer
 }
 
-// MemberAdd 添加新的集群成员（委托给MaintenanceServer）
+// MemberAdd adds a new cluster member (delegates to MaintenanceServer)
 func (s *ClusterServer) MemberAdd(ctx context.Context, req *pb.MemberAddRequest) (*pb.MemberAddResponse, error) {
 	log.Debug("ClusterServer.MemberAdd called, delegating to MaintenanceServer",
 		zap.Strings("peer_urls", req.PeerURLs),
@@ -38,7 +38,7 @@ func (s *ClusterServer) MemberAdd(ctx context.Context, req *pb.MemberAddRequest)
 	return s.maintenance.MemberAdd(ctx, req)
 }
 
-// MemberRemove 删除集群成员（委托给MaintenanceServer）
+// MemberRemove removes a cluster member (delegates to MaintenanceServer)
 func (s *ClusterServer) MemberRemove(ctx context.Context, req *pb.MemberRemoveRequest) (*pb.MemberRemoveResponse, error) {
 	log.Debug("ClusterServer.MemberRemove called, delegating to MaintenanceServer",
 		zap.Uint64("member_id", req.ID),
@@ -46,7 +46,7 @@ func (s *ClusterServer) MemberRemove(ctx context.Context, req *pb.MemberRemoveRe
 	return s.maintenance.MemberRemove(ctx, req)
 }
 
-// MemberUpdate 更新集群成员信息（委托给MaintenanceServer）
+// MemberUpdate updates cluster member information (delegates to MaintenanceServer)
 func (s *ClusterServer) MemberUpdate(ctx context.Context, req *pb.MemberUpdateRequest) (*pb.MemberUpdateResponse, error) {
 	log.Debug("ClusterServer.MemberUpdate called, delegating to MaintenanceServer",
 		zap.Uint64("member_id", req.ID),
@@ -55,14 +55,14 @@ func (s *ClusterServer) MemberUpdate(ctx context.Context, req *pb.MemberUpdateRe
 	return s.maintenance.MemberUpdate(ctx, req)
 }
 
-// MemberList 列出所有集群成员（委托给MaintenanceServer）
+// MemberList lists all cluster members (delegates to MaintenanceServer)
 func (s *ClusterServer) MemberList(ctx context.Context, req *pb.MemberListRequest) (*pb.MemberListResponse, error) {
 	log.Debug("ClusterServer.MemberList called, delegating to MaintenanceServer",
 		zap.String("component", "cluster"))
 	return s.maintenance.MemberList(ctx, req)
 }
 
-// MemberPromote 将学习者提升为投票成员（委托给MaintenanceServer）
+// MemberPromote promotes a learner to voting member (delegates to MaintenanceServer)
 func (s *ClusterServer) MemberPromote(ctx context.Context, req *pb.MemberPromoteRequest) (*pb.MemberPromoteResponse, error) {
 	log.Debug("ClusterServer.MemberPromote called, delegating to MaintenanceServer",
 		zap.Uint64("member_id", req.ID),

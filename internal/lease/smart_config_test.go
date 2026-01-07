@@ -21,14 +21,14 @@ import (
 	"go.uber.org/zap"
 )
 
-// TestSmartLeaseConfig_SingleNode 测试单节点场景
+// TestSmartLeaseConfig_SingleNode testsinglenodescenarioscene
 func TestSmartLeaseConfig_SingleNode(t *testing.T) {
 	slc := NewSmartLeaseConfig(true, zap.NewNop())
 
-	// 单节点集群
+	// singlenodecluster
 	slc.UpdateClusterSize(1)
 
-	// etcd 兼容：单节点也应该启用
+	// etcd compatible：singlenodeshouldenabled
 	if !slc.IsEnabled() {
 		t.Error("Lease Read should be enabled in single-node cluster (etcd-compatible)")
 	}
@@ -42,14 +42,14 @@ func TestSmartLeaseConfig_SingleNode(t *testing.T) {
 	}
 }
 
-// TestSmartLeaseConfig_MultiNode 测试多节点场景
+// TestSmartLeaseConfig_MultiNode testmanynodescenarioscene
 func TestSmartLeaseConfig_MultiNode(t *testing.T) {
 	slc := NewSmartLeaseConfig(true, zap.NewNop())
 
-	// 3 节点集群
+	// 3 nodecluster
 	slc.UpdateClusterSize(3)
 
-	// 应该被启用
+	// shouldbeenabled
 	if !slc.IsEnabled() {
 		t.Error("Lease Read should be enabled in multi-node cluster")
 	}
@@ -63,79 +63,79 @@ func TestSmartLeaseConfig_MultiNode(t *testing.T) {
 	}
 }
 
-// TestSmartLeaseConfig_UserDisabled 测试用户禁用
+// TestSmartLeaseConfig_UserDisabled testuserdisabled
 func TestSmartLeaseConfig_UserDisabled(t *testing.T) {
 	slc := NewSmartLeaseConfig(false, zap.NewNop())
 
-	// 即使是多节点集群
+	// ismanynodecluster
 	slc.UpdateClusterSize(3)
 
-	// 也应该被禁用（因为用户禁用了）
+	// shouldbedisabled(asuserdisabled)
 	if slc.IsEnabled() {
 		t.Error("Lease Read should be disabled when user disables it")
 	}
 }
 
-// TestSmartLeaseConfig_DynamicChange 测试动态变化
+// TestSmartLeaseConfig_DynamicChange testdynamicchangetransform
 func TestSmartLeaseConfig_DynamicChange(t *testing.T) {
 	slc := NewSmartLeaseConfig(true, zap.NewNop())
 
-	// 开始时是单节点（etcd 兼容：应该启用）
+	// startwhenissinglenode(etcd compatible：shouldenabled)
 	slc.UpdateClusterSize(1)
 	if !slc.IsEnabled() {
 		t.Error("Should be enabled for single-node (etcd-compatible)")
 	}
 
-	// 扩容到 3 节点
+	// to 3 node
 	slc.UpdateClusterSize(3)
 	if !slc.IsEnabled() {
 		t.Error("Should be enabled after scaling to 3 nodes")
 	}
 
-	// 缩容回单节点（etcd 兼容：仍然启用）
+	// singlenode(etcd compatible：stillenabled)
 	slc.UpdateClusterSize(1)
 	if !slc.IsEnabled() {
 		t.Error("Should still be enabled after scaling back to 1 node (etcd-compatible)")
 	}
 }
 
-// TestSmartLeaseConfig_UnknownSize 测试未知集群规模
+// TestSmartLeaseConfig_UnknownSize testunknowncluster
 func TestSmartLeaseConfig_UnknownSize(t *testing.T) {
 	slc := NewSmartLeaseConfig(true, zap.NewNop())
 
-	// 未知集群规模
+	// unknowncluster
 	slc.UpdateClusterSize(0)
 
-	// 应该被禁用（安全起见）
+	// shouldbedisabled(safe)
 	if slc.IsEnabled() {
 		t.Error("Lease Read should be disabled for unknown cluster size")
 	}
 }
 
-// TestSmartLeaseConfig_UserToggle 测试用户动态切换
+// TestSmartLeaseConfig_UserToggle testuserdynamic
 func TestSmartLeaseConfig_UserToggle(t *testing.T) {
 	slc := NewSmartLeaseConfig(true, zap.NewNop())
 
-	// 3 节点集群
+	// 3 nodecluster
 	slc.UpdateClusterSize(3)
 	if !slc.IsEnabled() {
 		t.Fatal("Should be enabled initially")
 	}
 
-	// 用户禁用
+	// userdisabled
 	slc.SetUserEnabled(false)
 	if slc.IsEnabled() {
 		t.Error("Should be disabled after user disables")
 	}
 
-	// 用户重新启用
+	// usernewenabled
 	slc.SetUserEnabled(true)
 	if !slc.IsEnabled() {
 		t.Error("Should be enabled after user re-enables (cluster is still multi-node)")
 	}
 }
 
-// TestDetectClusterSizeFromPeers 测试从 peers 检测集群规模
+// TestDetectClusterSizeFromPeers testfrom peers testcluster
 func TestDetectClusterSizeFromPeers(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -173,11 +173,11 @@ func TestDetectClusterSizeFromPeers(t *testing.T) {
 	}
 }
 
-// TestSmartLeaseConfig_AutoDetection 测试自动检测
+// TestSmartLeaseConfig_AutoDetection test
 func TestSmartLeaseConfig_AutoDetection(t *testing.T) {
 	slc := NewSmartLeaseConfig(true, zap.NewNop())
 
-	// 模拟集群规模变化
+	// clusterchangetransform
 	clusterSize := 1
 	getClusterSize := func() int {
 		return clusterSize
@@ -186,24 +186,24 @@ func TestSmartLeaseConfig_AutoDetection(t *testing.T) {
 	stopC := make(chan struct{})
 	defer close(stopC)
 
-	// 启动自动检测（100ms 间隔）
+	// starttest(100ms interval)
 	go slc.StartAutoDetection(getClusterSize, 100*time.Millisecond, stopC)
 
-	// 等待初始检测
+	// waitinitialtest
 	time.Sleep(150 * time.Millisecond)
 
-	// etcd 兼容：单节点也应该启用
+	// etcd compatible：singlenodeshouldenabled
 	if !slc.IsEnabled() {
 		t.Error("Should be enabled for single-node (etcd-compatible)")
 	}
 
-	// 模拟扩容到 3 节点
+	// to 3 node
 	clusterSize = 3
 
-	// 等待下一次检测
+	// waitnextfirst timetest
 	time.Sleep(150 * time.Millisecond)
 
-	// 应该自动启用
+	// shouldenabled
 	if !slc.IsEnabled() {
 		t.Error("Should be enabled after auto-detecting 3 nodes")
 	}

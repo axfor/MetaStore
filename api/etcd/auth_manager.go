@@ -46,16 +46,16 @@ type AuthManager struct {
 	tokens  *syncmap.Map[string, *TokenInfo]
 
 	// Configuration
-	tokenTTL             time.Duration // Token 有效期
-	tokenCleanupInterval time.Duration // Token 清理间隔
-	bcryptCost           int           // bcrypt 加密强度
-	enableAudit          bool          // 是否启用审计日志
+	tokenTTL             time.Duration // Token validity period
+	tokenCleanupInterval time.Duration // Token cleanup interval
+	bcryptCost           int           // bcrypt encryption strength
+	enableAudit          bool          // whether to enable audit logs
 }
 
 // NewAuthManager creates an Auth manager with concurrent-safe maps
-// 可选参数 cfg 用于配置认证行为
+// Optional parameter cfg is used to configure auth behavior
 func NewAuthManager(store kvstore.Store, cfg ...*config.AuthConfig) *AuthManager {
-	// 使用配置或默认值
+	// Use configuration or defaults
 	var authCfg *config.AuthConfig
 	if len(cfg) > 0 && cfg[0] != nil {
 		authCfg = cfg[0]
@@ -70,7 +70,7 @@ func NewAuthManager(store kvstore.Store, cfg ...*config.AuthConfig) *AuthManager
 		roles:  syncmap.NewMap[string, *RoleInfo](),
 		tokens: syncmap.NewMap[string, *TokenInfo](),
 
-		// 应用配置
+		// Apply configuration
 		tokenTTL:             authCfg.TokenTTL,
 		tokenCleanupInterval: authCfg.TokenCleanupInterval,
 		bcryptCost:           authCfg.BcryptCost,
@@ -202,7 +202,7 @@ func (am *AuthManager) Authenticate(username, password string) (string, error) {
 		return "", fmt.Errorf("failed to generate token: %w", err)
 	}
 
-	// 4. Store token info (使用配置的 TTL)
+	// 4. Store token info (using configured TTL)
 	tokenInfo := &TokenInfo{
 		Token:     token,
 		Username:  username,
@@ -210,7 +210,7 @@ func (am *AuthManager) Authenticate(username, password string) (string, error) {
 	}
 	am.tokens.Store(token, tokenInfo)
 
-	// 5. 审计日志（如果启用）
+	// 5. Audit log (if enabled)
 	if am.enableAudit {
 		log.Info("User authenticated",
 			zap.String("username", username),
@@ -300,13 +300,13 @@ func (am *AuthManager) CheckPermission(username string, key []byte, permType Per
 	return fmt.Errorf("permission denied")
 }
 
-// keyInRange 检查 key 是否在 [start, end) 范围内
+// keyInRange checks if key is within [start, end) range
 func (am *AuthManager) keyInRange(key, start, end []byte) bool {
 	if len(end) == 0 {
-		// 单键匹配
+		// Single key match
 		return string(key) == string(start)
 	}
-	// 范围匹配
+	// Range match
 	keyStr := string(key)
 	startStr := string(start)
 	endStr := string(end)
@@ -320,7 +320,7 @@ func (am *AuthManager) AddUser(name, password string) error {
 		return fmt.Errorf("user already exists: %s", name)
 	}
 
-	// 2. Hash password (使用配置的 bcrypt cost)
+	// 2. Hash password (using configured bcrypt cost)
 	passwordHash, err := am.hashPassword(password)
 	if err != nil {
 		return fmt.Errorf("failed to hash password: %w", err)
@@ -431,7 +431,7 @@ func (am *AuthManager) ChangePassword(name, newPassword string) error {
 		return fmt.Errorf("user not found: %s", name)
 	}
 
-	// 2. Hash new password (使用配置的 bcrypt cost)
+	// 2. Hash new password (using configured bcrypt cost)
 	passwordHash, err := am.hashPassword(newPassword)
 	if err != nil {
 		return fmt.Errorf("failed to hash password: %w", err)
@@ -507,13 +507,13 @@ func (am *AuthManager) RevokeRole(username, rolename string) error {
 		return fmt.Errorf("user not found: %s", username)
 	}
 
-	// 从用户的角色列表中移除
+	// Remove from user's role list
 	newRoles := make([]string, 0, len(user.Roles))
 	found := false
 	for _, r := range user.Roles {
 		if r == rolename {
 			found = true
-			continue // 跳过要撤销的角色
+			continue // Skip the role to be revoked
 		}
 		newRoles = append(newRoles, r)
 	}
@@ -524,7 +524,7 @@ func (am *AuthManager) RevokeRole(username, rolename string) error {
 
 	user.Roles = newRoles
 
-	// 持久化
+	// Persist
 	key := authUserPrefix + username
 	data, err := json.Marshal(user)
 	if err != nil {
@@ -537,22 +537,22 @@ func (am *AuthManager) RevokeRole(username, rolename string) error {
 	return nil
 }
 
-// AddRole 添加角色
+// AddRole adds a role
 func (am *AuthManager) AddRole(name string) error {
 
-	// 检查角色是否已存在
+	// Check if role already exists
 	if _, exists := am.roles.Load(name); exists {
 		return fmt.Errorf("role already exists: %s", name)
 	}
 
-	// 创建角色
+	// Create role
 	role := &RoleInfo{
 		Name:        name,
 		Permissions: []Permission{},
 		CreatedAt:   time.Now().Unix(),
 	}
 
-	// 持久化
+	// Persist
 	key := authRolePrefix + name
 	data, err := json.Marshal(role)
 	if err != nil {
@@ -568,15 +568,15 @@ func (am *AuthManager) AddRole(name string) error {
 	return nil
 }
 
-// DeleteRole 删除角色
+// DeleteRole deletes a role
 func (am *AuthManager) DeleteRole(name string) error {
 
-	// 1. 检查是否是 root 角色（不能删除）
+	// 1. Check if it's the root role (cannot be deleted)
 	if name == "root" {
 		return fmt.Errorf("cannot delete root role")
 	}
 
-	// 检查角色是否存在
+	// Check if role exists
 	if _, exists := am.roles.Load(name); !exists {
 		return fmt.Errorf("role not found: %s", name)
 	}
@@ -605,7 +605,7 @@ func (am *AuthManager) DeleteRole(name string) error {
 	// 3. Delete role
 	am.roles.Delete(name)
 
-	// 4. 从存储删除
+	// 4. Delete from storage
 	key := authRolePrefix + name
 	if _, _, _, err := am.store.DeleteRange(context.Background(), key, ""); err != nil {
 		return fmt.Errorf("failed to delete role from storage: %w", err)
@@ -614,7 +614,7 @@ func (am *AuthManager) DeleteRole(name string) error {
 	return nil
 }
 
-// GetRole 获取角色信息
+// GetRole gets role information
 func (am *AuthManager) GetRole(name string) (*RoleInfo, error) {
 
 	role, exists := am.roles.Load(name)
@@ -622,7 +622,7 @@ func (am *AuthManager) GetRole(name string) (*RoleInfo, error) {
 		return nil, fmt.Errorf("role not found: %s", name)
 	}
 
-	// 返回副本，避免外部修改
+	// Return copy to avoid external modification
 	roleCopy := &RoleInfo{
 		Name:        role.Name,
 		Permissions: make([]Permission, len(role.Permissions)),
@@ -651,19 +651,19 @@ func (am *AuthManager) ListRoles() ([]*RoleInfo, error) {
 	return roles, nil
 }
 
-// GrantPermission 授予权限
+// GrantPermission grants permission
 func (am *AuthManager) GrantPermission(rolename string, perm Permission) error {
 
-	// 检查角色是否存在
+	// Check if role exists
 	role, exists := am.roles.Load(rolename)
 	if !exists {
 		return fmt.Errorf("role not found: %s", rolename)
 	}
 
-	// 添加权限
+	// Add permission
 	role.Permissions = append(role.Permissions, perm)
 
-	// 持久化
+	// Persist
 	key := authRolePrefix + rolename
 	data, err := json.Marshal(role)
 	if err != nil {
@@ -676,23 +676,23 @@ func (am *AuthManager) GrantPermission(rolename string, perm Permission) error {
 	return nil
 }
 
-// RevokePermission 撤销权限
+// RevokePermission revokes permission
 func (am *AuthManager) RevokePermission(rolename string, key, rangeEnd []byte) error {
 
-	// 检查角色是否存在
+	// Check if role exists
 	role, exists := am.roles.Load(rolename)
 	if !exists {
 		return fmt.Errorf("role not found: %s", rolename)
 	}
 
-	// 从权限列表中移除匹配的权限
+	// Remove matching permission from permission list
 	newPerms := make([]Permission, 0, len(role.Permissions))
 	found := false
 	for _, perm := range role.Permissions {
-		// 检查是否匹配要撤销的权限
+		// Check if it matches the permission to revoke
 		if string(perm.Key) == string(key) && string(perm.RangeEnd) == string(rangeEnd) {
 			found = true
-			continue // 跳过要撤销的权限
+			continue // Skip the permission to revoke
 		}
 		newPerms = append(newPerms, perm)
 	}
@@ -703,7 +703,7 @@ func (am *AuthManager) RevokePermission(rolename string, key, rangeEnd []byte) e
 
 	role.Permissions = newPerms
 
-	// 持久化
+	// Persist
 	roleKey := authRolePrefix + rolename
 	data, err := json.Marshal(role)
 	if err != nil {
@@ -716,7 +716,7 @@ func (am *AuthManager) RevokePermission(rolename string, key, rangeEnd []byte) e
 	return nil
 }
 
-// generateToken 生成随机 token
+// generateToken generates a random token
 func (am *AuthManager) generateToken() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
@@ -725,20 +725,20 @@ func (am *AuthManager) generateToken() (string, error) {
 	return base64.URLEncoding.EncodeToString(b), nil
 }
 
-// hashPassword Hash 密码
-// hashPassword 使用配置的 bcrypt cost 加密密码
+// hashPassword hashes password
+// hashPassword encrypts password using configured bcrypt cost
 func (am *AuthManager) hashPassword(password string) (string, error) {
 	bytes, err := bcrypt.GenerateFromPassword([]byte(password), am.bcryptCost)
 	return string(bytes), err
 }
 
-// hashPassword (全局函数，保持向后兼容) 使用默认 cost
+// hashPassword (global function, maintains backward compatibility) uses default cost
 func hashPassword(password string) (string, error) {
 	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	return string(bytes), err
 }
 
-// checkPasswordHash 验证密码
+// checkPasswordHash verifies password
 func checkPasswordHash(password, hash string) bool {
 	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
 	return err == nil

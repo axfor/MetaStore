@@ -25,10 +25,10 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 )
 
-// Mutex 实现分布式互斥锁
+// Mutex implements distributed mutex
 type Mutex struct {
 	s   *Session
-	pfx string // key 前缀
+	pfx string // key prefix
 
 	myKey string
 	myRev int64
@@ -37,7 +37,7 @@ type Mutex struct {
 	mu sync.Mutex
 }
 
-// NewMutex 创建新的互斥锁
+// NewMutex creates a new mutex
 func NewMutex(s *Session, pfx string) *Mutex {
 	return &Mutex{
 		s:   s,
@@ -282,7 +282,7 @@ func (m *Mutex) TryLock(ctx context.Context) error {
 	return concurrency.ErrLocked
 }
 
-// Unlock 释放锁
+// Unlock releases the lock
 func (m *Mutex) Unlock(ctx context.Context) error {
 	m.mu.Lock()
 	if m.myKey == "" {
@@ -297,21 +297,21 @@ func (m *Mutex) Unlock(ctx context.Context) error {
 	return err
 }
 
-// IsOwner 检查当前是否持有锁
+// IsOwner checks whether currently holding the lock
 func (m *Mutex) IsOwner() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.myKey != ""
 }
 
-// Key 返回锁的 key
+// Key returns the lock key
 func (m *Mutex) Key() string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.myKey
 }
 
-// Header 返回锁创建时的响应头
+// Header returns the lock response header at creation time
 func (m *Mutex) Header() *pb.ResponseHeader {
 	m.mu.Lock()
 	defer m.mu.Unlock()

@@ -22,18 +22,18 @@ import (
 	mvccpb "go.etcd.io/etcd/api/v3/mvccpb"
 )
 
-// KVServer 实现 etcd KV 服务
+// KVServer implement etcd KV 
 type KVServer struct {
 	pb.UnimplementedKVServer
 	server *Server
 }
 
-// Range 执行范围查询
+// Range performs range query
 func (s *KVServer) Range(ctx context.Context, req *pb.RangeRequest) (*pb.RangeResponse, error) {
 	key := string(req.Key)
 	rangeEnd := string(req.RangeEnd)
 
-	// 构建 RangeOptions
+	// Build RangeOptions
 	opts := kvstore.RangeOptions{
 		Limit:             req.Limit,
 		Revision:          req.Revision,
@@ -45,7 +45,7 @@ func (s *KVServer) Range(ctx context.Context, req *pb.RangeRequest) (*pb.RangeRe
 		KeysOnly:          req.KeysOnly,
 	}
 
-	// 转换排序选项
+	// Convert sort options
 	switch req.SortOrder {
 	case pb.RangeRequest_ASCEND:
 		opts.SortOrder = kvstore.SortAscend
@@ -70,13 +70,13 @@ func (s *KVServer) Range(ctx context.Context, req *pb.RangeRequest) (*pb.RangeRe
 		opts.SortTarget = kvstore.SortByKey
 	}
 
-	// 从 store 查询
+	// Query from store
 	resp, err := s.server.store.RangeWithOptions(ctx, key, rangeEnd, opts)
 	if err != nil {
 		return nil, toGRPCError(err)
 	}
 
-	// 转换为 protobuf 格式
+	// Convert to protobuf format
 	kvs := make([]*mvccpb.KeyValue, len(resp.Kvs))
 	for i, kv := range resp.Kvs {
 		kvs[i] = &mvccpb.KeyValue{
@@ -97,13 +97,13 @@ func (s *KVServer) Range(ctx context.Context, req *pb.RangeRequest) (*pb.RangeRe
 	}, nil
 }
 
-// Put 存储键值对
+// Put stores key-value pair
 func (s *KVServer) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutResponse, error) {
 	key := string(req.Key)
 	value := string(req.Value)
 	leaseID := req.Lease
 
-	// 调用 store 存储
+	// Call store to save
 	revision, prevKv, err := s.server.store.PutWithLease(ctx, key, value, leaseID)
 	if err != nil {
 		return nil, toGRPCError(err)
@@ -113,7 +113,7 @@ func (s *KVServer) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutResponse
 		Header: s.server.getResponseHeader(),
 	}
 
-	// 如果请求返回前一个值
+	// If request returns previous value
 	if req.PrevKv && prevKv != nil {
 		resp.PrevKv = &mvccpb.KeyValue{
 			Key:            prevKv.Key,
@@ -125,18 +125,18 @@ func (s *KVServer) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutResponse
 		}
 	}
 
-	// 更新 header 中的 revision
+	// update header in revision
 	resp.Header.Revision = revision
 
 	return resp, nil
 }
 
-// DeleteRange 删除范围内的键
+// DeleteRange deletes keys in range
 func (s *KVServer) DeleteRange(ctx context.Context, req *pb.DeleteRangeRequest) (*pb.DeleteRangeResponse, error) {
 	key := string(req.Key)
 	rangeEnd := string(req.RangeEnd)
 
-	// 调用 store 删除
+	// Call store to delete
 	deleted, prevKvs, revision, err := s.server.store.DeleteRange(ctx, key, rangeEnd)
 	if err != nil {
 		return nil, toGRPCError(err)
@@ -147,7 +147,7 @@ func (s *KVServer) DeleteRange(ctx context.Context, req *pb.DeleteRangeRequest) 
 		Deleted: deleted,
 	}
 
-	// 如果请求返回被删除的值
+	// If request returns deleted values
 	if req.PrevKv && len(prevKvs) > 0 {
 		resp.PrevKvs = make([]*mvccpb.KeyValue, len(prevKvs))
 		for i, kv := range prevKvs {
@@ -162,39 +162,39 @@ func (s *KVServer) DeleteRange(ctx context.Context, req *pb.DeleteRangeRequest) 
 		}
 	}
 
-	// 更新 header 中的 revision
+	// update header in revision
 	resp.Header.Revision = revision
 
 	return resp, nil
 }
 
-// Txn 执行事务
+// Txn executes transaction
 func (s *KVServer) Txn(ctx context.Context, req *pb.TxnRequest) (*pb.TxnResponse, error) {
-	// 转换 compare 条件
+	// Convert compare conditions
 	cmps := make([]kvstore.Compare, len(req.Compare))
 	for i, cmp := range req.Compare {
 		cmps[i] = convertCompare(cmp)
 	}
 
-	// 转换 success 操作
+	// Convert success operations
 	thenOps := make([]kvstore.Op, len(req.Success))
 	for i, reqOp := range req.Success {
 		thenOps[i] = convertRequestOp(reqOp)
 	}
 
-	// 转换 failure 操作
+	// Convert failure operations
 	elseOps := make([]kvstore.Op, len(req.Failure))
 	for i, reqOp := range req.Failure {
 		elseOps[i] = convertRequestOp(reqOp)
 	}
 
-	// 执行事务
+	// Execute transaction
 	txnResp, err := s.server.store.Txn(ctx, cmps, thenOps, elseOps)
 	if err != nil {
 		return nil, toGRPCError(err)
 	}
 
-	// 转换响应
+	// Convert response
 	header := s.server.getResponseHeader()
 	resp := &pb.TxnResponse{
 		Header:    header,
@@ -206,13 +206,13 @@ func (s *KVServer) Txn(ctx context.Context, req *pb.TxnRequest) (*pb.TxnResponse
 		resp.Responses[i] = convertOpResponse(opResp, header)
 	}
 
-	// 更新 header 中的 revision
+	// Update revision in header
 	resp.Header.Revision = txnResp.Revision
 
 	return resp, nil
 }
 
-// Compact 压缩历史数据
+// Compact compacts historical data
 func (s *KVServer) Compact(ctx context.Context, req *pb.CompactionRequest) (*pb.CompactionResponse, error) {
 	err := s.server.store.Compact(ctx, req.Revision)
 	if err != nil {
@@ -224,13 +224,13 @@ func (s *KVServer) Compact(ctx context.Context, req *pb.CompactionRequest) (*pb.
 	}, nil
 }
 
-// 辅助函数：转换 Compare
+// Helper function: convert Compare
 func convertCompare(cmp *pb.Compare) kvstore.Compare {
 	c := kvstore.Compare{
 		Key: cmp.Key,
 	}
 
-	// 转换 target
+	// Convert target
 	switch cmp.Target {
 	case pb.Compare_VERSION:
 		c.Target = kvstore.CompareVersion
@@ -249,7 +249,7 @@ func convertCompare(cmp *pb.Compare) kvstore.Compare {
 		c.TargetUnion.Lease = cmp.GetLease()
 	}
 
-	// 转换 result
+	// Convert result
 	switch cmp.Result {
 	case pb.Compare_EQUAL:
 		c.Result = kvstore.CompareEqual
@@ -264,7 +264,7 @@ func convertCompare(cmp *pb.Compare) kvstore.Compare {
 	return c
 }
 
-// 辅助函数：转换 RequestOp
+// Helper function: convert RequestOp
 func convertRequestOp(reqOp *pb.RequestOp) kvstore.Op {
 	op := kvstore.Op{}
 
@@ -287,7 +287,7 @@ func convertRequestOp(reqOp *pb.RequestOp) kvstore.Op {
 	return op
 }
 
-// 辅助函数：转换 OpResponse
+// Helper function: convert OpResponse
 func convertOpResponse(opResp kvstore.OpResponse, header *pb.ResponseHeader) *pb.ResponseOp {
 	resp := &pb.ResponseOp{}
 

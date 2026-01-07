@@ -36,7 +36,7 @@ import (
 // Test Helper Functions
 // ============================================================================
 
-// startLockTestServer 启动用于锁测试的服务器
+// startLockTestServer start lock test server
 func startLockTestServer(t *testing.T) (*etcdapi.Server, *clientv3.Client) {
 	store := memory.NewMemoryEtcd()
 	server, err := etcdapi.NewServer(etcdapi.ServerConfig{
@@ -73,57 +73,57 @@ func startLockTestServer(t *testing.T) (*etcdapi.Server, *clientv3.Client) {
 // Session Tests
 // ============================================================================
 
-// TestSessionCreate 测试 Session 创建
+// TestSessionCreate test Session create
 func TestSessionCreate(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	ctx := context.Background()
 
-	// 创建会话
+	// create session
 	session, err := NewSession(cli, WithTTL(10))
 	require.NoError(t, err)
 	require.NotNil(t, session)
 
-	// 验证 Lease ID
+	// verify Lease ID
 	leaseID := session.Lease()
 	assert.NotEqual(t, clientv3.NoLease, leaseID)
 
-	// 验证 Lease 有效
+	// verify Lease valid
 	ttlResp, err := cli.TimeToLive(ctx, leaseID)
 	require.NoError(t, err)
 	assert.Greater(t, ttlResp.TTL, int64(0))
 	assert.LessOrEqual(t, ttlResp.TTL, int64(10))
 
-	// 关闭会话
+	// close session
 	err = session.Close()
 	require.NoError(t, err)
 
-	// 验证 Lease 已被撤销
+	// verify Lease was revoked
 	ttlResp, err = cli.TimeToLive(ctx, leaseID)
 	require.NoError(t, err)
 	assert.Equal(t, int64(-1), ttlResp.TTL)
 }
 
-// TestSessionWithExistingLease 测试使用现有 Lease 创建会话
+// TestSessionWithExistingLease test using existing Lease create session
 func TestSessionWithExistingLease(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	ctx := context.Background()
 
-	// 先创建 Lease
+	// first create Lease
 	leaseResp, err := cli.Grant(ctx, 30)
 	require.NoError(t, err)
 
-	// 使用现有 Lease 创建会话
+	// use existing Lease create session
 	session, err := NewSession(cli, WithLease(leaseResp.ID))
 	require.NoError(t, err)
 	require.NotNil(t, session)
 
-	// 验证使用的是同一个 Lease
+	// verify using same Lease
 	assert.Equal(t, leaseResp.ID, session.Lease())
 
 	session.Close()
 }
 
-// TestSessionOrphan 测试 Orphan 功能
+// TestSessionOrphan test Orphan feature
 func TestSessionOrphan(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	ctx := context.Background()
@@ -132,35 +132,35 @@ func TestSessionOrphan(t *testing.T) {
 	require.NoError(t, err)
 	leaseID := session.Lease()
 
-	// 使用 Orphan 结束会话但保留 Lease
+	// use Orphan end session but keep Lease
 	session.Orphan()
 
-	// 验证 Lease 仍然有效
+	// verify Lease still valid
 	ttlResp, err := cli.TimeToLive(ctx, leaseID)
 	require.NoError(t, err)
 	assert.Greater(t, ttlResp.TTL, int64(0))
 
-	// 手动撤销 Lease
+	// manually revoked Lease
 	_, err = cli.Revoke(ctx, leaseID)
 	require.NoError(t, err)
 }
 
-// TestSessionExpiry 测试 Session 过期
+// TestSessionExpiry test Session expiration
 func TestSessionExpiry(t *testing.T) {
 	_, cli := startLockTestServer(t)
 
-	// 创建短期会话（2秒）
+	// create short-term session(2seconds)
 	session, err := NewSession(cli, WithTTL(2))
 	require.NoError(t, err)
 	leaseID := session.Lease()
 
-	// 关闭会话（停止 keepalive）
+	// close session(stopped keepalive)
 	session.Close()
 
-	// 等待 Lease 过期
+	// wait Lease expiration
 	time.Sleep(3 * time.Second)
 
-	// 验证 Lease 已过期
+	// verify Lease expired
 	ctx := context.Background()
 	ttlResp, err := cli.TimeToLive(ctx, leaseID)
 	require.NoError(t, err)
@@ -171,7 +171,7 @@ func TestSessionExpiry(t *testing.T) {
 // Basic Mutex Tests
 // ============================================================================
 
-// TestMutexLockUnlock 测试基本的 Lock 和 Unlock
+// TestMutexLockUnlock test basic Lock and Unlock
 func TestMutexLockUnlock(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	ctx := context.Background()
@@ -182,29 +182,29 @@ func TestMutexLockUnlock(t *testing.T) {
 
 	mutex := NewMutex(session, "/test/lock")
 
-	// 验证初始状态
+	// verify initial status
 	assert.False(t, mutex.IsOwner())
 	assert.Empty(t, mutex.Key())
 
-	// 获取锁
+	// acquire lock
 	err = mutex.Lock(ctx)
 	require.NoError(t, err)
 
-	// 验证锁状态
+	// verify lock status
 	assert.True(t, mutex.IsOwner())
 	assert.NotEmpty(t, mutex.Key())
 	assert.NotNil(t, mutex.Header())
 
-	// 释放锁
+	// release lock
 	err = mutex.Unlock(ctx)
 	require.NoError(t, err)
 
-	// 验证锁已释放
+	// verify lock released
 	assert.False(t, mutex.IsOwner())
 	assert.Empty(t, mutex.Key())
 }
 
-// TestMutexReentrantLock 测试重入锁（同一个 Mutex 多次 Lock）
+// TestMutexReentrantLock test reentrant lock(same Mutex multiple Lock)
 func TestMutexReentrantLock(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	ctx := context.Background()
@@ -215,24 +215,24 @@ func TestMutexReentrantLock(t *testing.T) {
 
 	mutex := NewMutex(session, "/test/reentrant")
 
-	// 第一次获取锁
+	// the first time acquire lock
 	err = mutex.Lock(ctx)
 	require.NoError(t, err)
 	firstKey := mutex.Key()
 
-	// 第二次获取锁（应该立即返回）
+	// the second time acquire lock(should return immediately)
 	err = mutex.Lock(ctx)
 	require.NoError(t, err)
 
-	// 验证 key 没有变化
+	// verify key unchanged
 	assert.Equal(t, firstKey, mutex.Key())
 
-	// 释放锁
+	// release lock
 	err = mutex.Unlock(ctx)
 	require.NoError(t, err)
 }
 
-// TestMutexUnlockWithoutLock 测试未持有锁时 Unlock
+// TestMutexUnlockWithoutLock test Unlock when not holding lock
 func TestMutexUnlockWithoutLock(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	ctx := context.Background()
@@ -243,7 +243,7 @@ func TestMutexUnlockWithoutLock(t *testing.T) {
 
 	mutex := NewMutex(session, "/test/unlock-without-lock")
 
-	// 未持有锁时 Unlock 应该是安全的
+	// Unlock when not holding lock should be safe
 	err = mutex.Unlock(ctx)
 	require.NoError(t, err)
 }
@@ -252,7 +252,7 @@ func TestMutexUnlockWithoutLock(t *testing.T) {
 // TryLock Tests
 // ============================================================================
 
-// TestTryLockSuccess 测试 TryLock 成功场景
+// TestTryLockSuccess test TryLock success scenario
 func TestTryLockSuccess(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	ctx := context.Background()
@@ -263,7 +263,7 @@ func TestTryLockSuccess(t *testing.T) {
 
 	mutex := NewMutex(session, "/test/trylock")
 
-	// TryLock 应该立即成功
+	// TryLock should succeed immediately
 	err = mutex.TryLock(ctx)
 	require.NoError(t, err)
 	assert.True(t, mutex.IsOwner())
@@ -271,12 +271,12 @@ func TestTryLockSuccess(t *testing.T) {
 	mutex.Unlock(ctx)
 }
 
-// TestTryLockFail 测试 TryLock 失败场景
+// TestTryLockFail test TryLock failure scenario
 func TestTryLockFail(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	ctx := context.Background()
 
-	// 第一个会话获取锁
+	// first session acquires lock
 	session1, err := NewSession(cli, WithTTL(30))
 	require.NoError(t, err)
 	defer session1.Close()
@@ -285,7 +285,7 @@ func TestTryLockFail(t *testing.T) {
 	err = mutex1.Lock(ctx)
 	require.NoError(t, err)
 
-	// 第二个会话尝试 TryLock
+	// second session attempts TryLock
 	session2, err := NewSession(cli, WithTTL(30))
 	require.NoError(t, err)
 	defer session2.Close()
@@ -293,7 +293,7 @@ func TestTryLockFail(t *testing.T) {
 	mutex2 := NewMutex(session2, "/test/trylock-fail")
 	err = mutex2.TryLock(ctx)
 
-	// 应该返回 ErrLocked
+	// should return ErrLocked
 	assert.Error(t, err)
 	assert.Equal(t, etcdconcurrency.ErrLocked, err)
 	assert.False(t, mutex2.IsOwner())
@@ -301,7 +301,7 @@ func TestTryLockFail(t *testing.T) {
 	mutex1.Unlock(ctx)
 }
 
-// TestTryLockAfterUnlock 测试解锁后 TryLock
+// TestTryLockAfterUnlock test TryLock after unlock
 func TestTryLockAfterUnlock(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	ctx := context.Background()
@@ -317,19 +317,19 @@ func TestTryLockAfterUnlock(t *testing.T) {
 	mutex1 := NewMutex(session1, "/test/trylock-after-unlock")
 	mutex2 := NewMutex(session2, "/test/trylock-after-unlock")
 
-	// session1 获取锁
+	// session1 acquire lock
 	err = mutex1.Lock(ctx)
 	require.NoError(t, err)
 
-	// session2 TryLock 失败
+	// session2 TryLock failure
 	err = mutex2.TryLock(ctx)
 	assert.Equal(t, etcdconcurrency.ErrLocked, err)
 
-	// session1 释放锁
+	// session1 release lock
 	err = mutex1.Unlock(ctx)
 	require.NoError(t, err)
 
-	// session2 TryLock 成功
+	// session2 TryLock success
 	err = mutex2.TryLock(ctx)
 	require.NoError(t, err)
 	assert.True(t, mutex2.IsOwner())
@@ -341,7 +341,7 @@ func TestTryLockAfterUnlock(t *testing.T) {
 // Concurrent Lock Tests
 // ============================================================================
 
-// TestMutexContention 测试锁竞争
+// TestMutexContention test lock contention
 func TestMutexContention(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	ctx := context.Background()
@@ -362,17 +362,17 @@ func TestMutexContention(t *testing.T) {
 
 			mutex := NewMutex(session, "/test/contention")
 
-			// 获取锁
+			// acquire lock
 			err = mutex.Lock(ctx)
 			require.NoError(t, err)
 
 			acquired <- id
 			t.Logf("Client %d acquired lock", id)
 
-			// 持有锁一小段时间
+			// holding lock for a short time
 			time.Sleep(50 * time.Millisecond)
 
-			// 释放锁
+			// release lock
 			err = mutex.Unlock(ctx)
 			require.NoError(t, err)
 
@@ -381,12 +381,12 @@ func TestMutexContention(t *testing.T) {
 		}(i)
 	}
 
-	// 等待所有 goroutine 完成
+	// wait all goroutines to finish
 	wg.Wait()
 	close(acquired)
 	close(released)
 
-	// 验证每个客户端都获取并释放了锁
+	// verify each client acquired and released lock
 	acquiredClients := make(map[int]bool)
 	for id := range acquired {
 		acquiredClients[id] = true
@@ -400,7 +400,7 @@ func TestMutexContention(t *testing.T) {
 	assert.Len(t, releasedClients, numClients)
 }
 
-// TestMutexFIFOOrder 测试锁的 FIFO 顺序
+// TestMutexFIFOOrder testlock FIFO order
 func TestMutexFIFOOrder(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	ctx := context.Background()
@@ -409,7 +409,7 @@ func TestMutexFIFOOrder(t *testing.T) {
 	var orderMu sync.Mutex
 	acquireOrder := make([]int, 0, numClients)
 
-	// 创建一个信号通道来控制启动顺序
+	// create signal channel to control start order
 	startSignals := make([]chan struct{}, numClients)
 	for i := range startSignals {
 		startSignals[i] = make(chan struct{})
@@ -421,7 +421,7 @@ func TestMutexFIFOOrder(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 
-			// 等待启动信号
+			// wait start signal
 			<-startSignals[id]
 
 			session, err := NewSession(cli, WithTTL(60))
@@ -430,45 +430,45 @@ func TestMutexFIFOOrder(t *testing.T) {
 
 			mutex := NewMutex(session, "/test/fifo")
 
-			// 获取锁
+			// acquire lock
 			err = mutex.Lock(ctx)
 			require.NoError(t, err)
 
-			// 记录获取顺序
+			// record acquisition order
 			orderMu.Lock()
 			acquireOrder = append(acquireOrder, id)
 			orderMu.Unlock()
 
 			t.Logf("Client %d acquired lock at position %d", id, len(acquireOrder))
 
-			// 持有锁一小段时间
+			// holding lock for a short time
 			time.Sleep(20 * time.Millisecond)
 
 			mutex.Unlock(ctx)
 		}(i)
 	}
 
-	// 按顺序发送启动信号
+	// send start signals in order
 	for i := 0; i < numClients; i++ {
 		close(startSignals[i])
-		time.Sleep(30 * time.Millisecond) // 确保按顺序注册到锁队列
+		time.Sleep(30 * time.Millisecond) // ensure registration to lock queue in order
 	}
 
 	wg.Wait()
 
-	// 验证获取顺序
+	// verify acquisition order
 	t.Logf("Acquire order: %v", acquireOrder)
 	assert.Len(t, acquireOrder, numClients)
 
-	// 验证是 FIFO 顺序
+	// verify FIFO order
 	expectedOrder := make([]int, numClients)
 	for i := range expectedOrder {
 		expectedOrder[i] = i
 	}
-	assert.Equal(t, expectedOrder, acquireOrder, "Lock acquisition should follow FIFO order")
+	assert.Equal(t, expectedOrder, acquireOrder, "lock acquisition should follow FIFO order")
 }
 
-// TestMutexCriticalSection 测试临界区保护
+// TestMutexCriticalSection test critical section protection
 func TestMutexCriticalSection(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	ctx := context.Background()
@@ -494,12 +494,12 @@ func TestMutexCriticalSection(t *testing.T) {
 				err = mutex.Lock(ctx)
 				require.NoError(t, err)
 
-				// 临界区操作
+				// critical section operation
 				oldVal := atomic.LoadInt64(&counter)
-				time.Sleep(time.Millisecond) // 模拟工作
+				time.Sleep(time.Millisecond) // simulate work
 				newVal := atomic.AddInt64(&counter, 1)
 
-				// 检查是否有竞态条件
+				// check for race conditions
 				if newVal != oldVal+1 {
 					atomic.AddInt64(&violations, 1)
 				}
@@ -512,19 +512,19 @@ func TestMutexCriticalSection(t *testing.T) {
 	wg.Wait()
 
 	assert.Equal(t, int64(numClients*iterations), atomic.LoadInt64(&counter))
-	assert.Equal(t, int64(0), atomic.LoadInt64(&violations), "No race conditions should occur")
+	assert.Equal(t, int64(0), atomic.LoadInt64(&violations), "no race conditions should occur")
 }
 
 // ============================================================================
 // Lock Timeout and Cancellation Tests
 // ============================================================================
 
-// TestMutexLockWithTimeout 测试带超时的锁获取
+// TestMutexLockWithTimeout test lock acquisition with timeout
 func TestMutexLockWithTimeout(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	bgCtx := context.Background()
 
-	// 第一个会话持有锁
+	// first session holding lock
 	session1, err := NewSession(cli, WithTTL(60))
 	require.NoError(t, err)
 	defer session1.Close()
@@ -533,7 +533,7 @@ func TestMutexLockWithTimeout(t *testing.T) {
 	err = mutex1.Lock(bgCtx)
 	require.NoError(t, err)
 
-	// 第二个会话尝试获取锁，带超时
+	// second session attempts to acquire lock, with timeout
 	session2, err := NewSession(cli, WithTTL(60))
 	require.NoError(t, err)
 	defer session2.Close()
@@ -554,11 +554,11 @@ func TestMutexLockWithTimeout(t *testing.T) {
 	mutex1.Unlock(bgCtx)
 }
 
-// TestMutexLockCancellation 测试锁获取取消
+// TestMutexLockCancellation test lock acquisition cancellation
 func TestMutexLockCancellation(t *testing.T) {
 	_, cli := startLockTestServer(t)
 
-	// 第一个会话持有锁
+	// first session holding lock
 	session1, err := NewSession(cli, WithTTL(60))
 	require.NoError(t, err)
 	defer session1.Close()
@@ -567,7 +567,7 @@ func TestMutexLockCancellation(t *testing.T) {
 	err = mutex1.Lock(context.Background())
 	require.NoError(t, err)
 
-	// 第二个会话尝试获取锁
+	// second session attempts to acquire lock
 	session2, err := NewSession(cli, WithTTL(60))
 	require.NoError(t, err)
 	defer session2.Close()
@@ -576,17 +576,17 @@ func TestMutexLockCancellation(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// 启动 goroutine 获取锁
+	// start goroutine to acquire lock
 	done := make(chan error, 1)
 	go func() {
 		done <- mutex2.Lock(ctx)
 	}()
 
-	// 等待一会儿然后取消
+	// wait a while then cancel
 	time.Sleep(200 * time.Millisecond)
 	cancel()
 
-	// 验证锁获取被取消
+	// verify lock acquisition was canceled
 	select {
 	case err := <-done:
 		assert.Error(t, err)
@@ -602,12 +602,12 @@ func TestMutexLockCancellation(t *testing.T) {
 // Session Failure Tests
 // ============================================================================
 
-// TestMutexReleaseOnSessionClose 测试 Session 关闭时锁自动释放
+// TestMutexReleaseOnSessionClose test lock automatically released on session close
 func TestMutexReleaseOnSessionClose(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	ctx := context.Background()
 
-	// 第一个会话获取锁
+	// first session acquires lock
 	session1, err := NewSession(cli, WithTTL(5))
 	require.NoError(t, err)
 
@@ -615,14 +615,14 @@ func TestMutexReleaseOnSessionClose(t *testing.T) {
 	err = mutex1.Lock(ctx)
 	require.NoError(t, err)
 
-	// 第二个会话准备获取锁
+	// second session prepares to acquire lock
 	session2, err := NewSession(cli, WithTTL(60))
 	require.NoError(t, err)
 	defer session2.Close()
 
 	mutex2 := NewMutex(session2, "/test/session-close")
 
-	// 启动 goroutine 等待锁
+	// start goroutine waiting for lock
 	acquired := make(chan struct{})
 	go func() {
 		err := mutex2.Lock(ctx)
@@ -631,17 +631,17 @@ func TestMutexReleaseOnSessionClose(t *testing.T) {
 		}
 	}()
 
-	// 关闭第一个会话
+	// close first session
 	time.Sleep(100 * time.Millisecond)
 	session1.Close()
 
-	// 验证第二个会话能获取锁
+	// verify second session can acquire lock
 	select {
 	case <-acquired:
 		t.Log("Second session acquired lock after first session closed")
 		assert.True(t, mutex2.IsOwner())
 	case <-time.After(5 * time.Second):
-		t.Fatal("Second session should acquire lock after first session closes")
+		t.Fatal("second session should acquire lock after first session closes")
 	}
 
 	mutex2.Unlock(ctx)
@@ -651,7 +651,7 @@ func TestMutexReleaseOnSessionClose(t *testing.T) {
 // Election Tests
 // ============================================================================
 
-// TestElectionCampaign 测试 Leader 选举
+// TestElectionCampaign test Leader election
 func TestElectionCampaign(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	ctx := context.Background()
@@ -662,31 +662,31 @@ func TestElectionCampaign(t *testing.T) {
 
 	election := NewElection(session, "/test/election")
 
-	// 初始状态
+	// initial status
 	assert.False(t, election.IsLeader())
 
-	// 竞选 Leader
+	// campaign for Leader
 	err = election.Campaign(ctx, "leader-value")
 	require.NoError(t, err)
 
-	// 验证成为 Leader
+	// verify became Leader
 	assert.True(t, election.IsLeader())
 	assert.NotEmpty(t, election.Key())
 	assert.Greater(t, election.Rev(), int64(0))
 
-	// 查询当前 Leader
+	// query current Leader
 	_, val, err := election.Leader(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, "leader-value", val)
 
-	// 放弃 Leader
+	// release Leader
 	err = election.Resign(ctx)
 	require.NoError(t, err)
 
 	assert.False(t, election.IsLeader())
 }
 
-// TestElectionMultipleCandidates 测试多候选人选举
+// TestElectionMultipleCandidates test multiple candidates election
 func TestElectionMultipleCandidates(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	ctx := context.Background()
@@ -706,7 +706,7 @@ func TestElectionMultipleCandidates(t *testing.T) {
 
 			election := NewElection(session, "/test/multi-election")
 
-			// 竞选
+			// campaign
 			value := fmt.Sprintf("candidate-%d", id)
 			err = election.Campaign(ctx, value)
 			require.NoError(t, err)
@@ -714,20 +714,20 @@ func TestElectionMultipleCandidates(t *testing.T) {
 			leaderChan <- id
 			t.Logf("Candidate %d became leader", id)
 
-			// 持有一段时间
+			// holding for a short time
 			time.Sleep(100 * time.Millisecond)
 
-			// 放弃
+			// release
 			election.Resign(ctx)
 			t.Logf("Candidate %d resigned", id)
 		}(i)
 	}
 
-	// 等待所有候选人完成
+	// wait all candidates to finish
 	wg.Wait()
 	close(leaderChan)
 
-	// 验证所有候选人都成为过 Leader
+	// verify all candidates became leader
 	leaders := make(map[int]bool)
 	for id := range leaderChan {
 		leaders[id] = true
@@ -735,7 +735,7 @@ func TestElectionMultipleCandidates(t *testing.T) {
 	assert.Len(t, leaders, numCandidates)
 }
 
-// TestElectionObserve 测试 Leader 变化观察
+// TestElectionObserve test Leader change observation
 func TestElectionObserve(t *testing.T) {
 	_, cli := startLockTestServer(t)
 
@@ -753,14 +753,14 @@ func TestElectionObserve(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// election1 成为 Leader
+	// election1 becomeas Leader
 	err = election1.Campaign(ctx, "leader-1")
 	require.NoError(t, err)
 
-	// 启动观察者
+	// start observer
 	observeCh := election2.Observe(ctx)
 
-	// 收集观察到的 Leader
+	// collect observed Leaders
 	var observedLeaders []string
 	done := make(chan struct{})
 
@@ -780,14 +780,14 @@ func TestElectionObserve(t *testing.T) {
 		}
 	}()
 
-	// 等待第一次观察
+	// wait first observation
 	time.Sleep(200 * time.Millisecond)
 
-	// election1 放弃
+	// election1 release
 	election1.Resign(ctx)
 	time.Sleep(100 * time.Millisecond)
 
-	// election2 成为 Leader
+	// election2 becomeas Leader
 	err = election2.Campaign(ctx, "leader-2")
 	require.NoError(t, err)
 	time.Sleep(100 * time.Millisecond)
@@ -795,12 +795,12 @@ func TestElectionObserve(t *testing.T) {
 	cancel()
 	<-done
 
-	// 验证观察到了 Leader 变化
+	// verify observed Leader changes
 	t.Logf("Observed leaders: %v", observedLeaders)
 	assert.GreaterOrEqual(t, len(observedLeaders), 1)
 }
 
-// TestElectionResignNotLeader 测试非 Leader 放弃
+// TestElectionResignNotLeader test non-Leader resign
 func TestElectionResignNotLeader(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	ctx := context.Background()
@@ -811,7 +811,7 @@ func TestElectionResignNotLeader(t *testing.T) {
 
 	election := NewElection(session, "/test/resign-not-leader")
 
-	// 未成为 Leader 就放弃
+	// not became Leader resign
 	err = election.Resign(ctx)
 	assert.Error(t, err)
 	assert.Equal(t, ErrElectionNotLeader, err)
@@ -821,7 +821,7 @@ func TestElectionResignNotLeader(t *testing.T) {
 // Stress Tests
 // ============================================================================
 
-// TestMutexHighConcurrency 高并发锁测试
+// TestMutexHighConcurrency high concurrency lock test
 func TestMutexHighConcurrency(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	ctx := context.Background()
@@ -858,7 +858,7 @@ func TestMutexHighConcurrency(t *testing.T) {
 
 				atomic.AddInt64(&successCount, 1)
 
-				// 短暂持有锁
+				// short holding lock
 				time.Sleep(5 * time.Millisecond)
 
 				mutex.Unlock(ctx)
@@ -873,7 +873,7 @@ func TestMutexHighConcurrency(t *testing.T) {
 	assert.Equal(t, int64(0), failCount)
 }
 
-// TestMutexRapidLockUnlock 快速加解锁测试
+// TestMutexRapidLockUnlock fast lock and unlock test
 func TestMutexRapidLockUnlock(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	ctx := context.Background()
@@ -902,7 +902,7 @@ func TestMutexRapidLockUnlock(t *testing.T) {
 // Edge Case Tests
 // ============================================================================
 
-// TestMutexDifferentPrefixes 测试不同前缀的锁互不影响
+// TestMutexDifferentPrefixes test different prefix locks
 func TestMutexDifferentPrefixes(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	ctx := context.Background()
@@ -914,14 +914,14 @@ func TestMutexDifferentPrefixes(t *testing.T) {
 	mutex1 := NewMutex(session, "/test/prefix1")
 	mutex2 := NewMutex(session, "/test/prefix2")
 
-	// 同时获取两个不同前缀的锁
+	// acquire different prefix locks
 	err = mutex1.Lock(ctx)
 	require.NoError(t, err)
 
 	err = mutex2.Lock(ctx)
 	require.NoError(t, err)
 
-	// 两个都应该成功
+	// both should succeed
 	assert.True(t, mutex1.IsOwner())
 	assert.True(t, mutex2.IsOwner())
 
@@ -929,7 +929,7 @@ func TestMutexDifferentPrefixes(t *testing.T) {
 	mutex2.Unlock(ctx)
 }
 
-// TestMutexSameSessionDifferentMutex 测试同一会话的不同 Mutex 实例
+// TestMutexSameSessionDifferentMutex test same session different Mutex instance
 func TestMutexSameSessionDifferentMutex(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	ctx := context.Background()
@@ -938,29 +938,29 @@ func TestMutexSameSessionDifferentMutex(t *testing.T) {
 	require.NoError(t, err)
 	defer session.Close()
 
-	// 同一会话创建两个 Mutex 实例（相同前缀）
+	// same session create two Mutex instances(sameprefix)
 	mutex1 := NewMutex(session, "/test/same-prefix")
 	mutex2 := NewMutex(session, "/test/same-prefix")
 
-	// mutex1 获取锁
+	// mutex1 acquire lock
 	err = mutex1.Lock(ctx)
 	require.NoError(t, err)
 
-	// mutex2 也能获取锁（因为使用相同的 Lease，key 相同）
+	// mutex2 canacquire lock(asusesame Lease，key same)
 	err = mutex2.Lock(ctx)
 	require.NoError(t, err)
 
-	// 两个都认为自己是 owner
+	// both are owners
 	assert.True(t, mutex1.IsOwner())
 	assert.True(t, mutex2.IsOwner())
 
-	// 但实际上是同一个 key
+	// actually same key
 	assert.Equal(t, mutex1.Key(), mutex2.Key())
 
 	mutex1.Unlock(ctx)
 }
 
-// TestMutexEmptyPrefix 测试空前缀
+// TestMutexEmptyPrefix test empty prefix
 func TestMutexEmptyPrefix(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	ctx := context.Background()
@@ -978,7 +978,7 @@ func TestMutexEmptyPrefix(t *testing.T) {
 	mutex.Unlock(ctx)
 }
 
-// TestMutexSpecialCharacterPrefix 测试特殊字符前缀
+// TestMutexSpecialCharacterPrefix test special character prefix
 func TestMutexSpecialCharacterPrefix(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	ctx := context.Background()
@@ -1010,7 +1010,7 @@ func TestMutexSpecialCharacterPrefix(t *testing.T) {
 // Benchmark Tests
 // ============================================================================
 
-// BenchmarkMutexLockUnlock 基准测试锁性能
+// BenchmarkMutexLockUnlock benchmark lock performance
 func BenchmarkMutexLockUnlock(b *testing.B) {
 	store := memory.NewMemoryEtcd()
 	server, err := etcdapi.NewServer(etcdapi.ServerConfig{
@@ -1052,7 +1052,7 @@ func BenchmarkMutexLockUnlock(b *testing.B) {
 	}
 }
 
-// BenchmarkTryLock 基准测试 TryLock 性能
+// BenchmarkTryLock benchmark TryLock performance
 func BenchmarkTryLock(b *testing.B) {
 	store := memory.NewMemoryEtcd()
 	server, err := etcdapi.NewServer(etcdapi.ServerConfig{
@@ -1096,7 +1096,7 @@ func BenchmarkTryLock(b *testing.B) {
 	}
 }
 
-// BenchmarkSessionCreate 基准测试会话创建性能
+// BenchmarkSessionCreate benchmark session create performance
 func BenchmarkSessionCreate(b *testing.B) {
 	store := memory.NewMemoryEtcd()
 	server, err := etcdapi.NewServer(etcdapi.ServerConfig{
@@ -1136,63 +1136,63 @@ func BenchmarkSessionCreate(b *testing.B) {
 // Integration Tests with etcd concurrency package
 // ============================================================================
 
-// TestCompatibilityWithEtcdConcurrency 测试与 etcd 官方 concurrency 包的兼容性
+// TestCompatibilityWithEtcdConcurrency test and etcd concurrency package compatibility
 func TestCompatibilityWithEtcdConcurrency(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	ctx := context.Background()
 
-	// 使用 etcd 官方的 concurrency 包创建会话和锁
+	// use etcd concurrency package to create session and lock
 	etcdSession, err := etcdconcurrency.NewSession(cli, etcdconcurrency.WithTTL(30))
 	require.NoError(t, err)
 	defer etcdSession.Close()
 
 	etcdMutex := etcdconcurrency.NewMutex(etcdSession, "/test/etcd-compat")
 
-	// 获取锁
+	// acquire lock
 	err = etcdMutex.Lock(ctx)
 	require.NoError(t, err)
 
-	// 验证锁状态
+	// verify lock status
 	assert.NotEmpty(t, etcdMutex.Key())
 
-	// 释放锁
+	// release lock
 	err = etcdMutex.Unlock(ctx)
 	require.NoError(t, err)
 }
 
-// TestMixedLockUsage 测试混合使用自定义和 etcd 官方的锁
+// TestMixedLockUsage test mixed usage of custom and etcd lock
 func TestMixedLockUsage(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	ctx := context.Background()
 
-	// 使用自定义的 concurrency 包
+	// usecustom concurrency package
 	customSession, err := NewSession(cli, WithTTL(30))
 	require.NoError(t, err)
 	defer customSession.Close()
 
 	customMutex := NewMutex(customSession, "/test/mixed")
 
-	// 使用 etcd 官方的 concurrency 包
+	// use etcd  concurrency package
 	etcdSession, err := etcdconcurrency.NewSession(cli, etcdconcurrency.WithTTL(30))
 	require.NoError(t, err)
 	defer etcdSession.Close()
 
 	etcdMutex := etcdconcurrency.NewMutex(etcdSession, "/test/mixed")
 
-	// 自定义锁获取
+	// customlockget
 	err = customMutex.Lock(ctx)
 	require.NoError(t, err)
 
-	// etcd 锁尝试获取应该失败
+	// etcd lock attempt should fail
 	tryCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 	err = etcdMutex.Lock(tryCtx)
 	cancel()
 	assert.Error(t, err, "etcd mutex should not be able to acquire lock")
 
-	// 释放自定义锁
+	// release customlock
 	customMutex.Unlock(ctx)
 
-	// 现在 etcd 锁应该能获取
+	// now etcd lock should be able to acquire
 	err = etcdMutex.Lock(ctx)
 	require.NoError(t, err)
 
@@ -1203,7 +1203,7 @@ func TestMixedLockUsage(t *testing.T) {
 // Verify Lock Key Format
 // ============================================================================
 
-// TestMutexKeyFormat 验证锁 key 格式
+// TestMutexKeyFormat verify lock key format
 func TestMutexKeyFormat(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	ctx := context.Background()
@@ -1221,7 +1221,7 @@ func TestMutexKeyFormat(t *testing.T) {
 	key := mutex.Key()
 	t.Logf("Lock key: %s", key)
 
-	// 验证 key 格式: prefix/ + lease_id（十六进制）
+	// verify key format: prefix/ + lease_id()
 	assert.Contains(t, key, prefix+"/")
 	assert.Contains(t, key, fmt.Sprintf("%x", session.Lease()))
 
@@ -1232,7 +1232,7 @@ func TestMutexKeyFormat(t *testing.T) {
 // Ordering Verification Tests
 // ============================================================================
 
-// TestLockAcquisitionOrderWithTimestamp 测试锁获取顺序（带时间戳验证）
+// TestLockAcquisitionOrderWithTimestamp test lock acquisition order (with timestamp)
 func TestLockAcquisitionOrderWithTimestamp(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	ctx := context.Background()
@@ -1260,14 +1260,14 @@ func TestLockAcquisitionOrderWithTimestamp(t *testing.T) {
 
 			mutex := NewMutex(session, "/test/order-timestamp")
 
-			// 等待启动信号
+			// wait start signal
 			<-startCh
 
-			// 获取锁
+			// acquire lock
 			err = mutex.Lock(ctx)
 			require.NoError(t, err)
 
-			// 记录获取时间
+			// record acquisition time
 			mu.Lock()
 			events = append(events, lockEvent{id: id, timestamp: time.Now()})
 			mu.Unlock()
@@ -1277,21 +1277,21 @@ func TestLockAcquisitionOrderWithTimestamp(t *testing.T) {
 		}(i)
 	}
 
-	// 同时启动所有 goroutine
+	// simultaneously start all goroutines
 	close(startCh)
 	wg.Wait()
 
-	// 验证事件顺序
+	// verify event order
 	assert.Len(t, events, numClients)
 
-	// 验证时间戳是递增的
+	// verify timestamps are increasing
 	for i := 1; i < len(events); i++ {
 		assert.True(t, events[i].timestamp.After(events[i-1].timestamp) ||
 			events[i].timestamp.Equal(events[i-1].timestamp),
 			"Lock acquisition timestamps should be ordered")
 	}
 
-	// 打印顺序
+	// print order
 	var order []int
 	for _, e := range events {
 		order = append(order, e.id)
@@ -1303,14 +1303,14 @@ func TestLockAcquisitionOrderWithTimestamp(t *testing.T) {
 // Recovery Tests
 // ============================================================================
 
-// TestMutexRecoveryAfterSessionClose 测试会话关闭后的锁恢复
+// TestMutexRecoveryAfterSessionClose test session close after lock recovery
 func TestMutexRecoveryAfterSessionClose(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	ctx := context.Background()
 
 	prefix := "/test/recovery"
 
-	// 第一个会话获取锁
+	// first session acquires lock
 	session1, err := NewSession(cli, WithTTL(5))
 	require.NoError(t, err)
 
@@ -1319,18 +1319,18 @@ func TestMutexRecoveryAfterSessionClose(t *testing.T) {
 	require.NoError(t, err)
 	t.Log("Session 1 acquired lock")
 
-	// 关闭第一个会话
+	// close first session
 	session1.Close()
 	t.Log("Session 1 closed")
 
-	// 第二个会话应该能获取锁
+	// second session should be able to acquire lock
 	session2, err := NewSession(cli, WithTTL(30))
 	require.NoError(t, err)
 	defer session2.Close()
 
 	mutex2 := NewMutex(session2, prefix)
 
-	// 应该能够获取锁
+	// should be able to acquire lock
 	lockCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	err = mutex2.Lock(lockCtx)
 	cancel()
@@ -1346,7 +1346,7 @@ func TestMutexRecoveryAfterSessionClose(t *testing.T) {
 // Additional Concurrency Tests
 // ============================================================================
 
-// TestMultipleLocksSequential 测试顺序获取多个锁
+// TestMultipleLocksSequential test sequential acquisition of many locks
 func TestMultipleLocksSequential(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	ctx := context.Background()
@@ -1360,25 +1360,25 @@ func TestMultipleLocksSequential(t *testing.T) {
 		locks[i] = NewMutex(session, fmt.Sprintf("/test/multi/%d", i))
 	}
 
-	// 顺序获取所有锁
+	// sequentially acquire all locks
 	for i, lock := range locks {
 		err := lock.Lock(ctx)
 		require.NoError(t, err, "Failed to acquire lock %d", i)
 	}
 
-	// 验证所有锁都被持有
+	// verify all locks are held
 	for i, lock := range locks {
 		assert.True(t, lock.IsOwner(), "Lock %d should be owned", i)
 	}
 
-	// 顺序释放所有锁
+	// sequentially release all locks
 	for i, lock := range locks {
 		err := lock.Unlock(ctx)
 		require.NoError(t, err, "Failed to release lock %d", i)
 	}
 }
 
-// TestConcurrentDifferentLocks 测试并发获取不同的锁
+// TestConcurrentDifferentLocks test concurrent acquisition of different locks
 func TestConcurrentDifferentLocks(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	ctx := context.Background()
@@ -1418,13 +1418,13 @@ func TestConcurrentDifferentLocks(t *testing.T) {
 	wg.Wait()
 	close(errors)
 
-	// 检查是否有错误
+	// check for no errors
 	for err := range errors {
 		t.Errorf("Unexpected error: %v", err)
 	}
 }
 
-// TestLockFairness 测试锁公平性
+// TestLockFairness test lock fairness
 func TestLockFairness(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	ctx := context.Background()
@@ -1464,13 +1464,13 @@ func TestLockFairness(t *testing.T) {
 		wg.Wait()
 	}
 
-	// 验证每个客户端都获取了锁
+	// verify each client acquired lock
 	t.Logf("Acquisitions: %v", acquisitions)
 	for i := 0; i < numClients; i++ {
 		assert.Greater(t, acquisitions[i], 0, "Client %d should have acquired lock at least once", i)
 	}
 
-	// 验证分布相对均匀（每个客户端应该获取约 numRounds 次）
+	// verify distribution is even (each client should get numRounds times)
 	total := 0
 	for _, count := range acquisitions {
 		total += count
@@ -1478,7 +1478,7 @@ func TestLockFairness(t *testing.T) {
 	assert.Equal(t, numRounds*numClients, total)
 }
 
-// TestLockWithContextDeadline 测试带截止时间的锁
+// TestLockWithContextDeadline test lock with context deadline
 func TestLockWithContextDeadline(t *testing.T) {
 	_, cli := startLockTestServer(t)
 
@@ -1493,12 +1493,12 @@ func TestLockWithContextDeadline(t *testing.T) {
 	mutex1 := NewMutex(session1, "/test/deadline")
 	mutex2 := NewMutex(session2, "/test/deadline")
 
-	// session1 获取锁
+	// session1 acquire lock
 	ctx1 := context.Background()
 	err = mutex1.Lock(ctx1)
 	require.NoError(t, err)
 
-	// session2 尝试获取锁，带截止时间
+	// session2 attempts to acquire lock，time
 	deadline := time.Now().Add(500 * time.Millisecond)
 	ctx2, cancel := context.WithDeadline(context.Background(), deadline)
 	defer cancel()
@@ -1518,7 +1518,7 @@ func TestLockWithContextDeadline(t *testing.T) {
 // Data Race Detection Tests
 // ============================================================================
 
-// TestMutexNoDataRace 测试无数据竞争
+// TestMutexNoDataRace test no data race
 func TestMutexNoDataRace(t *testing.T) {
 	_, cli := startLockTestServer(t)
 
@@ -1530,7 +1530,7 @@ func TestMutexNoDataRace(t *testing.T) {
 
 	var wg sync.WaitGroup
 
-	// 并发调用各种方法
+	// concurrently call methods
 	for i := 0; i < 10; i++ {
 		wg.Add(3)
 
@@ -1553,7 +1553,7 @@ func TestMutexNoDataRace(t *testing.T) {
 	wg.Wait()
 }
 
-// TestSessionNoDataRace 测试 Session 无数据竞争
+// TestSessionNoDataRace test Session no data race
 func TestSessionNoDataRace(t *testing.T) {
 	_, cli := startLockTestServer(t)
 
@@ -1562,7 +1562,7 @@ func TestSessionNoDataRace(t *testing.T) {
 
 	var wg sync.WaitGroup
 
-	// 并发调用各种方法
+	// concurrently call methods
 	for i := 0; i < 10; i++ {
 		wg.Add(2)
 
@@ -1585,7 +1585,7 @@ func TestSessionNoDataRace(t *testing.T) {
 // Edge Cases for Watch-based Waiting
 // ============================================================================
 
-// TestMutexWaitingQueue 测试锁等待队列
+// TestMutexWaitingQueue test lock waiting queue
 func TestMutexWaitingQueue(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	ctx := context.Background()
@@ -1594,7 +1594,7 @@ func TestMutexWaitingQueue(t *testing.T) {
 	var orderMu sync.Mutex
 	order := make([]int, 0, numWaiters)
 
-	// 信号通道用于同步
+	// signal channel for synchronization
 	ready := make([]chan struct{}, numWaiters)
 	for i := range ready {
 		ready[i] = make(chan struct{})
@@ -1613,14 +1613,14 @@ func TestMutexWaitingQueue(t *testing.T) {
 
 			mutex := NewMutex(session, "/test/queue")
 
-			// 通知已准备好
+			// notify ready
 			close(ready[id])
 
-			// 获取锁
+			// acquire lock
 			err = mutex.Lock(ctx)
 			require.NoError(t, err)
 
-			// 记录顺序
+			// recordorder
 			orderMu.Lock()
 			order = append(order, id)
 			orderMu.Unlock()
@@ -1629,7 +1629,7 @@ func TestMutexWaitingQueue(t *testing.T) {
 			mutex.Unlock(ctx)
 		}(i)
 
-		// 等待 goroutine 准备好后再启动下一个
+		// wait goroutine ready before starting next
 		<-ready[i]
 		time.Sleep(30 * time.Millisecond)
 	}
@@ -1639,7 +1639,7 @@ func TestMutexWaitingQueue(t *testing.T) {
 	t.Logf("Acquisition order: %v", order)
 	assert.Len(t, order, numWaiters)
 
-	// 验证顺序
+	// verify order
 	expected := make([]int, numWaiters)
 	for i := range expected {
 		expected[i] = i
@@ -1647,12 +1647,12 @@ func TestMutexWaitingQueue(t *testing.T) {
 	assert.Equal(t, expected, order)
 }
 
-// TestMutexWatchEventHandling 测试 Watch 事件处理
+// TestMutexWatchEventHandling test Watch event handling
 func TestMutexWatchEventHandling(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	ctx := context.Background()
 
-	// 创建多个会话和锁
+	// create many sessions and locks
 	const numSessions = 3
 	sessions := make([]*Session, numSessions)
 	mutexes := make([]*Mutex, numSessions)
@@ -1670,11 +1670,11 @@ func TestMutexWatchEventHandling(t *testing.T) {
 		}
 	}()
 
-	// 第一个会话获取锁
+	// first session acquires lock
 	err := mutexes[0].Lock(ctx)
 	require.NoError(t, err)
 
-	// 其他会话尝试获取锁（会等待）
+	// other sessions attempt to acquire lock (will wait)
 	done := make([]chan error, numSessions-1)
 	for i := 1; i < numSessions; i++ {
 		done[i-1] = make(chan error, 1)
@@ -1683,14 +1683,14 @@ func TestMutexWatchEventHandling(t *testing.T) {
 		}(i)
 	}
 
-	// 等待其他会话进入等待状态
+	// wait other sessions to enter waiting status
 	time.Sleep(200 * time.Millisecond)
 
-	// 释放第一个锁
+	// release first lock
 	err = mutexes[0].Unlock(ctx)
 	require.NoError(t, err)
 
-	// 验证等待的会话依次获取锁
+	// verify waiting sessions acquire lock in sequence
 	for i := 1; i < numSessions; i++ {
 		select {
 		case err := <-done[i-1]:
@@ -1707,7 +1707,7 @@ func TestMutexWatchEventHandling(t *testing.T) {
 // Performance Characterization Tests
 // ============================================================================
 
-// TestLockLatencyDistribution 测试锁延迟分布
+// TestLockLatencyDistribution test lock latency distribution
 func TestLockLatencyDistribution(t *testing.T) {
 	_, cli := startLockTestServer(t)
 	ctx := context.Background()
@@ -1729,7 +1729,7 @@ func TestLockLatencyDistribution(t *testing.T) {
 		mutex.Unlock(ctx)
 	}
 
-	// 计算统计信息
+	// calculate statistics
 	sort.Slice(latencies, func(i, j int) bool {
 		return latencies[i] < latencies[j]
 	})
@@ -1752,6 +1752,6 @@ func TestLockLatencyDistribution(t *testing.T) {
 	t.Logf("  Min: %v", latencies[0])
 	t.Logf("  Max: %v", latencies[iterations-1])
 
-	// 验证延迟合理
+	// verify latency is reasonable
 	assert.Less(t, avg, 100*time.Millisecond, "Average latency should be reasonable")
 }
