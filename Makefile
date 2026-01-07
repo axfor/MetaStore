@@ -247,6 +247,7 @@ rocksdb-download:
 	else \
 		mkdir -p third_party/rocksdb/src; \
 		git clone --depth 1 --branch v10.4.2 https://github.com/facebook/rocksdb.git third_party/rocksdb/src/v10.4.2; \
+		rm -rf third_party/rocksdb/src/v10.4.2/.git; \
 		echo "$(GREEN)RocksDB source downloaded to: third_party/rocksdb/src/v10.4.2$(NO_COLOR)"; \
 	fi
 
