@@ -173,7 +173,7 @@ func TestDetectClusterSizeFromPeers(t *testing.T) {
 	}
 }
 
-// TestSmartLeaseConfig_AutoDetection testtest
+// TestSmartLeaseConfig_AutoDetection test
 func TestSmartLeaseConfig_AutoDetection(t *testing.T) {
 	slc := NewSmartLeaseConfig(true, zap.NewNop())
 

@@ -74,7 +74,7 @@ func DefaultBatchConfig() BatchConfig {
 	}
 }
 
-// NewProposalBatcher createnewdynamic
+// NewProposalBatcher create newdynamic
 // batcher ownandmanagementoutputchannelperiod，callervia ProposeC() getread-onlychannel
 func NewProposalBatcher(
 	config BatchConfig,

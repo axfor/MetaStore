@@ -24,7 +24,7 @@ import (
 
 // TestLeaseProtobufSerialization test Protobuf Lease serialize
 func TestLeaseProtobufSerialization(t *testing.T) {
-	// preparepreparetestdata
+	// prepare testdata
 	now := time.Now()
 	lease := &kvstore.Lease{
 		ID:        123,
@@ -76,7 +76,7 @@ func TestLeaseProtobufSerialization(t *testing.T) {
 
 // TestLeaseGOBBackwardCompatibility test GOB aftercompatible
 func TestLeaseGOBBackwardCompatibility(t *testing.T) {
-	// preparepreparetestdata(useold GOB format)
+	// prepare testdata(useold GOB format)
 	now := time.Now()
 	lease := &kvstore.Lease{
 		ID:        456,
@@ -184,7 +184,7 @@ func TestLeaseManyKeys(t *testing.T) {
 	}
 }
 
-// BenchmarkLeaseProtobuf preparetest: Protobuf serialize
+// BenchmarkLeaseProtobuf prepare test: Protobuf serialize
 func BenchmarkLeaseProtobuf(b *testing.B) {
 	lease := &kvstore.Lease{
 		ID:        123,
@@ -207,7 +207,7 @@ func BenchmarkLeaseProtobuf(b *testing.B) {
 	}
 }
 
-// BenchmarkLeaseGOB preparetest: GOB serialize(to)
+// BenchmarkLeaseGOB prepare test: GOB serialize(to)
 func BenchmarkLeaseGOB(b *testing.B) {
 	lease := &kvstore.Lease{
 		ID:        123,
@@ -233,7 +233,7 @@ func BenchmarkLeaseGOB(b *testing.B) {
 	}
 }
 
-// BenchmarkLeaseManyKeysProtobuf preparetest: many key Protobuf
+// BenchmarkLeaseManyKeysProtobuf prepare test: many key Protobuf
 func BenchmarkLeaseManyKeysProtobuf(b *testing.B) {
 	keys := make(map[string]bool, 100)
 	for i := 0; i < 100; i++ {
@@ -254,7 +254,7 @@ func BenchmarkLeaseManyKeysProtobuf(b *testing.B) {
 	}
 }
 
-// BenchmarkLeaseManyKeysGOB preparetest: many key GOB
+// BenchmarkLeaseManyKeysGOB prepare test: many key GOB
 func BenchmarkLeaseManyKeysGOB(b *testing.B) {
 	keys := make(map[string]bool, 100)
 	for i := 0; i < 100; i++ {

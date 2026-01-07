@@ -23,7 +23,7 @@ import (
 
 // TestSnapshotProtobufSerialization test Protobuf snapshotserialize
 func TestSnapshotProtobufSerialization(t *testing.T) {
-	// preparepreparetestdata
+	// prepare testdata
 	revision := int64(100)
 	kvData := map[string]*kvstore.KeyValue{
 		"key1": {
@@ -152,7 +152,7 @@ func TestSnapshotProtobufSerialization(t *testing.T) {
 
 // TestSnapshotJSONBackwardCompatibility test JSON aftercompatible
 func TestSnapshotJSONBackwardCompatibility(t *testing.T) {
-	// preparepreparetestdata(useold JSON format)
+	// prepare testdata(useold JSON format)
 	revision := int64(50)
 	kvData := map[string]*kvstore.KeyValue{
 		"oldkey": {
@@ -247,9 +247,9 @@ func TestSnapshotEmptyData(t *testing.T) {
 	}
 }
 
-// BenchmarkSnapshotProtobuf preparetest: Protobuf serialize
+// BenchmarkSnapshotProtobuf prepare test: Protobuf serialize
 func BenchmarkSnapshotProtobuf(b *testing.B) {
-	// preparepreparelarge number oftestdata(truescenarioscene)
+	// preparelarge number oftestdata(truescenarioscene)
 	kvData := make(map[string]*kvstore.KeyValue, 1000)
 	for i := 0; i < 1000; i++ {
 		key := string(rune('k')) + string(rune(i))
@@ -289,9 +289,9 @@ func BenchmarkSnapshotProtobuf(b *testing.B) {
 	}
 }
 
-// BenchmarkSnapshotJSON preparetest: JSON serialize(to)
+// BenchmarkSnapshotJSON prepare test: JSON serialize(to)
 func BenchmarkSnapshotJSON(b *testing.B) {
-	// preparepreparesametestdata
+	// preparesametestdata
 	kvData := make(map[string]*kvstore.KeyValue, 1000)
 	for i := 0; i < 1000; i++ {
 		key := string(rune('k')) + string(rune(i))

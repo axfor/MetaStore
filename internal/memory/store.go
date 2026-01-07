@@ -45,7 +45,7 @@ type watchSubscription struct {
 	eventCh      chan kvstore.WatchEvent
 	cancel       chan struct{}
 	closed       atomic.Bool  // duplicateclose
-	closeOnce    sync.Once    // closefirst time
+	closeOnce    sync.Once    // close first time
 
 	// Options
 	prevKV         bool

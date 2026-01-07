@@ -55,11 +55,11 @@ func TestPutDirectConcurrent(t *testing.T) {
 		}(i)
 	}
 
-	// whenstartall goroutine
+	// simultaneously start all goroutines
 	close(startCh)
 	wg.Wait()
 
-	// verifyall key allbecorrectwrite
+	// verify all key all becorrectwrite
 	expectedCount := concurrency * operationsPerGoroutine
 	actualCount := m.kvData.Len()
 
@@ -67,7 +67,7 @@ func TestPutDirectConcurrent(t *testing.T) {
 		t.Errorf("Expected %d keys, got %d", expectedCount, actualCount)
 	}
 
-	// verifyeach key value
+	// verify each key value
 	for i := 0; i < concurrency; i++ {
 		for j := 0; j < operationsPerGoroutine; j++ {
 			key := fmt.Sprintf("key-%d-%d", i, j)
@@ -169,7 +169,7 @@ func TestDeleteDirectConcurrent(t *testing.T) {
 	close(startCh)
 	wg.Wait()
 
-	// verifyall key allbedelete
+	// verify all key all bedelete
 	remainingKeys := m.kvData.Len()
 	if remainingKeys != 0 {
 		t.Errorf("Expected 0 keys remaining, got %d", remainingKeys)
@@ -318,7 +318,7 @@ func TestLeaseOperationsConcurrent(t *testing.T) {
 	close(startCh)
 	wg.Wait()
 
-	// verifyall lease allbecreate
+	// verify all lease all becreate
 	m.leaseMu.RLock()
 	leaseCount := len(m.leases)
 	m.leaseMu.RUnlock()
@@ -344,7 +344,7 @@ func TestLeaseOperationsConcurrent(t *testing.T) {
 	close(startCh2)
 	wg.Wait()
 
-	// verifyall lease allberevoked
+	// verify all lease all berevoked
 	m.leaseMu.RLock()
 	leaseCount = len(m.leases)
 	m.leaseMu.RUnlock()
@@ -354,7 +354,7 @@ func TestLeaseOperationsConcurrent(t *testing.T) {
 	}
 }
 
-// BenchmarkPutDirectSequential preparetest: serialwrite
+// BenchmarkPutDirectSequential prepare test: serialwrite
 func BenchmarkPutDirectSequential(b *testing.B) {
 	m := NewMemoryEtcd()
 
@@ -365,7 +365,7 @@ func BenchmarkPutDirectSequential(b *testing.B) {
 	}
 }
 
-// BenchmarkPutDirectParallel preparetest: parallelismwrite
+// BenchmarkPutDirectParallel prepare test: parallelismwrite
 func BenchmarkPutDirectParallel(b *testing.B) {
 	m := NewMemoryEtcd()
 
@@ -380,7 +380,7 @@ func BenchmarkPutDirectParallel(b *testing.B) {
 	})
 }
 
-// BenchmarkTxnWithShardLocks preparetest: transactionoperation
+// BenchmarkTxnWithShardLocks prepare test: transactionoperation
 func BenchmarkTxnWithShardLocks(b *testing.B) {
 	m := NewMemoryEtcd()
 

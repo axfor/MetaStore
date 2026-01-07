@@ -101,7 +101,7 @@ var DevelopmentConfig = &Config{
 	EnableColor:       true,
 }
 
-// NewLogger createnewlog
+// NewLogger create newlog
 func NewLogger(cfg *Config) (*Logger, error) {
 	if cfg == nil {
 		cfg = DefaultConfig
