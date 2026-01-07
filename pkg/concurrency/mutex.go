@@ -25,7 +25,7 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 )
 
-// Mutex implementdistribution式mutex
+// Mutex implementdistributed mutex
 type Mutex struct {
 	s   *Session
 	pfx string // key prefix
@@ -297,7 +297,7 @@ func (m *Mutex) Unlock(ctx context.Context) error {
 	return err
 }
 
-// IsOwner checkcurrentisno持有lock
+// IsOwner checkcurrentwhether holdinglock
 func (m *Mutex) IsOwner() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -311,7 +311,7 @@ func (m *Mutex) Key() string {
 	return m.myKey
 }
 
-// Header returnlockcreate时response头
+// Header returnlockresponse header at creation time
 func (m *Mutex) Header() *pb.ResponseHeader {
 	m.mu.Lock()
 	defer m.mu.Unlock()
