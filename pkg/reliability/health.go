@@ -22,11 +22,11 @@ import (
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
-// HealthChecker healthycheck器interface
+// HealthChecker healthycheckinterface
 type HealthChecker interface {
 	// Check executehealthycheck
 	Check(ctx context.Context) error
-	// Name returncheck器名称
+	// Name returncheck
 	Name() string
 }
 
@@ -45,7 +45,7 @@ func NewHealthManager() *HealthManager {
 	}
 }
 
-// RegisterChecker registerhealthycheck器
+// RegisterChecker registerhealthycheck
 func (hm *HealthManager) RegisterChecker(checker HealthChecker) {
 	hm.mu.Lock()
 	defer hm.mu.Unlock()
@@ -57,7 +57,7 @@ func (hm *HealthManager) Check(ctx context.Context, serviceName string) healthpb
 	hm.mu.RLock()
 	defer hm.mu.RUnlock()
 
-	// ifspecified服务名，只check该服务
+	// ifspecified，checkshould
 	if serviceName != "" {
 		if checker, exists := hm.checkers[serviceName]; exists {
 			if err := checker.Check(ctx); err != nil {
@@ -68,7 +68,7 @@ func (hm *HealthManager) Check(ctx context.Context, serviceName string) healthpb
 		return healthpb.HealthCheckResponse_SERVICE_UNKNOWN
 	}
 
-	// checkall服务
+	// checkall
 	for _, checker := range hm.checkers {
 		if err := checker.Check(ctx); err != nil {
 			return healthpb.HealthCheckResponse_NOT_SERVING
@@ -78,7 +78,7 @@ func (hm *HealthManager) Check(ctx context.Context, serviceName string) healthpb
 	return healthpb.HealthCheckResponse_SERVING
 }
 
-// SetServingStatus set服务status
+// SetServingStatus setstatus
 func (hm *HealthManager) SetServingStatus(service string, status healthpb.HealthCheckResponse_ServingStatus) {
 	hm.server.SetServingStatus(service, status)
 }
@@ -88,13 +88,13 @@ func (hm *HealthManager) GetServer() *health.Server {
 	return hm.server
 }
 
-// StorageHealthChecker 存储healthycheck器
+// StorageHealthChecker storagehealthycheck
 type StorageHealthChecker struct {
 	name  string
 	check func(ctx context.Context) error
 }
 
-// NewStorageHealthChecker create存储healthycheck器
+// NewStorageHealthChecker createstoragehealthycheck
 func NewStorageHealthChecker(name string, checkFunc func(ctx context.Context) error) *StorageHealthChecker {
 	return &StorageHealthChecker{
 		name:  name,
@@ -102,7 +102,7 @@ func NewStorageHealthChecker(name string, checkFunc func(ctx context.Context) er
 	}
 }
 
-// Name returncheck器名称
+// Name returncheck
 func (s *StorageHealthChecker) Name() string {
 	return s.name
 }
@@ -112,13 +112,13 @@ func (s *StorageHealthChecker) Check(ctx context.Context) error {
 	return s.check(ctx)
 }
 
-// RaftHealthChecker Raft healthycheck器
+// RaftHealthChecker Raft healthycheck
 type RaftHealthChecker struct {
 	name  string
 	check func(ctx context.Context) error
 }
 
-// NewRaftHealthChecker create Raft healthycheck器
+// NewRaftHealthChecker create Raft healthycheck
 func NewRaftHealthChecker(name string, checkFunc func(ctx context.Context) error) *RaftHealthChecker {
 	return &RaftHealthChecker{
 		name:  name,
@@ -126,7 +126,7 @@ func NewRaftHealthChecker(name string, checkFunc func(ctx context.Context) error
 	}
 }
 
-// Name returncheck器名称
+// Name returncheck
 func (r *RaftHealthChecker) Name() string {
 	return r.name
 }
@@ -136,13 +136,13 @@ func (r *RaftHealthChecker) Check(ctx context.Context) error {
 	return r.check(ctx)
 }
 
-// LeaseHealthChecker Lease healthycheck器
+// LeaseHealthChecker Lease healthycheck
 type LeaseHealthChecker struct {
 	name  string
 	check func(ctx context.Context) error
 }
 
-// NewLeaseHealthChecker create Lease healthycheck器
+// NewLeaseHealthChecker create Lease healthycheck
 func NewLeaseHealthChecker(name string, checkFunc func(ctx context.Context) error) *LeaseHealthChecker {
 	return &LeaseHealthChecker{
 		name:  name,
@@ -150,7 +150,7 @@ func NewLeaseHealthChecker(name string, checkFunc func(ctx context.Context) erro
 	}
 }
 
-// Name returncheck器名称
+// Name returncheck
 func (l *LeaseHealthChecker) Name() string {
 	return l.name
 }

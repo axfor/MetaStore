@@ -21,19 +21,19 @@ import (
 	"go.uber.org/zap"
 )
 
-// TestDynamicScaleUp testfrom单node扩容to多node场景
-// verify：Lease Read componentalwayscreate，in单nodeand多node下都能工作（etcd compatible）
+// TestDynamicScaleUp testfromsinglenodetomanynodescenarioscene
+// verify：Lease Read componentalwayscreate，insinglenodeandmanynodenextallcan(etcd compatible)
 func TestDynamicScaleUp(t *testing.T) {
-	// 1. create智能config（模拟单nodestart）
+	// 1. createcanconfig(singlenodestart)
 	smartConfig := NewSmartLeaseConfig(true, zap.NewNop())
 	smartConfig.UpdateClusterSize(1)
 
-	// newimplement：单node也enabled（etcd compatible）
+	// newimplement：singlenodeenabled(etcd compatible)
 	if !smartConfig.IsEnabled() {
 		t.Error("Should be enabled for single-node cluster (etcd-compatible)")
 	}
 
-	// 2. create LeaseManager（alwayscreate，not管cluster规模）
+	// 2. create LeaseManager(alwayscreate，notcluster)
 	config := LeaseConfig{
 		ElectionTimeout: 1 * time.Second,
 		HeartbeatTick:   100 * time.Millisecond,
@@ -41,66 +41,66 @@ func TestDynamicScaleUp(t *testing.T) {
 	}
 	lm := NewLeaseManager(config, smartConfig, zap.NewNop())
 
-	// 3. verifycomponent已create
+	// 3. verifycomponentalready create
 	if lm == nil {
 		t.Fatal("LeaseManager should be created")
 	}
 
-	// 4. 模拟成as Leader
+	// 4. becomeas Leader
 	lm.OnBecomeLeader()
 
-	// 5. 尝试续期lease（etcd compatible：单nodeshouldsuccess）
+	// 5. testlease(etcd compatible：singlenodeshouldsuccess)
 	renewed := lm.RenewLease(1, 1)
 	if !renewed {
 		t.Error("Should renew lease in single-node (etcd-compatible)")
 	}
 
-	// verify已建立lease
+	// verifyalready buildlease
 	if !lm.HasValidLease() {
 		t.Error("Should have valid lease in single-node")
 	}
 
-	// 6. 模拟扩容to 3 node
+	// 6. to 3 node
 	smartConfig.UpdateClusterSize(3)
 
 	if !smartConfig.IsEnabled() {
 		t.Error("Should be enabled after scaling to 3 nodes")
 	}
 
-	// 7. 再次尝试续期（shouldsuccess）
+	// 7.  timetest(shouldsuccess)
 	renewed = lm.RenewLease(2, 3)
 	if !renewed {
 		t.Error("Should renew lease after scale-up to 3 nodes")
 	}
 
-	// verifylease已建立
+	// verifyleasealready build
 	if !lm.HasValidLease() {
 		t.Error("Should have valid lease after scale-up")
 	}
 
-	// 8. 模拟缩容回单node（etcd compatible：仍然enabled）
+	// 8. singlenode(etcd compatible：stillenabled)
 	smartConfig.UpdateClusterSize(1)
 
 	if !smartConfig.IsEnabled() {
 		t.Error("Should still be enabled after scaling back to 1 node (etcd-compatible)")
 	}
 
-	// 9. 尝试续期（etcd compatible：shouldsuccess）
+	// 9. test(etcd compatible：shouldsuccess)
 	renewed = lm.RenewLease(1, 1)
 	if !renewed {
 		t.Error("Should renew lease after scaling back to 1 node (etcd-compatible)")
 	}
 }
 
-// TestDynamicScaleUp_ReadIndexManager test ReadIndexManager dynamic扩缩容
+// TestDynamicScaleUp_ReadIndexManager test ReadIndexManager dynamic
 func TestDynamicScaleUp_ReadIndexManager(t *testing.T) {
-	// 1. 单nodestart
+	// 1. singlenodestart
 	smartConfig := NewSmartLeaseConfig(true, zap.NewNop())
 	smartConfig.UpdateClusterSize(1)
 
 	rim := NewReadIndexManager(smartConfig, zap.NewNop())
 
-	// 2. 单node时recordfastpath（etcd compatible：shouldrecord）
+	// 2. singlenodewhenrecordfastpath(etcd compatible：shouldrecord)
 	rim.RecordFastPathRead()
 
 	stats := rim.Stats()
@@ -108,10 +108,10 @@ func TestDynamicScaleUp_ReadIndexManager(t *testing.T) {
 		t.Errorf("Fast path reads should be 1 in single-node (etcd-compatible), got %d", stats.FastPathReads)
 	}
 
-	// 3. 扩容to 3 node
+	// 3. to 3 node
 	smartConfig.UpdateClusterSize(3)
 
-	// 4. recordfastpath（shouldsuccess）
+	// 4. recordfastpath(shouldsuccess)
 	rim.RecordFastPathRead()
 
 	stats = rim.Stats()
@@ -119,10 +119,10 @@ func TestDynamicScaleUp_ReadIndexManager(t *testing.T) {
 		t.Errorf("Fast path reads should be 2 after scale-up, got %d", stats.FastPathReads)
 	}
 
-	// 5. 缩容回单node（etcd compatible：仍然record）
+	// 5. singlenode(etcd compatible：stillrecord)
 	smartConfig.UpdateClusterSize(1)
 
-	// 6. recordfastpath（etcd compatible：shouldrecord）
+	// 6. recordfastpath(etcd compatible：shouldrecord)
 	rim.RecordFastPathRead()
 
 	stats = rim.Stats()
@@ -131,7 +131,7 @@ func TestDynamicScaleUp_ReadIndexManager(t *testing.T) {
 	}
 }
 
-// TestDynamicScaling_StatusTracking testdynamic扩缩容statustrace
+// TestDynamicScaling_StatusTracking testdynamicstatustrace
 func TestDynamicScaling_StatusTracking(t *testing.T) {
 	smartConfig := NewSmartLeaseConfig(true, zap.NewNop())
 
@@ -150,7 +150,7 @@ func TestDynamicScaling_StatusTracking(t *testing.T) {
 		{
 			name:            "Single node",
 			clusterSize:     1,
-			expectedEnabled: true, // etcd compatible：单nodeenabled
+			expectedEnabled: true, // etcd compatible：singlenodeenabled
 			expectedReason:  "Single-node cluster detected, enabled with special handling",
 		},
 		{
@@ -181,7 +181,7 @@ func TestDynamicScaling_StatusTracking(t *testing.T) {
 				t.Errorf("Expected clusterSize=%d, got %d", tc.clusterSize, status.ClusterSize)
 			}
 
-			// verifyreason描述package含预期关key字
+			// verifyreasonpackageclosekey
 			if !containsReason(status.Reason, tc.expectedReason) {
 				t.Errorf("Expected reason to contain '%s', got '%s'", tc.expectedReason, status.Reason)
 			}
@@ -189,18 +189,18 @@ func TestDynamicScaling_StatusTracking(t *testing.T) {
 	}
 }
 
-// containsReason checkreason字符串isnopackage含期望关key字
+// containsReason checkreasonisnopackageclosekey
 func containsReason(reason, expected string) bool {
-	// 简单子串匹配
+	// singlematch
 	return len(reason) > 0 && len(expected) > 0 &&
 		(reason == expected ||
 		 (len(expected) > 10 && len(reason) > len(expected)-5 && reason[:len(expected)-5] == expected[:len(expected)-5]))
 }
 
-// TestDynamicScaling_PerformanceOverhead testrunning时check性能开销
+// TestDynamicScaling_PerformanceOverhead testrunningwhencheckperformanceopen
 func TestDynamicScaling_PerformanceOverhead(t *testing.T) {
 	smartConfig := NewSmartLeaseConfig(true, zap.NewNop())
-	smartConfig.UpdateClusterSize(3) // 多node，enabled
+	smartConfig.UpdateClusterSize(3) // manynode，enabled
 
 	config := LeaseConfig{
 		ElectionTimeout: 1 * time.Second,
@@ -210,9 +210,9 @@ func TestDynamicScaling_PerformanceOverhead(t *testing.T) {
 	lm := NewLeaseManager(config, smartConfig, zap.NewNop())
 	lm.OnBecomeLeader()
 
-	// testrunning时check性能
+	// testrunningwhencheckperformance
 	start := time.Now()
-	iterations := 1000000 // 100 万次
+	iterations := 1000000 // 100  time
 
 	for i := 0; i < iterations; i++ {
 		_ = lm.RenewLease(2, 3)
@@ -223,7 +223,7 @@ func TestDynamicScaling_PerformanceOverhead(t *testing.T) {
 
 	t.Logf("Dynamic scaling overhead: %v per operation (avg over %d iterations)", avgPerOp, iterations)
 
-	// running时checkshould非常快（< 1 微秒）
+	// runningwhencheckshouldfast(< 1 seconds)
 	if avgPerOp > time.Microsecond {
 		t.Logf("Warning: Runtime check overhead is %v (expected < 1µs)", avgPerOp)
 	}

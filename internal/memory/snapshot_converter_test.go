@@ -23,7 +23,7 @@ import (
 
 // TestSnapshotProtobufSerialization test Protobuf snapshotserialize
 func TestSnapshotProtobufSerialization(t *testing.T) {
-	// 准备testdata
+	// preparepreparetestdata
 	revision := int64(100)
 	kvData := map[string]*kvstore.KeyValue{
 		"key1": {
@@ -133,7 +133,7 @@ func TestSnapshotProtobufSerialization(t *testing.T) {
 			t.Errorf("Lease TTL mismatch for %d: expected %d, got %d", id, expectedLease.TTL, actualLease.TTL)
 		}
 
-		// verify GrantTime（allow纳秒级error）
+		// verify GrantTime(allowsecondserror)
 		if actualLease.GrantTime.UnixNano() != expectedLease.GrantTime.UnixNano() {
 			t.Errorf("Lease GrantTime mismatch for %d: expected %v, got %v", id, expectedLease.GrantTime, actualLease.GrantTime)
 		}
@@ -150,9 +150,9 @@ func TestSnapshotProtobufSerialization(t *testing.T) {
 	}
 }
 
-// TestSnapshotJSONBackwardCompatibility test JSON 向后compatible性
+// TestSnapshotJSONBackwardCompatibility test JSON aftercompatible
 func TestSnapshotJSONBackwardCompatibility(t *testing.T) {
-	// 准备testdata（useold JSON format）
+	// preparepreparetestdata(useold JSON format)
 	revision := int64(50)
 	kvData := map[string]*kvstore.KeyValue{
 		"oldkey": {
@@ -175,7 +175,7 @@ func TestSnapshotJSONBackwardCompatibility(t *testing.T) {
 		},
 	}
 
-	// use JSON serialize（模拟oldsnapshot）
+	// use JSON serialize(oldsnapshot)
 	oldSnapshot := SnapshotData{
 		Revision: revision,
 		KVData:   kvData,
@@ -186,13 +186,13 @@ func TestSnapshotJSONBackwardCompatibility(t *testing.T) {
 		t.Fatalf("JSON marshal failed: %v", err)
 	}
 
-	// usenewdeserializefunction（should能handle JSON）
+	// usenewdeserializefunction(shouldcanhandle JSON)
 	snapshot, err := deserializeSnapshot(jsonData)
 	if err != nil {
 		t.Fatalf("deserializeSnapshot failed for JSON: %v", err)
 	}
 
-	// verifydatacorrect性
+	// verifydatacorrect
 	if snapshot.Revision != revision {
 		t.Errorf("Expected revision %d, got %d", revision, snapshot.Revision)
 	}
@@ -247,9 +247,9 @@ func TestSnapshotEmptyData(t *testing.T) {
 	}
 }
 
-// BenchmarkSnapshotProtobuf 基准test: Protobuf serialize
+// BenchmarkSnapshotProtobuf preparetest: Protobuf serialize
 func BenchmarkSnapshotProtobuf(b *testing.B) {
-	// 准备large number oftestdata（模拟true实场景）
+	// preparepreparelarge number oftestdata(truescenarioscene)
 	kvData := make(map[string]*kvstore.KeyValue, 1000)
 	for i := 0; i < 1000; i++ {
 		key := string(rune('k')) + string(rune(i))
@@ -289,9 +289,9 @@ func BenchmarkSnapshotProtobuf(b *testing.B) {
 	}
 }
 
-// BenchmarkSnapshotJSON 基准test: JSON serialize（对比）
+// BenchmarkSnapshotJSON preparetest: JSON serialize(to)
 func BenchmarkSnapshotJSON(b *testing.B) {
-	// 准备sametestdata
+	// preparepreparesametestdata
 	kvData := make(map[string]*kvstore.KeyValue, 1000)
 	for i := 0; i < 1000; i++ {
 		key := string(rune('k')) + string(rune(i))

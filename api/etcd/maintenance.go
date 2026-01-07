@@ -22,11 +22,11 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 )
 
-// MaintenanceServer implement etcd Maintenance 服务
+// MaintenanceServer implement etcd Maintenance 
 type MaintenanceServer struct {
 	pb.UnimplementedMaintenanceServer
 	server            *Server
-	snapshotChunkSize int // snapshot分blocksize（字节）
+	snapshotChunkSize int // snapshotseparateblocksize()
 }
 
 // Alarm alarmmanagement
@@ -36,7 +36,7 @@ func (s *MaintenanceServer) Alarm(ctx context.Context, req *pb.AlarmRequest) (*p
 		// getalarmlist
 		alarms := s.server.alarmMgr.List()
 
-		// ifspecified MemberID or Alarm type，进rowfilter
+		// ifspecified MemberID or Alarm type，rowfilter
 		if req.MemberID != 0 || req.Alarm != pb.AlarmType_NONE {
 			filtered := make([]*pb.AlarmMember, 0)
 			for _, alarm := range alarms {
@@ -82,41 +82,41 @@ func (s *MaintenanceServer) Alarm(ctx context.Context, req *pb.AlarmRequest) (*p
 
 // Status getserverstatus
 func (s *MaintenanceServer) Status(ctx context.Context, req *pb.StatusRequest) (*pb.StatusResponse, error) {
-	// getsnapshot以calculatedata库size
+	// getsnapshotcalculatedatasize
 	snapshot, err := s.server.store.GetSnapshot()
 	var dbSize int64
 	if err == nil {
 		dbSize = int64(len(snapshot))
 	}
 
-	// gettrue实 Raft status
+	// gettrue Raft status
 	raftStatus := s.server.store.GetRaftStatus()
 
 	return &pb.StatusResponse{
 		Header:    s.server.getResponseHeader(),
 		Version:   "3.6.0-compatible", // MetaStore version
 		DbSize:    dbSize,
-		Leader:    raftStatus.LeaderID, // true实 Leader ID
+		Leader:    raftStatus.LeaderID, // true Leader ID
 		RaftIndex: uint64(s.server.store.CurrentRevision()),
-		RaftTerm:  raftStatus.Term, // true实 Raft Term
+		RaftTerm:  raftStatus.Term, // true Raft Term
 	}, nil
 }
 
-// Defragment 碎片整理（compatible etcd interface）
+// Defragment complete(compatible etcd interface)
 func (s *MaintenanceServer) Defragment(ctx context.Context, req *pb.DefragmentRequest) (*pb.DefragmentResponse, error) {
-	// Defragment 用at整理data库碎片
-	// for RocksDB：由存储引擎自动handlecompress，无需手动trigger
-	// for Memory：memory存储无碎片问题
-	// 这里只需returnsuccessresponse，保持 etcd API compatible性
+	// Defragment for completedata
+	// for RocksDB：storageenginehandlecompress，nomanuallytrigger
+	// for Memory：memorystorageno
+	// returnsuccessresponse，hold etcd API compatible
 
 	return &pb.DefragmentResponse{
 		Header: s.server.getResponseHeader(),
 	}, nil
 }
 
-// Hash calculatedata库hash（用atcluster一致性check）
+// Hash calculatedatahash(for clusterfirstcheck)
 func (s *MaintenanceServer) Hash(ctx context.Context, req *pb.HashRequest) (*pb.HashResponse, error) {
-	// getsnapshot并calculate CRC32 hash
+	// getsnapshotandcalculate CRC32 hash
 	snapshot, err := s.server.store.GetSnapshot()
 	if err != nil {
 		return nil, toGRPCError(err)
@@ -134,13 +134,13 @@ func (s *MaintenanceServer) Hash(ctx context.Context, req *pb.HashRequest) (*pb.
 // HashKV calculatespecified revision  KV hash
 func (s *MaintenanceServer) HashKV(ctx context.Context, req *pb.HashKVRequest) (*pb.HashKVResponse, error) {
 	// getspecified revision all KV data
-	// use Range 查询allkey
+	// use Range queryallkey
 	resp, err := s.server.store.Range(ctx, "", "\x00", 0, req.Revision)
 	if err != nil {
 		return nil, toGRPCError(err)
 	}
 
-	// calculatehash：willall KV serialize后calculate CRC32
+	// calculatehash：willall KV serializeaftercalculate CRC32
 	hasher := crc32.NewIEEE()
 	for _, kv := range resp.Kvs {
 		hasher.Write(kv.Key)
@@ -165,7 +165,7 @@ func (s *MaintenanceServer) Snapshot(req *pb.SnapshotRequest, stream pb.Maintena
 		return toGRPCError(err)
 	}
 
-	// 分blocksendsnapshotdata（useconfigblocksize）
+	// separateblocksendsnapshotdata(useconfigblocksize)
 	chunkSize := s.snapshotChunkSize
 	for i := 0; i < len(snapshot); i += chunkSize {
 		end := i + chunkSize
@@ -186,7 +186,7 @@ func (s *MaintenanceServer) Snapshot(req *pb.SnapshotRequest, stream pb.Maintena
 	return nil
 }
 
-// MoveLeader 转移 leader（via Raft TransferLeadership）
+// MoveLeader  leader(via Raft TransferLeadership)
 func (s *MaintenanceServer) MoveLeader(ctx context.Context, req *pb.MoveLeaderRequest) (*pb.MoveLeaderResponse, error) {
 	// checkcurrentnodeisnois leader
 	raftStatus := s.server.store.GetRaftStatus()
@@ -199,7 +199,7 @@ func (s *MaintenanceServer) MoveLeader(ctx context.Context, req *pb.MoveLeaderRe
 		return nil, toGRPCError(fmt.Errorf("target ID must be specified"))
 	}
 
-	// call Store  TransferLeadership method进row leader 转移
+	// call Store  TransferLeadership methodrow leader 
 	if err := s.server.store.TransferLeadership(req.TargetID); err != nil {
 		return nil, toGRPCError(fmt.Errorf("failed to transfer leadership: %w", err))
 	}
@@ -209,9 +209,9 @@ func (s *MaintenanceServer) MoveLeader(ctx context.Context, req *pb.MoveLeaderRe
 	}, nil
 }
 
-// Downgrade degradation（暂not supported）
+// Downgrade degradation(not supported)
 func (s *MaintenanceServer) Downgrade(ctx context.Context, req *pb.DowngradeRequest) (*pb.DowngradeResponse, error) {
-	// Downgrade 用atdegradationclusterversion，currentnot supported
+	// Downgrade for degradationclusterversion，currentnot supported
 	// return unimplemented incorrect
 	return nil, toGRPCError(fmt.Errorf("downgrade is not supported"))
 }
@@ -221,8 +221,8 @@ func (s *MaintenanceServer) MemberList(ctx context.Context, req *pb.MemberListRe
 	var pbMembers []*pb.Member
 
 	if s.server.clusterMgr == nil {
-		// ClusterManager未initialize时，fromclusterPeers构造memberlist
-		// 这allowinnoneConfChangeC情况下也能returnclustermemberinfo
+		// ClusterManagernot initializewhen，fromclusterPeersmemberlist
+		// allowinnoneConfChangeCnextcanreturnclustermemberinfo
 		if len(s.server.clusterPeers) > 0 {
 			pbMembers = make([]*pb.Member, 0, len(s.server.clusterPeers))
 			for i, peerURL := range s.server.clusterPeers {
@@ -236,7 +236,7 @@ func (s *MaintenanceServer) MemberList(ctx context.Context, req *pb.MemberListRe
 				})
 			}
 		} else {
-			// completelynoneclusterinfo时，只returncurrentnode
+			// completelynoneclusterinfowhen，returncurrentnode
 			pbMembers = []*pb.Member{
 				{
 					ID:         s.server.memberID,
@@ -297,19 +297,19 @@ func (s *MaintenanceServer) MemberAdd(ctx context.Context, req *pb.MemberAddRequ
 	}, nil
 }
 
-// MemberRemove 移除member
+// MemberRemove member
 func (s *MaintenanceServer) MemberRemove(ctx context.Context, req *pb.MemberRemoveRequest) (*pb.MemberRemoveResponse, error) {
 	if s.server.clusterMgr == nil {
 		return nil, toGRPCError(fmt.Errorf("cluster manager not initialized"))
 	}
 
-	// 1. checkisnoislast一个member
+	// 1. checkisnoislastfirst member
 	members := s.server.clusterMgr.ListMembers()
 	if len(members) <= 1 {
 		return nil, toGRPCError(fmt.Errorf("cannot remove the last member"))
 	}
 
-	// 2. call ClusterManager 移除member
+	// 2. call ClusterManager member
 	if err := s.server.clusterMgr.RemoveMember(req.ID); err != nil {
 		return nil, toGRPCError(err)
 	}
@@ -339,13 +339,13 @@ func (s *MaintenanceServer) MemberUpdate(ctx context.Context, req *pb.MemberUpda
 	}, nil
 }
 
-// MemberPromote 提升 learner as voting member
+// MemberPromote  learner as voting member
 func (s *MaintenanceServer) MemberPromote(ctx context.Context, req *pb.MemberPromoteRequest) (*pb.MemberPromoteResponse, error) {
 	if s.server.clusterMgr == nil {
 		return nil, toGRPCError(fmt.Errorf("cluster manager not initialized"))
 	}
 
-	// 1. call ClusterManager 提升member
+	// 1. call ClusterManager member
 	if err := s.server.clusterMgr.PromoteMember(req.ID); err != nil {
 		return nil, toGRPCError(err)
 	}

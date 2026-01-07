@@ -22,7 +22,7 @@ import (
 	mvccpb "go.etcd.io/etcd/api/v3/mvccpb"
 )
 
-// KVServer implement etcd KV 服务
+// KVServer implement etcd KV 
 type KVServer struct {
 	pb.UnimplementedKVServer
 	server *Server
@@ -125,7 +125,7 @@ func (s *KVServer) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutResponse
 		}
 	}
 
-	// update header 中 revision
+	// update header in revision
 	resp.Header.Revision = revision
 
 	return resp, nil
@@ -162,7 +162,7 @@ func (s *KVServer) DeleteRange(ctx context.Context, req *pb.DeleteRangeRequest) 
 		}
 	}
 
-	// update header 中 revision
+	// update header in revision
 	resp.Header.Revision = revision
 
 	return resp, nil

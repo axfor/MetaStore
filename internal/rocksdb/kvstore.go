@@ -43,7 +43,7 @@ const (
 	leasePrefix = "lease:"
 )
 
-// RaftNode Raft nodeinterface，用atget Raft status
+// RaftNode Raft nodeinterface，used to get Raft status
 type RaftNode interface {
 	Status() kvstore.RaftStatus
 	TransferLeadership(targetID uint64) error
@@ -74,7 +74,7 @@ type RocksDB struct {
 	cachedRevision atomic.Int64
 
 
-	// Raft nodereference（用atgetstatusinfo）
+	// Raft nodereference(used to getstatus info)
 	raftNode RaftNode
 	nodeID   uint64
 }
@@ -87,8 +87,8 @@ type watchSubscription struct {
 	startRev  int64
 	eventCh   chan kvstore.WatchEvent
 	cancel    chan struct{}
-	closed    atomic.Bool // 防止duplicateclose
-	closeOnce sync.Once   // 确保只close一次
+	closed    atomic.Bool // duplicateclose
+	closeOnce sync.Once   // closefirst time
 
 	// Options
 	prevKV         bool
@@ -178,7 +178,7 @@ func (r *RocksDB) Close() {
 
 func (r *RocksDB) propose(ctx context.Context, data []byte) error {
 
-	// 向后compatible：use原始 proposeC
+	// aftercompatible：usestart proposeC
 	select {
 	case r.proposeC <- string(data):
 		return nil
@@ -216,7 +216,7 @@ func (r *RocksDB) readCommits(commitC <-chan *kvstore.Commit, errorC <-chan erro
 		for _, data := range commit.Data {
 			if ops, err := unmarshalRaftMessage([]byte(data)); err == nil && ops != nil {
 				// Try RaftMessage format (supports both single and batch operations)
-				// supportedold本地批量format（向后compatible）
+				// supportedoldformat(aftercompatible)
 				batchOps = append(batchOps, ops...)
 			} else if op, err := unmarshalRaftOperation([]byte(data)); err == nil && op != nil {
 				// Fallback to single operation format (backward compatibility)
@@ -501,15 +501,15 @@ func (r *RocksDB) RangeWithOptions(ctx context.Context, key, rangeEnd string, op
 		readIndexManager := r.raftNode.ReadIndexManager()
 
 		if leaseManager != nil && readIndexManager != nil {
-			// Fast Path: Leader 有validlease
+			// Fast Path: Leader havevalidlease
 			if leaseManager.IsLeader() && leaseManager.HasValidLease() {
 				// recordfastpathread
 				readIndexManager.RecordFastPathRead()
-				// continueexecute下面本地read逻辑（已由lease保证线性一致性）
+				// continueexecutenextread(already leasecertifyfirst)
 			}
-			// Slow Path: 非 Leader orlease失效
-			// TODO: implement ReadIndex protocolor转发给 Leader
-			// current简化implement：直接read（in完整implement前保持向后compatible）
+			// Slow Path:  Leader orlease
+			// TODO: implement ReadIndex protocolorto Leader
+			// currenttransformimplement：read(incompleteimplementbeforeholdaftercompatible)
 		}
 	}
 
@@ -692,7 +692,7 @@ func (r *RocksDB) PutWithLease(ctx context.Context, key, value string, leaseID i
 		return 0, nil, err
 	}
 
-	// Use BatchProposer for improved throughput (统一use propose auxiliarymethod)
+	// Use BatchProposer for improved throughput (firstuse propose auxiliarymethod)
 	if err := r.propose(ctx, data); err != nil {
 		cleanup()
 		return 0, nil, err
@@ -765,7 +765,7 @@ func (r *RocksDB) preparePutBatch(batch *grocksdb.WriteBatch, key, value string,
 			}
 			lease.Keys[key] = true
 
-			// Save updated lease to batch - use Protobuf（20x 性能提升）
+			// Save updated lease to batch - use Protobuf(20x performance)
 			leaseData, err := common.SerializeLease(lease)
 			if err != nil {
 				return nil, fmt.Errorf("failed to encode lease: %v", err)
@@ -884,7 +884,7 @@ func (r *RocksDB) prepareLeaseGrantBatch(batch *grocksdb.WriteBatch, leaseID, tt
 		Keys:      make(map[string]bool),
 	}
 
-	// use Protobuf serialize（20x 性能提升）
+	// use Protobuf serialize(20x performance)
 	data, err := common.SerializeLease(lease)
 	if err != nil {
 		return fmt.Errorf("failed to encode lease: %v", err)
@@ -906,7 +906,7 @@ func (r *RocksDB) prepareLeaseRevokeBatch(batch *grocksdb.WriteBatch, leaseID in
 	}
 
 	if lease == nil {
-		// Lease doesn't exist, nothing to revoke
+		// Lease doesn't exist, nothing to revoked
 		return nil, nil
 	}
 
@@ -1006,7 +1006,7 @@ func (r *RocksDB) putUnlocked(key, value string, leaseID int64) error {
 			}
 			lease.Keys[key] = true
 
-			// Save updated lease - use Protobuf（20x 性能提升）
+			// Save updated lease - use Protobuf(20x performance)
 			leaseData, err := common.SerializeLease(lease)
 			if err != nil {
 				return fmt.Errorf("failed to encode lease: %v", err)
@@ -1107,7 +1107,7 @@ func (r *RocksDB) DeleteRange(ctx context.Context, key, rangeEnd string) (int64,
 		return 0, nil, 0, err
 	}
 
-	// Use BatchProposer for improved throughput (统一use propose auxiliarymethod)
+	// Use BatchProposer for improved throughput (firstuse propose auxiliarymethod)
 	if err := r.propose(ctx, data); err != nil {
 		cleanup()
 		return 0, nil, 0, err
@@ -1256,7 +1256,7 @@ func (r *RocksDB) LeaseGrant(ctx context.Context, id int64, ttl int64) (*kvstore
 		return nil, err
 	}
 
-	// Use BatchProposer for improved throughput (统一use propose auxiliarymethod)
+	// Use BatchProposer for improved throughput (firstuse propose auxiliarymethod)
 	if err := r.propose(ctx, data); err != nil {
 		cleanup()
 		return nil, err
@@ -1286,7 +1286,7 @@ func (r *RocksDB) leaseGrantUnlocked(id int64, ttl int64) error {
 		Keys:      make(map[string]bool),
 	}
 
-	// use Protobuf serialize（20x 性能提升）
+	// use Protobuf serialize(20x performance)
 	data, err := common.SerializeLease(lease)
 	if err != nil {
 		return err
@@ -1296,7 +1296,7 @@ func (r *RocksDB) leaseGrantUnlocked(id int64, ttl int64) error {
 	return r.db.Put(r.wo, dbKey, data)
 }
 
-// LeaseRevoke revokes a lease
+// LeaseRevoke revokeds a lease
 func (r *RocksDB) LeaseRevoke(ctx context.Context, id int64) error {
 	// Generate sequence number (lock-free atomic operation)
 	seq := r.seqNum.Add(1)
@@ -1327,7 +1327,7 @@ func (r *RocksDB) LeaseRevoke(ctx context.Context, id int64) error {
 		return err
 	}
 
-	// Use BatchProposer for improved throughput (统一use propose auxiliarymethod)
+	// Use BatchProposer for improved throughput (firstuse propose auxiliarymethod)
 	if err := r.propose(ctx, data); err != nil {
 		cleanup()
 		return err
@@ -1347,7 +1347,7 @@ func (r *RocksDB) LeaseRevoke(ctx context.Context, id int64) error {
 	}
 }
 
-// leaseRevokeUnlocked applies lease revoke (called after Raft commit)
+// leaseRevokeUnlocked applies lease revoked (called after Raft commit)
 func (r *RocksDB) leaseRevokeUnlocked(id int64) error {
 	// Get lease to find associated keys
 	lease, err := r.getLease(id)
@@ -1361,7 +1361,7 @@ func (r *RocksDB) leaseRevokeUnlocked(id int64) error {
 	// Delete all keys associated with this lease
 	for key := range lease.Keys {
 		if err := r.deleteUnlocked(key, ""); err != nil {
-			log.Error("Failed to delete key during lease revoke",
+			log.Error("Failed to delete key during lease revoked",
 				zap.Error(err),
 				zap.String("key", key),
 				zap.Int64("leaseID", id),
@@ -1418,19 +1418,19 @@ func (r *RocksDB) WatchWithOptions(key, rangeEnd string, startRevision int64, wa
 
 	r.watches[watchID] = sub
 
-	// if startRevision > 0，send历史event
-	// 注意：currentimplementnot保留完整历史，只能fromcurrentdata生成initialsnapshot
+	// if startRevision > 0，sendevent
+	// note：currentimplementnotcomplete，canfromcurrentdatabecomeinitialsnapshot
 	if startRevision > 0 && startRevision < r.CurrentRevision() {
-		// asynchronoussendcurrentall匹配key作as PUT event
+		// asynchronoussendcurrentallmatchkeyas PUT event
 		go r.sendHistoricalEvents(sub, key, rangeEnd)
 	}
 
 	return eventCh, nil
 }
 
-// sendHistoricalEvents send历史event（fromcurrentdatasnapshot）
+// sendHistoricalEvents sendevent(fromcurrentdatasnapshot)
 func (r *RocksDB) sendHistoricalEvents(sub *watchSubscription, key, rangeEnd string) {
-	// use Range 查询getall匹配key
+	// use Range querygetallmatchkey
 	resp, err := r.Range(context.Background(), key, rangeEnd, 0, 0)
 	if err != nil {
 		log.Error("Failed to get historical events for watch",
@@ -1442,12 +1442,12 @@ func (r *RocksDB) sendHistoricalEvents(sub *watchSubscription, key, rangeEnd str
 		return
 	}
 
-	// sendallkey作as PUT event
+	// sendallkeyas PUT event
 	for _, kv := range resp.Kvs {
 		event := kvstore.WatchEvent{
 			Type:     kvstore.EventTypePut,
 			Kv:       kv,
-			PrevKv:   nil, // 历史eventnotreturn prevKv
+			PrevKv:   nil, // eventnotreturn prevKv
 			Revision: kv.ModRevision,
 		}
 
@@ -1456,10 +1456,10 @@ func (r *RocksDB) sendHistoricalEvents(sub *watchSubscription, key, rangeEnd str
 		case sub.eventCh <- event:
 			// successsend
 		case <-sub.cancel:
-			// Watch 已cancel
+			// Watch already cancel
 			return
 		default:
-			// Channel full，skip此event
+			// Channel full，skipevent
 			log.Warn("Watch channel full, skipping historical event",
 				zap.Int64("watchID", sub.watchID),
 				zap.String("key", string(kv.Key)),
@@ -1596,7 +1596,7 @@ func (r *RocksDB) cleanupExpiredLeasesUnlocked() int {
 
 	prefix := []byte(leasePrefix)
 	for it.Seek(prefix); it.Valid() && bytes.HasPrefix(it.Key().Data(), prefix); it.Next() {
-		// Decode lease - use Protobuf（自动检测format，向后compatible）
+		// Decode lease - use Protobuf(testformat，aftercompatible)
 		lease, err := common.DeserializeLease(it.Value().Data())
 		if err != nil {
 			log.Warn("Failed to decode lease during cleanup",
@@ -1638,7 +1638,7 @@ func (r *RocksDB) LeaseRenew(ctx context.Context, id int64) (*kvstore.Lease, err
 	// Update grant time
 	lease.GrantTime = time.Now()
 
-	// Save updated lease - use Protobuf serialize（20x 性能提升）
+	// Save updated lease - use Protobuf serialize(20x performance)
 	data, err := common.SerializeLease(lease)
 	if err != nil {
 		return nil, err
@@ -1668,7 +1668,7 @@ func (r *RocksDB) Leases(ctx context.Context) ([]*kvstore.Lease, error) {
 	it.Seek(prefix)
 
 	for it.ValidForPrefix(prefix) {
-		// use Protobuf deserialize（自动检测format，向后compatible）
+		// use Protobuf deserialize(testformat，aftercompatible)
 		lease, err := common.DeserializeLease(it.Value().Data())
 		if err == nil && lease != nil {
 			leases = append(leases, lease)
@@ -1729,7 +1729,7 @@ func (r *RocksDB) Txn(ctx context.Context, cmps []kvstore.Compare, thenOps []kvs
 		return nil, err
 	}
 
-	// Use BatchProposer for improved throughput (统一use propose auxiliarymethod)
+	// Use BatchProposer for improved throughput (firstuse propose auxiliarymethod)
 	if err := r.propose(ctx, data); err != nil {
 		cleanup()
 		return nil, err
@@ -1794,7 +1794,7 @@ func (r *RocksDB) getLease(id int64) (*kvstore.Lease, error) {
 		return nil, nil
 	}
 
-	// use Protobuf deserialize（自动检测 GOB/Protobuf format，向后compatible）
+	// use Protobuf deserialize(test GOB/Protobuf format，aftercompatible)
 	lease, err := common.DeserializeLease(data.Data())
 	if err != nil {
 		return nil, err
@@ -1911,9 +1911,9 @@ func (r *RocksDB) notifyWatches(event kvstore.WatchEvent) {
 		case sub.eventCh <- eventToSend:
 			// Success
 		case <-sub.cancel:
-			// Watch已cancel
+			// Watchalready cancel
 		default:
-			// Channelfull，asynchronoussend（慢client）
+			// Channelfull，asynchronoussend(slowclient)
 			go r.slowSendEvent(sub, eventToSend)
 		}
 	}
@@ -2149,16 +2149,16 @@ func (r *RocksDB) compareBytes(a, b []byte, result kvstore.CompareResult) bool {
 	return false
 }
 
-// SetRaftNode set Raft nodereference（用at依赖注入）
+// SetRaftNode set Raft nodereference(for )
 func (r *RocksDB) SetRaftNode(node RaftNode, nodeID uint64) {
 	r.raftNode = node
 	r.nodeID = nodeID
 }
 
-// GetRaftStatus get Raft statusinfo
+// GetRaftStatus get Raft status info
 func (r *RocksDB) GetRaftStatus() kvstore.RaftStatus {
 	if r.raftNode == nil {
-		// ifnone Raft node，returndefaultstatus（单机schema）
+		// ifnone Raft node，returndefaultstatus(singleschema)
 		return kvstore.RaftStatus{
 			NodeID:   r.nodeID,
 			Term:     0,
@@ -2169,11 +2169,11 @@ func (r *RocksDB) GetRaftStatus() kvstore.RaftStatus {
 		}
 	}
 
-	// from Raft nodegettrue实status
+	// from Raft nodegettruestatus
 	return r.raftNode.Status()
 }
 
-// TransferLeadership 转移 leader roletospecifiednode
+// TransferLeadership  leader roletospecifiednode
 func (r *RocksDB) TransferLeadership(targetID uint64) error {
 	if r.raftNode == nil {
 		return fmt.Errorf("raft node not available")

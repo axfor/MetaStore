@@ -24,11 +24,11 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// 功能switch：enabled Protobuf serializeoptimize
+// featureswitch：enabled Protobuf serializeoptimize
 func enableProtobuf() bool { return config.GetEnableProtobuf() }
 
 // serializeOperation serialize RaftOperation
-// 优先use Protobuf（3-5x 性能提升），回退to JSON（向后compatible）
+// use Protobuf(3-5x performance)，to JSON(aftercompatible)
 func serializeOperation(op RaftOperation) ([]byte, error) {
 	if enableProtobuf() {
 		// use Protobuf serialize
@@ -37,18 +37,18 @@ func serializeOperation(op RaftOperation) ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("protobuf marshal failed: %w", err)
 		}
-		// add Protobuf markerprefix（用atdeserialize时识别）
+		// add Protobuf markerprefix(for deserializewhen)
 		return append([]byte("PB:"), data...), nil
 	}
 
-	// 回退to JSON（向后compatible）
+	// to JSON(aftercompatible)
 	return json.Marshal(op)
 }
 
 // deserializeOperation deserialize RaftOperation
-// 自动检测 Protobuf or JSON format
+// test Protobuf or JSON format
 func deserializeOperation(data []byte) (RaftOperation, error) {
-	// checkisnoas Protobuf format（以 "PB:" prefix标识）
+	// checkisnoas Protobuf format( "PB:" prefix)
 	if len(data) > 3 && data[0] == 'P' && data[1] == 'B' && data[2] == ':' {
 		// Protobuf format
 		pbOp := &raftpb.RaftOperation{}
@@ -58,7 +58,7 @@ func deserializeOperation(data []byte) (RaftOperation, error) {
 		return protoToRaftOperation(pbOp), nil
 	}
 
-	// JSON format（向后compatible）
+	// JSON format(aftercompatible)
 	var op RaftOperation
 	if err := json.Unmarshal(data, &op); err != nil {
 		return RaftOperation{}, fmt.Errorf("json unmarshal failed: %w", err)
@@ -152,7 +152,7 @@ func compareToProto(cmp kvstore.Compare) *raftpb.Compare {
 		Target: raftpb.Compare_CompareTarget(cmp.Target),
 	}
 
-	// convert TargetUnion（use oneof）
+	// convert TargetUnion(use oneof)
 	switch cmp.Target {
 	case kvstore.CompareVersion:
 		pbCmp.TargetUnion = &raftpb.Compare_Version{Version: cmp.TargetUnion.Version}
@@ -177,7 +177,7 @@ func protoToCompare(pbCmp *raftpb.Compare) kvstore.Compare {
 		Key:    []byte(pbCmp.Key),
 	}
 
-	// convert TargetUnion（from oneof）
+	// convert TargetUnion(from oneof)
 	switch v := pbCmp.TargetUnion.(type) {
 	case *raftpb.Compare_Version:
 		cmp.TargetUnion.Version = v.Version

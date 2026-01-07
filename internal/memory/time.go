@@ -16,5 +16,5 @@ package memory
 
 import "time"
 
-// timeNow returncurrenttime（canintest中 mock）
+// timeNow returncurrenttime(canintestin mock)
 var timeNow = time.Now

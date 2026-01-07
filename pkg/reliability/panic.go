@@ -22,14 +22,14 @@ import (
 )
 
 var (
-	// PanicCounter global panic count器
+	// PanicCounter global panic count
 	PanicCounter int64
-	// PanicHandler global panic handle器
+	// PanicHandler global panic handle
 	PanicHandler func(goroutineName string, panicValue interface{}, stack []byte)
 )
 
 // RecoverPanic recovery panic generalfunction
-// 应inall goroutine 开头use defer RecoverPanic("goroutine-name")
+// shouldinall goroutine openuse defer RecoverPanic("goroutine-name")
 func RecoverPanic(goroutineName string) {
 	if r := recover(); r != nil {
 		atomic.AddInt64(&PanicCounter, 1)
@@ -43,14 +43,14 @@ func RecoverPanic(goroutineName string) {
 			log.String("stack", string(stack)),
 			log.Component("panic-recovery"))
 
-		// callcustomhandle器（if有）
+		// callcustomhandle(ifhave)
 		if PanicHandler != nil {
 			PanicHandler(goroutineName, r, stack)
 		}
 	}
 }
 
-// SafeGo safestart goroutine，自动recovery panic
+// SafeGo safestart goroutine，recovery panic
 func SafeGo(name string, fn func()) {
 	go func() {
 		defer RecoverPanic(name)
@@ -58,8 +58,8 @@ func SafeGo(name string, fn func()) {
 	}()
 }
 
-// SafeGoWithRestart start带自动重启 goroutine
-// maxRestarts: maximum重启times，0 indicatesunlimited重启
+// SafeGoWithRestart start goroutine
+// maxRestarts: maximumtimes，0 indicatesunlimited
 func SafeGoWithRestart(name string, fn func(), maxRestarts int) {
 	restartCount := 0
 
@@ -81,7 +81,7 @@ func SafeGoWithRestart(name string, fn func(), maxRestarts int) {
 					PanicHandler(name, r, stack)
 				}
 
-				// checkisnoshould重启
+				// checkisnoshould
 				restartCount++
 				if maxRestarts == 0 || restartCount < maxRestarts {
 					log.Info("Restarting goroutine",
@@ -114,7 +114,7 @@ func ResetPanicCount() {
 	atomic.StoreInt64(&PanicCounter, 0)
 }
 
-// PanicMiddleware gRPC 拦截器 panic recoveryintermediate件
+// PanicMiddleware gRPC  panic recoveryintermediateitem
 func PanicMiddleware(handler func() error) (err error) {
 	defer func() {
 		if r := recover(); r != nil {

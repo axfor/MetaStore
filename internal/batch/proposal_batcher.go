@@ -23,59 +23,59 @@ import (
 	"go.uber.org/zap"
 )
 
-// ProposalBatcher dynamic批量提案系统
-// root据loaddynamic调整批量sizeandtimeouttime，inlowloadandhighload场景下取得平衡
-// reference TiKV、etcd 批量optimizepolicy
+// ProposalBatcher dynamicsystem
+// rootloaddynamiccompletesizeandtimeouttime，inlowloadandhighloadscenarioscenenextgetget
+// reference TiKV、etcd optimizepolicy
 type ProposalBatcher struct {
 	// configargument
-	minBatchSize  int           // minimum批量size（lowload场景）
-	maxBatchSize  int           // maximum批量size（highload场景）
-	minTimeout    time.Duration // minimumtimeouttime（lowload场景，optimizelatency）
-	maxTimeout    time.Duration // maximumtimeouttime（highload场景，optimize吞吐）
-	loadThreshold float64       // loadthreshold，用at判断highlowload切换
+	minBatchSize  int           // minimumsize(lowloadscenarioscene)
+	maxBatchSize  int           // maximumsize(highloadscenarioscene)
+	minTimeout    time.Duration // minimumtimeouttime(lowloadscenarioscene，optimizelatency)
+	maxTimeout    time.Duration // maximumtimeouttime(highloadscenarioscene，optimize)
+	loadThreshold float64       // loadthreshold，for highlowload
 
 	// status
 	mu            sync.Mutex
 	buffer        []string      // buffer
-	currentLoad   float64       // currentload（0.0-1.0），useexponentmoveaveragecalculate
-	proposalCount int64         // 总提案数
-	batchCount    int64         // 总批times
+	currentLoad   float64       // currentload(0.0-1.0)，useexponentmoveaveragecalculate
+	proposalCount int64         // 
+	batchCount    int64         // times
 
 	// channel
-	proposeC chan []byte   // Raft propose channel（batcher 拥有并负责close）
-	inputC   <-chan string // input提案channel
-	stopC    chan struct{} // stopped信号
+	proposeC chan []byte   // Raft propose channel(batcher ownandnegativeclose)
+	inputC   <-chan string // inputchannel
+	stopC    chan struct{} // stopped
 
-	// dynamicargument（root据load自适应）
-	currentBatchSize int           // current批量size
+	// dynamicargument(rootloadshould)
+	currentBatchSize int           // currentsize
 	currentTimeout   time.Duration // currenttimeouttime
 
 	logger *zap.Logger
 }
 
-// BatchConfig 批量提案config
+// BatchConfig config
 type BatchConfig struct {
-	MinBatchSize  int           // minimum批量size（default 1）
-	MaxBatchSize  int           // maximum批量size（default 256）
-	MinTimeout    time.Duration // minimumtimeouttime（default 5ms）
-	MaxTimeout    time.Duration // maximumtimeouttime（default 20ms）
-	LoadThreshold float64       // loadthreshold（default 0.7）
+	MinBatchSize  int           // minimumsize(default 1)
+	MaxBatchSize  int           // maximumsize(default 256)
+	MinTimeout    time.Duration // minimumtimeouttime(default 5ms)
+	MaxTimeout    time.Duration // maximumtimeouttime(default 20ms)
+	LoadThreshold float64       // loadthreshold(default 0.7)
 }
 
-// DefaultBatchConfig returndefault批量config
-// 基at TiKV and etcd 经验value
+// DefaultBatchConfig returndefaultconfig
+// at TiKV and etcd verifyvalue
 func DefaultBatchConfig() BatchConfig {
 	return BatchConfig{
-		MinBatchSize:  1,            // lowload：单个提案，最lowlatency
-		MaxBatchSize:  256,          // highload：大批量，最high吞吐（TiKV use 256）
+		MinBatchSize:  1,            // lowload：single ，lowlatency
+		MaxBatchSize:  256,          // highload：large，high(TiKV use 256)
 		MinTimeout:    5 * time.Millisecond,  // lowload：5ms timeout
 		MaxTimeout:    20 * time.Millisecond, // highload：20ms timeout
 		LoadThreshold: 0.7,          // 70% loadthreshold
 	}
 }
 
-// NewProposalBatcher createnewdynamic批量提案器
-// batcher 拥有并managementoutputchannel生命period，call者via ProposeC() getread-onlychannel
+// NewProposalBatcher createnewdynamic
+// batcher ownandmanagementoutputchannelperiod，callervia ProposeC() getread-onlychannel
 func NewProposalBatcher(
 	config BatchConfig,
 	inputC <-chan string,
@@ -91,7 +91,7 @@ func NewProposalBatcher(
 		minTimeout:       config.MinTimeout,
 		maxTimeout:       config.MaxTimeout,
 		loadThreshold:    config.LoadThreshold,
-		proposeC:         make(chan []byte, 256), // batcher create并拥有此channel
+		proposeC:         make(chan []byte, 256), // batcher createandownchannel
 		inputC:           inputC,
 		stopC:            make(chan struct{}),
 		buffer:           make([]string, 0, config.MaxBatchSize),
@@ -104,30 +104,30 @@ func NewProposalBatcher(
 	return batcher
 }
 
-// ProposeC returnoutputchannel（read-only），用atreceive批量提案data
+// ProposeC returnoutputchannel(read-only)，for receivedata
 func (b *ProposalBatcher) ProposeC() <-chan []byte {
 	return b.proposeC
 }
 
-// Start start批量提案器
+// Start start
 func (b *ProposalBatcher) Start(ctx context.Context) {
 	go b.run(ctx)
 }
 
-// Stop stopped批量提案器
+// Stop stopped
 func (b *ProposalBatcher) Stop() {
 	close(b.stopC)
 }
 
-// run 批量提案器主循环
+// run 
 func (b *ProposalBatcher) run(ctx context.Context) {
 	ticker := time.NewTicker(b.currentTimeout)
 	defer ticker.Stop()
 
-	// 确保in退出时refresh剩余提案并closeoutputchannel
+	// inwhenrefreshandcloseoutputchannel
 	defer func() {
 		b.flush()
-		close(b.proposeC) // batcher 拥有此channel，负责close
+		close(b.proposeC) // batcher ownchannel，negativeclose
 	}()
 
 	for {
@@ -141,7 +141,7 @@ func (b *ProposalBatcher) run(ctx context.Context) {
 
 		case proposal, ok := <-b.inputC:
 			if !ok {
-				// inputchannel已close，refresh剩余提案后return
+				// inputchannelalready close，refreshafterreturn
 				return
 			}
 
@@ -150,25 +150,25 @@ func (b *ProposalBatcher) run(ctx context.Context) {
 			bufferLen := len(b.buffer)
 			b.mu.Unlock()
 
-			// if达tocurrent批量size，立即refresh
+			// iftocurrentsize，refresh
 			if bufferLen >= b.currentBatchSize {
 				b.flush()
-				// resetschedule器
+				// resetschedule
 				ticker.Reset(b.currentTimeout)
 			}
 
 		case <-ticker.C:
 			// timeout，refreshbuffer
 			b.flush()
-			// 调整dynamicargument
+			// completedynamicargument
 			b.adjustParameters()
-			// resetschedule器asnewtimeouttime
+			// resetscheduleasnewtimeouttime
 			ticker.Reset(b.currentTimeout)
 		}
 	}
 }
 
-// flush refreshbuffer，will批量提案sendto Raft
+// flush refreshbuffer，willsendto Raft
 func (b *ProposalBatcher) flush() {
 	b.mu.Lock()
 	if len(b.buffer) == 0 {
@@ -176,7 +176,7 @@ func (b *ProposalBatcher) flush() {
 		return
 	}
 
-	// copybuffer并clear
+	// copybufferandclear
 	batch := make([]string, len(b.buffer))
 	copy(batch, b.buffer)
 	b.buffer = b.buffer[:0]
@@ -187,7 +187,7 @@ func (b *ProposalBatcher) flush() {
 	batchCount := b.batchCount
 	b.mu.Unlock()
 
-	// encode批量提案
+	// encode
 	batchData, err := EncodeBatch(batch)
 	if err != nil {
 		b.logger.Error("failed to encode batch proposals",
@@ -210,46 +210,46 @@ func (b *ProposalBatcher) flush() {
 	}
 }
 
-// adjustParameters dynamic调整批量argument
-// use自适应 EMA calculateload，root据load调整批量sizeandtimeouttime
-// optimize点：
-// 1. 自适应 alpha：load剧烈变化时use更激进 alpha，fastresponse
-// 2. bufferthresholdfastresponse：buffer接近full时立即切换highloadschema
+// adjustParameters dynamiccompleteargument
+// useshould EMA calculateload，rootloadcompletesizeandtimeouttime
+// optimize：
+// 1. should alpha：loadchangetransformwhen using alpha，fastresponse
+// 2. bufferthresholdfastresponse：bufferfullwhenhighloadschema
 func (b *ProposalBatcher) adjustParameters() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	// calculate瞬时load：bufferuse率
+	// calculatewhenload：bufferuse
 	bufferUsage := float64(len(b.buffer)) / float64(b.maxBatchSize)
 
-	// 【optimize 1】自适应 alpha：root据load变化幅度dynamic调整
-	// load剧烈变化时（traffic突增/突降），use更大 alpha fastresponse
-	// load平稳时，use较小 alpha 平滑波动
+	// 【optimize 1】should alpha：rootloadchangetransformdynamiccomplete
+	// loadchangetransformwhen(trafficincrease/)，uselarge alpha fastresponse
+	// loadwhen，usesmall alpha 
 	loadDelta := math.Abs(bufferUsage - b.currentLoad)
-	alpha := 0.3 // default：平稳时 alpha（历史weight 70%）
+	alpha := 0.3 // default：when alpha(weight 70%)
 	if loadDelta > 0.3 {
-		// load剧烈变化（变化超过 30%），fastresponse
-		alpha = 0.7 // 激进 alpha（currentweight 70%），1-2 个period即可切换schema
+		// loadchangetransform(changetransformed 30%)，fastresponse
+		alpha = 0.7 //  alpha(currentweight 70%)，1-2  periodcanschema
 	} else if loadDelta > 0.15 {
-		// load中等变化（变化 15%-30%），适中response
-		alpha = 0.5 // 中等 alpha（currentand历史各占一半）
+		// loadinwaitchangetransform(changetransform 15%-30%)，inresponse
+		alpha = 0.5 // inwait alpha(currentandfirsthalf)
 	}
 
-	// use自适应 EMA updateload
+	// useshould EMA updateload
 	b.currentLoad = alpha*bufferUsage + (1-alpha)*b.currentLoad
 
-	// 【optimize 2】bufferthresholdfastresponse：避免buffer溢出
-	// ifbufferuse率超过 80%，立即usehighloadschemaargument
-	// 这样canintraffic激增时立即提升批量size，避免buffer溢出
+	// 【optimize 2】bufferthresholdfastresponse：buffer
+	// ifbufferuseed 80%，usehighloadschemaargument
+	// canintrafficincreasewhensize，buffer
 	effectiveLoad := b.currentLoad
 	if bufferUsage > 0.8 {
-		// buffer接近full，mandatoryusehighloadschema
+		// bufferfull，mandatoryusehighloadschema
 		effectiveLoad = math.Max(effectiveLoad, b.loadThreshold+0.1)
 	}
 
-	// root据validload调整argument
+	// rootvalidloadcompleteargument
 	if effectiveLoad > b.loadThreshold {
-		// highload：增大批量size，延长timeouttime，optimizethroughput
+		// highload：increaselargesize，longtimeouttime，optimizethroughput
 		b.currentBatchSize = interpolate(
 			b.currentLoad,
 			b.loadThreshold, 1.0,
@@ -261,7 +261,7 @@ func (b *ProposalBatcher) adjustParameters() {
 			float64(b.maxTimeout)/2, float64(b.maxTimeout),
 		))
 	} else {
-		// lowload：减小批量size，缩短timeouttime，optimizelatency
+		// lowload：decreasesmallsize，shorttimeouttime，optimizelatency
 		b.currentBatchSize = interpolate(
 			b.currentLoad,
 			0.0, b.loadThreshold,
@@ -284,7 +284,7 @@ func (b *ProposalBatcher) adjustParameters() {
 		zap.Int("buffer_len", len(b.buffer)))
 }
 
-// interpolate 线性插valuefunction
+// interpolate valuefunction
 // will value from [min, max] rangemapto [targetMin, targetMax] range
 func interpolate(value, min, max, targetMin, targetMax float64) int {
 	if value <= min {
@@ -297,7 +297,7 @@ func interpolate(value, min, max, targetMin, targetMax float64) int {
 	return int(targetMin + ratio*(targetMax-targetMin))
 }
 
-// Stats return批量提案器statisticsinfo
+// Stats returnstatisticsinfo
 func (b *ProposalBatcher) Stats() BatchStats {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -318,13 +318,13 @@ func (b *ProposalBatcher) Stats() BatchStats {
 	}
 }
 
-// BatchStats 批量提案器statisticsinfo
+// BatchStats statisticsinfo
 type BatchStats struct {
-	TotalProposals   int64         // 总提案数
-	TotalBatches     int64         // 总批times
-	AvgBatchSize     float64       // average批量size
+	TotalProposals   int64         // 
+	TotalBatches     int64         // times
+	AvgBatchSize     float64       // averagesize
 	CurrentLoad      float64       // currentload
-	CurrentBatchSize int           // current批量size
+	CurrentBatchSize int           // currentsize
 	CurrentTimeout   time.Duration // currenttimeouttime
 	BufferLen        int           // currentbufferlength
 }

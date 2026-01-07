@@ -21,7 +21,7 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 )
 
-// LeaseServer implement etcd Lease 服务
+// LeaseServer implement etcd Lease 
 type LeaseServer struct {
 	pb.UnimplementedLeaseServer
 	server *Server
@@ -32,7 +32,7 @@ func (s *LeaseServer) LeaseGrant(ctx context.Context, req *pb.LeaseGrantRequest)
 	ttl := req.TTL
 	id := req.ID
 
-	// ifnonespecified ID，自动生成unique ID
+	// ifnonespecified ID，becomeunique ID
 	if id == 0 {
 		id = s.server.leaseMgr.GenerateLeaseID()
 	}
@@ -50,11 +50,11 @@ func (s *LeaseServer) LeaseGrant(ctx context.Context, req *pb.LeaseGrantRequest)
 	}, nil
 }
 
-// LeaseRevoke revokelease
+// LeaseRevoke revokedlease
 func (s *LeaseServer) LeaseRevoke(ctx context.Context, req *pb.LeaseRevokeRequest) (*pb.LeaseRevokeResponse, error) {
 	id := req.ID
 
-	// revoke lease
+	// revoked lease
 	if err := s.server.leaseMgr.Revoke(id); err != nil {
 		return nil, toGRPCError(err)
 	}
@@ -64,7 +64,7 @@ func (s *LeaseServer) LeaseRevoke(ctx context.Context, req *pb.LeaseRevokeReques
 	}, nil
 }
 
-// LeaseKeepAlive renewal（stream式）
+// LeaseKeepAlive renewal(streamed)
 func (s *LeaseServer) LeaseKeepAlive(stream pb.Lease_LeaseKeepAliveServer) error {
 	for {
 		req, err := stream.Recv()
@@ -92,15 +92,15 @@ func (s *LeaseServer) LeaseKeepAlive(stream pb.Lease_LeaseKeepAliveServer) error
 	}
 }
 
-// LeaseTimeToLive getlease剩余time
+// LeaseTimeToLive getleasetime
 func (s *LeaseServer) LeaseTimeToLive(ctx context.Context, req *pb.LeaseTimeToLiveRequest) (*pb.LeaseTimeToLiveResponse, error) {
 	id := req.ID
 
 	// get lease info
 	lease, err := s.server.leaseMgr.TimeToLive(id)
 	if err != nil {
-		// fordoes not exist Lease，etcd return TTL=-1 而notisincorrect
-		// 这符合 etcd client期望rowas
+		// fordoes not exist Lease，etcd return TTL=-1 notisincorrect
+		// merge etcd clientrowas
 		if errors.Is(err, ErrLeaseNotFound) {
 			return &pb.LeaseTimeToLiveResponse{
 				Header:     s.server.getResponseHeader(),
@@ -119,7 +119,7 @@ func (s *LeaseServer) LeaseTimeToLive(ctx context.Context, req *pb.LeaseTimeToLi
 		GrantedTTL: lease.TTL,
 	}
 
-	// ifrequestpackage含关联key
+	// ifrequestpackageclosekey
 	if req.Keys {
 		resp.Keys = make([][]byte, 0, len(lease.Keys))
 		for key := range lease.Keys {

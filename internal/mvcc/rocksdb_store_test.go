@@ -886,7 +886,7 @@ func TestRocksDBStoreKeyEncoding(t *testing.T) {
 		{"key/with/slashes", "value2"},
 		{"key:with:colons", "value3"},
 		{"key with spaces", "value4"},
-		{"中文key", "中文value"},
+		{"infilekey", "infilevalue"},
 		{"\x00\x01\x02", "binary key"},
 	}
 

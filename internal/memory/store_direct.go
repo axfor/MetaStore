@@ -18,44 +18,44 @@ import (
 	"metaStore/internal/kvstore"
 )
 
-// store_direct.go 提供无globallock直接operationmethod
+// store_direct.go nogloballockoperationmethod
 //
-// 核心optimize：单keyoperationnotuseglobal txnMu lock，直接use ShardedMap shardlock
-// 这样can让differentshardoperationparallelismexecute，充分利用 512 个shardconcurrency能力
+// optimize：singlekeyoperationnotuseglobal txnMu lock，use ShardedMap shardlock
+// candifferentshardoperationparallelismexecute，separate 512  shardconcurrencycan
 //
-// 性能提升原理：
-// - Before: alloperation竞争 txnMu globallock → concurrency度 = 1
-// - After: operation分散to 512 个shardlock → concurrency度 = 512
-// - 预期提升: 10-50x throughput (取决atconcurrency数)
+// performance：
+// - Before: alloperationcompete txnMu globallock → concurrency = 1
+// - After: operationseparateto 512  shardlock → concurrency = 512
+// - : 10-50x throughput (getatconcurrency)
 
-// putDirect 直接write key-value，notusegloballock
+// putDirect write key-value，notusegloballock
 //
-// concurrencysafe性：
+// concurrencysafe：
 // - ShardedMap.Set() internaluseshardlevellock
-// - revision use atomic.Int64 保证atomic性
-// - lease 关联use独立 leaseMu
+// - revision use atomic.Int64 certifyatomic
+// - lease closeuse leaseMu
 //
 // argument：
 //   - key: key
 //   - value: value
-//   - leaseID: lease ID (0 indicates无lease)
+//   - leaseID: lease ID (0 indicatesnolease)
 //
 // return：
 //   - revision: current revision
-//   - prevKv: 之前value (if存in)
+//   - prevKv: beforevalue (ifin)
 //   - error: incorrectinfo
 func (m *MemoryEtcd) putDirect(key, value string, leaseID int64) (int64, *kvstore.KeyValue, error) {
-	// 1. 生成new revision (atomic operation，无需加lock)
+	// 1. becomenew revision (atomic operation，nolock)
 	newRevision := m.revision.Add(1)
 
-	// 2. get之前value (ShardedMap internal加lock)
+	// 2. getbeforevalue (ShardedMap internallock)
 	prevKv, exists := m.kvData.Get(key)
 
 	// 3. createnew KeyValue
 	var createRevision int64
 	var version int64
 	if exists {
-		// keyexists，保留 CreateRevision，递增 Version
+		// keyexists， CreateRevision，increase Version
 		createRevision = prevKv.CreateRevision
 		version = prevKv.Version + 1
 	} else {
@@ -73,10 +73,10 @@ func (m *MemoryEtcd) putDirect(key, value string, leaseID int64) (int64, *kvstor
 		Lease:          leaseID,
 	}
 
-	// 4. write ShardedMap (internal加lock)
+	// 4. write ShardedMap (internallock)
 	m.kvData.Set(key, kv)
 
-	// 5. 关联lease (need leaseMu，因as leases notis ShardedMap)
+	// 5. closelease (need leaseMu，as leases notis ShardedMap)
 	if leaseID != 0 {
 		m.leaseMu.Lock()
 		if lease, ok := m.leases[leaseID]; ok {
@@ -91,17 +91,17 @@ func (m *MemoryEtcd) putDirect(key, value string, leaseID int64) (int64, *kvstor
 	return newRevision, prevKv, nil
 }
 
-// deleteDirect 直接delete key，notusegloballock
+// deleteDirect delete key，notusegloballock
 //
-// concurrencysafe性：同 putDirect
+// concurrencysafe： putDirect
 //
 // argument：
-//   - key: 起始key
-//   - rangeEnd: endkey (empty字符串indicates单keydelete)
+//   - key: startkey
+//   - rangeEnd: endkey (emptyindicatessinglekeydelete)
 //
 // return：
 //   - deleted: deletekeyquantity
-//   - prevKvs: delete前valuelist
+//   - prevKvs: deletebeforevaluelist
 //   - revision: current revision
 //   - error: incorrectinfo
 func (m *MemoryEtcd) deleteDirect(key, rangeEnd string) (int64, []*kvstore.KeyValue, int64, error) {
@@ -109,15 +109,15 @@ func (m *MemoryEtcd) deleteDirect(key, rangeEnd string) (int64, []*kvstore.KeyVa
 	var prevKvs []*kvstore.KeyValue
 
 	if rangeEnd == "" {
-		// 单keydelete
+		// singlekeydelete
 		if kv, exists := m.kvData.Get(key); exists {
-			// 生成new revision
+			// becomenew revision
 			newRevision := m.revision.Add(1)
 
-			// deletekey (ShardedMap internal加lock)
+			// deletekey (ShardedMap internallock)
 			m.kvData.Delete(key)
 
-			// 解除 lease 关联
+			//  lease close
 			if kv.Lease != 0 {
 				m.leaseMu.Lock()
 				if lease, ok := m.leases[kv.Lease]; ok {
@@ -140,18 +140,18 @@ func (m *MemoryEtcd) deleteDirect(key, rangeEnd string) (int64, []*kvstore.KeyVa
 	}
 
 	// rangedelete
-	// 注意：这里needgetrange内allkey，然后逐个delete
-	// ShardedMap.Range() willlockallshard，这iscurrent设计limit
-	// 未来canoptimizeas增量扫描（见 SIMPLE_OPTIMIZATION_PLAN.md）
+	// note：needgetrangeinternalallkey，after delete
+	// ShardedMap.Range() willlockallshard，iscurrentlimit
+	// not comecanoptimizeasincrease( SIMPLE_OPTIMIZATION_PLAN.md)
 	keysToDelete := m.kvData.Range(key, rangeEnd, 0)
 
 	if len(keysToDelete) == 0 {
 		return 0, nil, m.revision.Load(), nil
 	}
 
-	// 逐个deletekey
+	//  deletekey
 	for _, kv := range keysToDelete {
-		// 生成new revision (每次delete都update revision)
+		// becomenew revision ( timedeleteallupdate revision)
 		m.revision.Add(1)
 
 		keyStr := string(kv.Key)
@@ -159,7 +159,7 @@ func (m *MemoryEtcd) deleteDirect(key, rangeEnd string) (int64, []*kvstore.KeyVa
 		// deletekey
 		m.kvData.Delete(keyStr)
 
-		// 解除 lease 关联
+		//  lease close
 		if kv.Lease != 0 {
 			m.leaseMu.Lock()
 			if lease, ok := m.leases[kv.Lease]; ok {
@@ -180,45 +180,45 @@ func (m *MemoryEtcd) deleteDirect(key, rangeEnd string) (int64, []*kvstore.KeyVa
 
 // applyTxnWithShardLocks usegloballockexecutetransaction
 //
-// 注意：transactionoperation涉and多个keyatomic性，useglobal txnMu lockis合理设计
+// note：transactionoperationandmany keyatomic，useglobal txnMu lockismerge
 //
-// as什么transaction仍usegloballock？
-// 1. transactionneed多keyatomic性（Compare + Then/Else）
-// 2. fine-grainedlockwill导致复杂死lock问题
-// 3. transactionoperation相对较少（大partiallyis单key PUT/DELETE）
-// 4. 对性能影响有限（transaction < 10% operation）
+// astransactionusegloballock？
+// 1. transactionneedmanykeyatomic(Compare + Then/Else)
+// 2. fine-grainedlockwillguidelock
+// 3. transactionoperationtofew(largepartiallyissinglekey PUT/DELETE)
+// 4. toperformancehave(transaction < 10% operation)
 //
-// 未来optimize方向：
-// - iftransactionoperation占比很high，canimplement MVCC + 乐观lock
-// - reference CockroachDB  Intent Resolution 机制
+// not comeoptimize：
+// - iftransactionoperationhigh，canimplement MVCC + observelock
+// - reference CockroachDB  Intent Resolution 
 //
 // argument：
 //   - compares: comparecondition
-//   - thenOps: success时executeoperation
-//   - elseOps: failure时executeoperation
+//   - thenOps: successwhenexecuteoperation
+//   - elseOps: failurewhenexecuteoperation
 //
 // return：
 //   - *kvstore.TxnResponse: transactionresponse
 //   - error: incorrectinfo
 func (m *MemoryEtcd) applyTxnWithShardLocks(compares []kvstore.Compare, thenOps []kvstore.Op, elseOps []kvstore.Op) (*kvstore.TxnResponse, error) {
-	// useglobal txnMu lock保证transactionatomic性
+	// useglobal txnMu lockcertifytransactionatomic
 	m.txnMu.Lock()
 	defer m.txnMu.Unlock()
 
-	// executetransaction逻辑
+	// executetransaction
 	return m.txnUnlocked(compares, thenOps, elseOps)
 }
 
-// applyLeaseOperationDirect 直接execute lease operation，notusegloballock
+// applyLeaseOperationDirect execute lease operation，notusegloballock
 //
-// concurrencysafe性：
-// - leases map use独立 leaseMu
+// concurrencysafe：
+// - leases map use leaseMu
 // - and KV operationconcurrencysafe
 //
 // argument：
 //   - opType: operationtype ("LEASE_GRANT" or "LEASE_REVOKE")
 //   - leaseID: lease ID
-//   - ttl: TTL (仅 GRANT 时use)
+//   - ttl: TTL ( GRANT when using)
 func (m *MemoryEtcd) applyLeaseOperationDirect(opType string, leaseID int64, ttl int64) {
 	switch opType {
 	case "LEASE_GRANT":
@@ -242,7 +242,7 @@ func (m *MemoryEtcd) applyLeaseOperationDirect(opType string, leaseID int64, ttl
 			return
 		}
 
-		// 收集needdeletekey
+		// collectcollectneeddeletekey
 		keysToDelete := make([]string, 0, len(lease.Keys))
 		for key := range lease.Keys {
 			keysToDelete = append(keysToDelete, key)
@@ -252,16 +252,16 @@ func (m *MemoryEtcd) applyLeaseOperationDirect(opType string, leaseID int64, ttl
 		delete(m.leases, leaseID)
 		m.leaseMu.Unlock()
 
-		// delete关联key (not持有 leaseMu，避免死lock)
+		// deleteclosekey (notholding leaseMu，lock)
 		for _, key := range keysToDelete {
 			m.deleteDirect(key, "")
 		}
 	}
 }
 
-// notifyWatchers notificationall匹配 watchers
+// notifyWatchers notificationallmatch watchers
 //
-// concurrencysafe性：use watchMu protected watches map
+// concurrencysafe：use watchMu protected watches map
 //
 // argument：
 //   - key: key
@@ -272,7 +272,7 @@ func (m *MemoryEtcd) notifyWatchers(key string, kv *kvstore.KeyValue, eventType 
 	defer m.watchMu.RUnlock()
 
 	for _, sub := range m.watches {
-		// checkisno匹配
+		// checkisnomatch
 		if m.watchMatches(sub, key) {
 			// sendevent (non-blocking)
 			select {
@@ -281,19 +281,19 @@ func (m *MemoryEtcd) notifyWatchers(key string, kv *kvstore.KeyValue, eventType 
 				Kv:   kv,
 			}:
 			default:
-				// if channel full，skip (避免blocking)
+				// if channel full，skip (blocking)
 			}
 		}
 	}
 }
 
-// watchMatches check key isno匹配 watch subscribe
+// watchMatches check key isnomatch watch subscribe
 func (m *MemoryEtcd) watchMatches(sub *watchSubscription, key string) bool {
 	if sub.rangeEnd == "" {
-		// 单key匹配
+		// singlekeymatch
 		return key == sub.key
 	}
 
-	// range匹配
+	// rangematch
 	return key >= sub.key && (sub.rangeEnd == "\x00" || key < sub.rangeEnd)
 }

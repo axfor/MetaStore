@@ -22,23 +22,23 @@ import (
 )
 
 var (
-	// ValidationErrorCounter verifyincorrectcount器
+	// ValidationErrorCounter verifyincorrectcount
 	ValidationErrorCounter int64
 )
 
-// DataValidator dataverify器
+// DataValidator dataverify
 type DataValidator struct {
 	enableCRC bool
 }
 
-// NewDataValidator createdataverify器
+// NewDataValidator createdataverify
 func NewDataValidator(enableCRC bool) *DataValidator {
 	return &DataValidator{
 		enableCRC: enableCRC,
 	}
 }
 
-// ValidateData verifydata完整性（use CRC32）
+// ValidateData verifydatacomplete(use CRC32)
 func (dv *DataValidator) ValidateData(data []byte, expectedCRC uint32) error {
 	if !dv.enableCRC {
 		return nil
@@ -61,7 +61,7 @@ func (dv *DataValidator) ComputeCRC(data []byte) uint32 {
 	return crc32.ChecksumIEEE(data)
 }
 
-// AppendCRC will CRC 附加todata末尾
+// AppendCRC will CRC todata
 func (dv *DataValidator) AppendCRC(data []byte) []byte {
 	if !dv.enableCRC {
 		return data
@@ -75,7 +75,7 @@ func (dv *DataValidator) AppendCRC(data []byte) []byte {
 	return result
 }
 
-// ValidateAndStripCRC verify并移除data末尾 CRC
+// ValidateAndStripCRC verifyanddata CRC
 func (dv *DataValidator) ValidateAndStripCRC(data []byte) ([]byte, error) {
 	if !dv.enableCRC {
 		return data, nil
@@ -86,7 +86,7 @@ func (dv *DataValidator) ValidateAndStripCRC(data []byte) ([]byte, error) {
 		return nil, fmt.Errorf("data too short for CRC validation")
 	}
 
-	// 提取 CRC
+	// get CRC
 	dataLen := len(data) - 4
 	expectedCRC := binary.LittleEndian.Uint32(data[dataLen:])
 
@@ -102,17 +102,17 @@ func (dv *DataValidator) ValidateAndStripCRC(data []byte) ([]byte, error) {
 
 // ValidateKeyValue verifykey-value pair
 func (dv *DataValidator) ValidateKeyValue(key, value []byte) error {
-	// keynot能asempty
+	// keynotcanasempty
 	if len(key) == 0 {
 		return fmt.Errorf("key cannot be empty")
 	}
 
-	// keylengthlimit（etcd limitas 1.5 KB）
+	// keylengthlimit(etcd limitas 1.5 KB)
 	if len(key) > 1536 {
 		return fmt.Errorf("key too large: %d bytes (max 1536 bytes)", len(key))
 	}
 
-	// valuelengthlimit（etcd limitas 1 MB）
+	// valuelengthlimit(etcd limitas 1 MB)
 	if len(value) > 1024*1024 {
 		return fmt.Errorf("value too large: %d bytes (max 1 MB)", len(value))
 	}
@@ -120,7 +120,7 @@ func (dv *DataValidator) ValidateKeyValue(key, value []byte) error {
 	return nil
 }
 
-// ValidateRevision verifyversion号
+// ValidateRevision verifyversion
 func (dv *DataValidator) ValidateRevision(rev int64) error {
 	if rev < 0 {
 		return fmt.Errorf("revision cannot be negative: %d", rev)
@@ -146,19 +146,19 @@ func ResetValidationErrorCount() {
 	atomic.StoreInt64(&ValidationErrorCounter, 0)
 }
 
-// SnapshotValidator snapshotverify器
+// SnapshotValidator snapshotverify
 type SnapshotValidator struct {
 	validator *DataValidator
 }
 
-// NewSnapshotValidator createsnapshotverify器
+// NewSnapshotValidator createsnapshotverify
 func NewSnapshotValidator(enableCRC bool) *SnapshotValidator {
 	return &SnapshotValidator{
 		validator: NewDataValidator(enableCRC),
 	}
 }
 
-// ValidateSnapshot verifysnapshot完整性
+// ValidateSnapshot verifysnapshotcomplete
 func (sv *SnapshotValidator) ValidateSnapshot(snapshot []byte) error {
 	if len(snapshot) == 0 {
 		return nil // emptysnapshotvalid
@@ -168,7 +168,7 @@ func (sv *SnapshotValidator) ValidateSnapshot(snapshot []byte) error {
 	return sv.validator.ValidateData(snapshot[:len(snapshot)-4], binary.LittleEndian.Uint32(snapshot[len(snapshot)-4:]))
 }
 
-// CreateSnapshot create带 CRC snapshot
+// CreateSnapshot create CRC snapshot
 func (sv *SnapshotValidator) CreateSnapshot(data []byte) []byte {
 	return sv.validator.AppendCRC(data)
 }

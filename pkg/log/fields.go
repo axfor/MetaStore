@@ -21,29 +21,29 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-// 常用field构造function
+// fieldfunction
 
-// String 字符串field
+// String field
 func String(key, val string) zap.Field {
 	return zap.String(key, val)
 }
 
-// Int64 整数field
+// Int64 completefield
 func Int64(key string, val int64) zap.Field {
 	return zap.Int64(key, val)
 }
 
-// Int 整数field
+// Int completefield
 func Int(key string, val int) zap.Field {
 	return zap.Int(key, val)
 }
 
-// Uint64 无符号整数field
+// Uint64 nocompletefield
 func Uint64(key string, val uint64) zap.Field {
 	return zap.Uint64(key, val)
 }
 
-// Bool 布尔field
+// Bool field
 func Bool(key string, val bool) zap.Field {
 	return zap.Bool(key, val)
 }
@@ -63,38 +63,38 @@ func Err(err error) zap.Field {
 	return zap.Error(err)
 }
 
-// Any 任意typefield
+// Any typefield
 func Any(key string, val interface{}) zap.Field {
 	return zap.Any(key, val)
 }
 
-// Namespace namespace（用at分groupfield）
+// Namespace namespace(for separategroupfield)
 func Namespace(key string) zap.Field {
 	return zap.Namespace(key)
 }
 
-// 业务相关field
+// closefield
 
-// Key KV 存储key
+// Key KV storagekey
 func Key(key []byte) zap.Field {
 	return zap.ByteString("key", key)
 }
 
-// KeyString KV 存储key（字符串）
+// KeyString KV storagekey()
 func KeyString(key string) zap.Field {
 	return zap.String("key", key)
 }
 
-// Value KV 存储value
+// Value KV storagevalue
 func Value(value []byte) zap.Field {
-	// ifvalue太大，只recordlength
+	// ifvaluelarge，recordlength
 	if len(value) > 1024 {
 		return zap.Int("value_size", len(value))
 	}
 	return zap.ByteString("value", value)
 }
 
-// Revision version号
+// Revision version
 func Revision(rev int64) zap.Field {
 	return zap.Int64("revision", rev)
 }
@@ -119,17 +119,17 @@ func ClusterID(id uint64) zap.Field {
 	return zap.Uint64("cluster_id", id)
 }
 
-// Username user名
+// Username user
 func Username(name string) zap.Field {
 	return zap.String("username", name)
 }
 
-// RoleName role名
+// RoleName role
 func RoleName(name string) zap.Field {
 	return zap.String("role", name)
 }
 
-// Token token（脱敏）
+// Token token()
 func Token(token string) zap.Field {
 	if len(token) > 8 {
 		return zap.String("token", token[:8]+"...")
@@ -142,17 +142,17 @@ func Method(method string) zap.Field {
 	return zap.String("method", method)
 }
 
-// RemoteAddr 远程address
+// RemoteAddr address
 func RemoteAddr(addr string) zap.Field {
 	return zap.String("remote_addr", addr)
 }
 
-// Component component名
+// Component component
 func Component(name string) zap.Field {
 	return zap.String("component", name)
 }
 
-// Phase 阶segment
+// Phase segment
 func Phase(phase string) zap.Field {
 	return zap.String("phase", phase)
 }
@@ -162,7 +162,7 @@ func Count(count int64) zap.Field {
 	return zap.Int64("count", count)
 }
 
-// Goroutine goroutine 名称
+// Goroutine goroutine 
 func Goroutine(name string) zap.Field {
 	return zap.String("goroutine", name)
 }
@@ -172,9 +172,9 @@ func RequestID(id string) zap.Field {
 	return zap.String("request_id", id)
 }
 
-// resource相关field
+// resourceclosefield
 
-// ResourceStats resourcestatistics（嵌套field）
+// ResourceStats resourcestatistics(field)
 func ResourceStats(currentConn, maxConn, currentReq, maxReq, mem, maxMem int64) zap.Field {
 	return zap.Object("resources", zapResourceStats{
 		CurrentConnections: currentConn,
@@ -186,7 +186,7 @@ func ResourceStats(currentConn, maxConn, currentReq, maxReq, mem, maxMem int64) 
 	})
 }
 
-// zapResourceStats resourcestatisticsobject（implement zapcore.ObjectMarshaler）
+// zapResourceStats resourcestatisticsobject(implement zapcore.ObjectMarshaler)
 type zapResourceStats struct {
 	CurrentConnections int64
 	MaxConnections     int64

@@ -57,7 +57,7 @@ func (cm *ClusterManager) AddMember(peerURLs []string, isLearner bool) (*MemberI
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
-	// 1. 生成newmember ID
+	// 1. becomenewmember ID
 	memberID := generateMemberID()
 
 	// 2. creatememberinfo
@@ -65,7 +65,7 @@ func (cm *ClusterManager) AddMember(peerURLs []string, isLearner bool) (*MemberI
 		ID:         memberID,
 		Name:       fmt.Sprintf("node-%d", memberID),
 		PeerURLs:   peerURLs,
-		ClientURLs: []string{}, // initialasempty，稍后可via Update set
+		ClientURLs: []string{}, // initialasempty，aftercanvia Update set
 		IsLearner:  isLearner,
 	}
 
@@ -77,10 +77,10 @@ func (cm *ClusterManager) AddMember(peerURLs []string, isLearner bool) (*MemberI
 		ccType = raftpb.ConfChangeAddNode
 	}
 
-	// 构造 Context（PeerURLs）
+	//  Context(PeerURLs)
 	context := []byte{}
 	if len(peerURLs) > 0 {
-		context = []byte(peerURLs[0]) // use第一个 PeerURL
+		context = []byte(peerURLs[0]) // usefirst PeerURL
 	}
 
 	cc := raftpb.ConfChange{
@@ -89,7 +89,7 @@ func (cm *ClusterManager) AddMember(peerURLs []string, isLearner bool) (*MemberI
 		Context: context,
 	}
 
-	// 4. sendto confChangeC（asynchronous）
+	// 4. sendto confChangeC(asynchronous)
 	if cm.confChangeC != nil {
 		select {
 		case cm.confChangeC <- cc:
@@ -156,12 +156,12 @@ func (cm *ClusterManager) AddWitnessMember(peerURLs []string) (*MemberInfo, erro
 	return member, nil
 }
 
-// RemoveMember 移除member
+// RemoveMember member
 func (cm *ClusterManager) RemoveMember(id uint64) error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
-	// 1. checkmemberisno存in
+	// 1. checkmemberisnoin
 	if _, exists := cm.members[id]; !exists {
 		return fmt.Errorf("member %d not found", id)
 	}
@@ -193,7 +193,7 @@ func (cm *ClusterManager) UpdateMember(id uint64, peerURLs []string) error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
-	// 1. checkmemberisno存in
+	// 1. checkmemberisnoin
 	member, exists := cm.members[id]
 	if !exists {
 		return fmt.Errorf("member %d not found", id)
@@ -202,7 +202,7 @@ func (cm *ClusterManager) UpdateMember(id uint64, peerURLs []string) error {
 	// 2. update PeerURLs
 	member.PeerURLs = peerURLs
 
-	// 3. create ConfChange（etcd  UpdateMember 也willtrigger ConfChange）
+	// 3. create ConfChange(etcd  UpdateMember willtrigger ConfChange)
 	context := []byte{}
 	if len(peerURLs) > 0 {
 		context = []byte(peerURLs[0])
@@ -227,12 +227,12 @@ func (cm *ClusterManager) UpdateMember(id uint64, peerURLs []string) error {
 	return nil
 }
 
-// PromoteMember 提升 learner as voting member
+// PromoteMember  learner as voting member
 func (cm *ClusterManager) PromoteMember(id uint64) error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
-	// 1. checkmemberisno存in且is learner
+	// 1. checkmemberisnoinis learner
 	member, exists := cm.members[id]
 	if !exists {
 		return fmt.Errorf("member %d not found", id)
@@ -244,7 +244,7 @@ func (cm *ClusterManager) PromoteMember(id uint64) error {
 
 	// 2. create ConfChange
 	cc := raftpb.ConfChange{
-		Type:   raftpb.ConfChangeAddNode, // 提升 learner use AddNode
+		Type:   raftpb.ConfChangeAddNode, //  learner use AddNode
 		NodeID: id,
 	}
 
@@ -264,20 +264,20 @@ func (cm *ClusterManager) PromoteMember(id uint64) error {
 	return nil
 }
 
-// ApplyConfChange 应用configchange（由 Raft 回调）
+// ApplyConfChange appliedconfigchange( Raft )
 func (cm *ClusterManager) ApplyConfChange(cc raftpb.ConfChange, confState raftpb.ConfState) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
-	// root据 ConfChange typeupdate members map
+	// root ConfChange typeupdate members map
 	switch cc.Type {
 	case raftpb.ConfChangeAddNode:
-		// add voting memberor提升 learner
+		// add voting memberor learner
 		if member, exists := cm.members[cc.NodeID]; exists {
-			// exists，is提升operation
+			// exists，isoperation
 			member.IsLearner = false
 		} else {
-			// new增member
+			// newincreasemember
 			peerURL := ""
 			if len(cc.Context) > 0 {
 				peerURL = string(cc.Context)
@@ -306,7 +306,7 @@ func (cm *ClusterManager) ApplyConfChange(cc raftpb.ConfChange, confState raftpb
 		}
 
 	case raftpb.ConfChangeRemoveNode:
-		// 移除member
+		// member
 		delete(cm.members, cc.NodeID)
 
 	case raftpb.ConfChangeUpdateNode:
@@ -319,11 +319,11 @@ func (cm *ClusterManager) ApplyConfChange(cc raftpb.ConfChange, confState raftpb
 	}
 }
 
-// generateMemberID 生成newmember ID（useencryptrandom数）
+// generateMemberID becomenewmember ID(useencryptrandom)
 func generateMemberID() uint64 {
 	var b [8]byte
 	if _, err := rand.Read(b[:]); err != nil {
-		// Fallback: use纳秒time戳
+		// Fallback: usesecondstime
 		return uint64(binary.BigEndian.Uint64(b[:]))
 	}
 	return binary.BigEndian.Uint64(b[:])
@@ -341,7 +341,7 @@ func (cm *ClusterManager) GetMember(id uint64) (*MemberInfo, error) {
 	return member, nil
 }
 
-// InitialMembers initializememberlist（start时fromconfigload）
+// InitialMembers initializememberlist(startwhenfromconfigload)
 func (cm *ClusterManager) InitialMembers(members []*MemberInfo) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()

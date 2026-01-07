@@ -24,19 +24,19 @@ import (
 	"sync/atomic"
 )
 
-// MemoryEtcd supported etcd 语义memory存储
+// MemoryEtcd supported etcd memorystorage
 type MemoryEtcd struct {
-	kvData       *ShardedMap                  // shard map，supportedhighconcurrency访问
-	revision     atomic.Int64                 // global revision count器（无lock atomic operation）
+	kvData       *ShardedMap                  // shard map，supportedhighconcurrency
+	revision     atomic.Int64                 // global revision count(nolock atomic operation)
 	leases       map[int64]*kvstore.Lease     // leaseID -> Lease
 	leaseMu      sync.RWMutex                 // protected leases map
 	watches      map[int64]*watchSubscription // watchID -> subscription
 	watchMu      sync.RWMutex                 // protected watches map
-	txnMu        sync.Mutex                   // protectedtransactionoperationatomic性
+	txnMu        sync.Mutex                   // protectedtransactionoperationatomic
 	nextWatchID  atomic.Int64
 }
 
-// watchSubscription indicates一个 watch subscribe
+// watchSubscription indicatesfirst  watch subscribe
 type watchSubscription struct {
 	watchID      int64
 	key          string
@@ -44,8 +44,8 @@ type watchSubscription struct {
 	startRev     int64
 	eventCh      chan kvstore.WatchEvent
 	cancel       chan struct{}
-	closed       atomic.Bool  // 防止duplicateclose
-	closeOnce    sync.Once    // 确保只close一次
+	closed       atomic.Bool  // duplicateclose
+	closeOnce    sync.Once    // closefirst time
 
 	// Options
 	prevKV         bool
@@ -54,7 +54,7 @@ type watchSubscription struct {
 	fragment       bool
 }
 
-// NewMemoryEtcd createsupported etcd 语义memory存储
+// NewMemoryEtcd createsupported etcd memorystorage
 func NewMemoryEtcd() *MemoryEtcd {
 	m := &MemoryEtcd{
 		kvData:  NewShardedMap(),
@@ -70,7 +70,7 @@ func (m *MemoryEtcd) CurrentRevision() int64 {
 	return m.revision.Load()
 }
 
-// Range executerange查询
+// Range executerangequery
 func (m *MemoryEtcd) Range(ctx context.Context, key, rangeEnd string, limit int64, revision int64) (*kvstore.RangeResponse, error) {
 	// convertas RangeOptions call
 	return m.RangeWithOptions(ctx, key, rangeEnd, kvstore.RangeOptions{
@@ -79,18 +79,18 @@ func (m *MemoryEtcd) Range(ctx context.Context, key, rangeEnd string, limit int6
 	})
 }
 
-// RangeWithOptions executerange查询（supported完整option）
+// RangeWithOptions executerangequery(supportedcompleteoption)
 func (m *MemoryEtcd) RangeWithOptions(ctx context.Context, key, rangeEnd string, opts kvstore.RangeOptions) (*kvstore.RangeResponse, error) {
 	var kvs []*kvstore.KeyValue
 
-	// if rangeEnd asempty，查询单个key
+	// if rangeEnd asempty，querysingle key
 	if rangeEnd == "" {
 		if kv, ok := m.kvData.Get(key); ok {
 			kvs = append(kvs, kv)
 		}
 	} else {
-		// range查询 - ShardedMap internalwillhandlelockandsort
-		// 先getall，后面再应用filterandsort
+		// rangequery - ShardedMap internalwillhandlelockandsort
+		// getall，afterappliedfilterandsort
 		kvs = m.kvData.Range(key, rangeEnd, 0)
 	}
 
@@ -112,7 +112,7 @@ func (m *MemoryEtcd) RangeWithOptions(ctx context.Context, key, rangeEnd string,
 		kvs = filtered
 	}
 
-	// 应用 ModRevision filter
+	// applied ModRevision filter
 	if opts.MaxModRevision > 0 || opts.MinModRevision > 0 {
 		filtered := make([]*kvstore.KeyValue, 0, len(kvs))
 		for _, kv := range kvs {
@@ -127,15 +127,15 @@ func (m *MemoryEtcd) RangeWithOptions(ctx context.Context, key, rangeEnd string,
 		kvs = filtered
 	}
 
-	// 应用sort
+	// appliedsort
 	if opts.SortOrder != kvstore.SortNone && len(kvs) > 1 {
 		m.sortKvs(kvs, opts.SortTarget, opts.SortOrder)
 	}
 
-	// calculate count（in应用 limit 之前）
+	// calculate count(inapplied limit before)
 	count := int64(len(kvs))
 
-	// if只needcount
+	// ifneedcount
 	if opts.CountOnly {
 		return &kvstore.RangeResponse{
 			Kvs:      nil,
@@ -145,14 +145,14 @@ func (m *MemoryEtcd) RangeWithOptions(ctx context.Context, key, rangeEnd string,
 		}, nil
 	}
 
-	// 应用 limit
+	// applied limit
 	more := false
 	if opts.Limit > 0 && int64(len(kvs)) > opts.Limit {
 		kvs = kvs[:opts.Limit]
 		more = true
 	}
 
-	// if只need keys
+	// ifneed keys
 	if opts.KeysOnly {
 		for _, kv := range kvs {
 			kv.Value = nil
@@ -167,9 +167,9 @@ func (m *MemoryEtcd) RangeWithOptions(ctx context.Context, key, rangeEnd string,
 	}, nil
 }
 
-// sortKvs 对 kvs 进rowsort
+// sortKvs to kvs rowsort
 func (m *MemoryEtcd) sortKvs(kvs []*kvstore.KeyValue, target kvstore.SortTarget, order kvstore.SortOrder) {
-	// usestandard库sort
+	// usestandardsort
 	less := func(i, j int) bool {
 		var cmp int
 		switch target {
@@ -192,7 +192,7 @@ func (m *MemoryEtcd) sortKvs(kvs []*kvstore.KeyValue, target kvstore.SortTarget,
 		return cmp < 0
 	}
 
-	// 简单冒泡sort（fordistribution式lock通常只有small number of key）
+	// singlesort(fordistributionedlockhavesmall number of key)
 	n := len(kvs)
 	for i := 0; i < n-1; i++ {
 		for j := 0; j < n-i-1; j++ {
@@ -203,9 +203,9 @@ func (m *MemoryEtcd) sortKvs(kvs []*kvstore.KeyValue, target kvstore.SortTarget,
 	}
 }
 
-// PutWithLease 存储key-value pair，optional关联 lease
+// PutWithLease storagekey-value pair，optionalclose lease
 func (m *MemoryEtcd) PutWithLease(ctx context.Context, key, value string, leaseID int64) (int64, *kvstore.KeyValue, error) {
-	// verify lease（ifspecified）
+	// verify lease(ifspecified)
 	if leaseID != 0 {
 		m.leaseMu.RLock()
 		lease, ok := m.leases[leaseID]
@@ -221,10 +221,10 @@ func (m *MemoryEtcd) PutWithLease(ctx context.Context, key, value string, leaseI
 		m.leaseMu.RUnlock()
 	}
 
-	// getoldvalue（ShardedMap internal加lock）
+	// getoldvalue(ShardedMap internallock)
 	prevKv, _ := m.kvData.Get(key)
 
-	// 递增 revision（atomic operation，无需加lock）
+	// increase revision(atomic operation，nolock)
 	newRevision := m.revision.Add(1)
 
 	// createorupdate KeyValue
@@ -244,10 +244,10 @@ func (m *MemoryEtcd) PutWithLease(ctx context.Context, key, value string, leaseI
 		Lease:          leaseID,
 	}
 
-	// 存储to ShardedMap（internal加lock）
+	// storageto ShardedMap(internallock)
 	m.kvData.Set(key, kv)
 
-	// if有 lease，关联 key
+	// ifhave lease，close key
 	if leaseID != 0 {
 		m.leaseMu.Lock()
 		if lease, ok := m.leases[leaseID]; ok {
@@ -259,7 +259,7 @@ func (m *MemoryEtcd) PutWithLease(ctx context.Context, key, value string, leaseI
 		m.leaseMu.Unlock()
 	}
 
-	// trigger watch event（无需持有lock）
+	// trigger watch event(noholding lock)
 	m.notifyWatches(kvstore.WatchEvent{
 		Type:     kvstore.EventTypePut,
 		Kv:       kv,
@@ -270,22 +270,22 @@ func (m *MemoryEtcd) PutWithLease(ctx context.Context, key, value string, leaseI
 	return newRevision, prevKv, nil
 }
 
-// DeleteRange deleterange内key
+// DeleteRange deleterangeinternalkey
 func (m *MemoryEtcd) DeleteRange(ctx context.Context, key, rangeEnd string) (int64, []*kvstore.KeyValue, int64, error) {
 	var deleted int64
 	var prevKvs []*kvstore.KeyValue
 
-	// 收集要deletekey
+	// collectcollectneeddeletekey
 	keysToDelete := make([]string, 0)
 
 	if rangeEnd == "" {
-		// delete单个key（ShardedMap internal加lock）
+		// deletesingle key(ShardedMap internallock)
 		if kv, ok := m.kvData.Get(key); ok {
 			keysToDelete = append(keysToDelete, key)
 			prevKvs = append(prevKvs, kv)
 		}
 	} else {
-		// rangedelete - use ShardedMap.Range() 收集要deletekey
+		// rangedelete - use ShardedMap.Range() collectcollectneeddeletekey
 		allKvs := m.kvData.Range(key, rangeEnd, 0)
 		for _, kv := range allKvs {
 			k := string(kv.Key)
@@ -299,7 +299,7 @@ func (m *MemoryEtcd) DeleteRange(ctx context.Context, key, rangeEnd string) (int
 		return 0, nil, currentRev, nil
 	}
 
-	// 递增 revision（atomic operation，无需加lock）
+	// increase revision(atomic operation，nolock)
 	newRevision := m.revision.Add(1)
 
 	// Collect events to send after deletion
@@ -309,11 +309,11 @@ func (m *MemoryEtcd) DeleteRange(ctx context.Context, key, rangeEnd string) (int
 	for _, k := range keysToDelete {
 		prevKv, _ := m.kvData.Get(k)
 
-		// from ShardedMap delete（internal加lock）
+		// from ShardedMap delete(internallock)
 		m.kvData.Delete(k)
 		deleted++
 
-		// from lease 中移除 key
+		// from lease in key
 		if prevKv != nil && prevKv.Lease != 0 {
 			m.leaseMu.Lock()
 			if lease, ok := m.leases[prevKv.Lease]; ok {
@@ -341,7 +341,7 @@ func (m *MemoryEtcd) DeleteRange(ctx context.Context, key, rangeEnd string) (int
 		}
 	}
 
-	// trigger watch event（无需持有lock）
+	// trigger watch event(noholding lock)
 	for _, event := range events {
 		m.notifyWatches(event)
 	}
@@ -351,16 +351,16 @@ func (m *MemoryEtcd) DeleteRange(ctx context.Context, key, rangeEnd string) (int
 
 // Txn executetransaction
 func (m *MemoryEtcd) Txn(ctx context.Context, cmps []kvstore.Compare, thenOps []kvstore.Op, elseOps []kvstore.Op) (*kvstore.TxnResponse, error) {
-	// use txnMu protectedtransactionatomic性
+	// use txnMu protectedtransactionatomic
 	m.txnMu.Lock()
 	defer m.txnMu.Unlock()
 
 	return m.txnUnlocked(cmps, thenOps, elseOps)
 }
 
-// txnUnlocked executetransaction（need持有lock）
+// txnUnlocked executetransaction(needholding lock)
 func (m *MemoryEtcd) txnUnlocked(cmps []kvstore.Compare, thenOps []kvstore.Op, elseOps []kvstore.Op) (*kvstore.TxnResponse, error) {
-	// 评估all compare condition
+	// all compare condition
 	succeeded := true
 	for _, cmp := range cmps {
 		if !m.evaluateCompare(cmp) {
@@ -369,7 +369,7 @@ func (m *MemoryEtcd) txnUnlocked(cmps []kvstore.Compare, thenOps []kvstore.Op, e
 		}
 	}
 
-	// 选择要executeoperation
+	// electneedexecuteoperation
 	var ops []kvstore.Op
 	if succeeded {
 		ops = thenOps
@@ -425,7 +425,7 @@ func (m *MemoryEtcd) txnUnlocked(cmps []kvstore.Compare, thenOps []kvstore.Op, e
 	}, nil
 }
 
-// evaluateCompare 评估comparecondition（need持有 txnMu）
+// evaluateCompare comparecondition(needholding txnMu)
 func (m *MemoryEtcd) evaluateCompare(cmp kvstore.Compare) bool {
 	kv, exists := m.kvData.Get(string(cmp.Key))
 
@@ -464,7 +464,7 @@ func (m *MemoryEtcd) evaluateCompare(cmp kvstore.Compare) bool {
 	return false
 }
 
-// compareInt compare整数
+// compareInt comparecomplete
 func (m *MemoryEtcd) compareInt(a, b int64, result kvstore.CompareResult) bool {
 	switch result {
 	case kvstore.CompareEqual:
@@ -479,7 +479,7 @@ func (m *MemoryEtcd) compareInt(a, b int64, result kvstore.CompareResult) bool {
 	return false
 }
 
-// compareBytes compare字节array
+// compareBytes comparearray
 func (m *MemoryEtcd) compareBytes(a, b []byte, result kvstore.CompareResult) bool {
 	cmp := bytes.Compare(a, b)
 	switch result {
@@ -495,7 +495,7 @@ func (m *MemoryEtcd) compareBytes(a, b []byte, result kvstore.CompareResult) boo
 	return false
 }
 
-// 未加lockinternalmethod（need持有 txnMu）
+// not lockinternalmethod(needholding txnMu)
 func (m *MemoryEtcd) rangeUnlocked(key, rangeEnd string, limit int64) (*kvstore.RangeResponse, error) {
 	var kvs []*kvstore.KeyValue
 
@@ -504,7 +504,7 @@ func (m *MemoryEtcd) rangeUnlocked(key, rangeEnd string, limit int64) (*kvstore.
 			kvs = append(kvs, kv)
 		}
 	} else {
-		// use ShardedMap.Range() getrange内key-value pair（internal已sort）
+		// use ShardedMap.Range() getrangeinternalkey-value pair(internalalready sort)
 		kvs = m.kvData.Range(key, rangeEnd, limit)
 	}
 
@@ -583,7 +583,7 @@ func (m *MemoryEtcd) deleteUnlocked(key, rangeEnd string) (int64, []*kvstore.Key
 			prevKvs = append(prevKvs, kv)
 		}
 	} else {
-		// use ShardedMap.Range() getrange内key-value pair
+		// use ShardedMap.Range() getrangeinternalkey-value pair
 		allKvs := m.kvData.Range(key, rangeEnd, 0)
 		for _, kv := range allKvs {
 			k := string(kv.Key)
@@ -618,7 +618,7 @@ func (m *MemoryEtcd) deleteUnlocked(key, rangeEnd string) (int64, []*kvstore.Key
 	return deleted, prevKvs, newRevision, nil
 }
 
-// 保持向后compatible原有method
+// holdaftercompatiblehavemethod
 func (m *MemoryEtcd) Lookup(key string) (string, bool) {
 	if kv, ok := m.kvData.Get(key); ok {
 		return string(kv.Value), true
@@ -627,15 +627,15 @@ func (m *MemoryEtcd) Lookup(key string) (string, bool) {
 }
 
 func (m *MemoryEtcd) Propose(k string, v string) {
-	// 简化implement，直接call PutWithLease
+	// transformimplement，call PutWithLease
 	m.PutWithLease(context.Background(), k, v, 0)
 }
 
 func (m *MemoryEtcd) GetSnapshot() ([]byte, error) {
-	// use ShardedMap.GetAll() getalldata（internal加lock）
+	// use ShardedMap.GetAll() getalldata(internallock)
 	allData := m.kvData.GetAll()
 
-	// TODO: implement完整snapshotserialize
+	// TODO: implementcompletesnapshotserialize
 	var buf strings.Builder
 	for key, kv := range allData {
 		buf.WriteString(fmt.Sprintf("%s=%s\n", key, string(kv.Value)))
@@ -643,16 +643,16 @@ func (m *MemoryEtcd) GetSnapshot() ([]byte, error) {
 	return []byte(buf.String()), nil
 }
 
-// Compact compressspecified revision 之前历史data
+// Compact compressspecified revision beforedata
 func (m *MemoryEtcd) Compact(ctx context.Context, revision int64) error {
-	// etcd  Compact 用atcompress历史version，clean upspecified revision 之前data
+	// etcd  Compact for compressversion，clean upspecified revision beforedata
 	//
-	// formemory存储：
-	// 1. currentnot保留 MVCC 历史version，每次update直接覆盖
-	// 2. expiration Lease clean up由 LeaseManager 定期handle
-	// 3. 这里只需保持 API compatible性
+	// formemorystorage：
+	// 1. currentnot MVCC version， timeupdateoverride
+	// 2. expiration Lease clean up LeaseManager handle
+	// 3. hold API compatible
 	//
-	// 未来可extend：implement MVCC 历史versionmanagementandcompress
+	// not comecanextend：implement MVCC versionmanagementandcompress
 	// currentimplement：no-op
 
 	return nil

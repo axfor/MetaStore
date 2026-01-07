@@ -23,8 +23,8 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
-// Session indicates一个基at Lease session
-// sessionwill自动renewal Lease，whensessionclose时will自动revoke Lease
+// Session indicatesfirst at Lease session
+// sessionwillrenewal Lease，whensessionclosewhenwillrevoked Lease
 type Session struct {
 	client *clientv3.Client
 	lease  clientv3.Lease
@@ -45,7 +45,7 @@ type sessionOptions struct {
 	ctx     context.Context
 }
 
-// WithTTL setsession TTL（秒）
+// WithTTL setsession TTL(seconds)
 func WithTTL(ttl int) SessionOption {
 	return func(so *sessionOptions) {
 		if ttl > 0 {
@@ -54,7 +54,7 @@ func WithTTL(ttl int) SessionOption {
 	}
 }
 
-// WithLease use现有 Lease ID
+// WithLease use existing Lease ID
 func WithLease(leaseID clientv3.LeaseID) SessionOption {
 	return func(so *sessionOptions) {
 		so.leaseID = leaseID
@@ -71,7 +71,7 @@ func WithContext(ctx context.Context) SessionOption {
 // NewSession createnewsession
 func NewSession(client *clientv3.Client, opts ...SessionOption) (*Session, error) {
 	options := &sessionOptions{
-		ttl: 60, // default 60 秒
+		ttl: 60, // default 60 seconds
 		ctx: context.Background(),
 	}
 
@@ -86,7 +86,7 @@ func NewSession(client *clientv3.Client, opts ...SessionOption) (*Session, error
 		cancel: cancel,
 	}
 
-	// ifnone提供 LeaseID，createnew Lease
+	// ifnone LeaseID，createnew Lease
 	if options.leaseID == clientv3.NoLease {
 		resp, err := s.lease.Grant(ctx, int64(options.ttl))
 		if err != nil {
@@ -95,7 +95,7 @@ func NewSession(client *clientv3.Client, opts ...SessionOption) (*Session, error
 		}
 		s.id = resp.ID
 	} else {
-		// use现有 Lease，verify其isnovalid
+		// use existing Lease，verifyisnovalid
 		ttlResp, err := s.lease.TimeToLive(ctx, options.leaseID)
 		if err != nil {
 			cancel()
@@ -108,7 +108,7 @@ func NewSession(client *clientv3.Client, opts ...SessionOption) (*Session, error
 		s.id = options.leaseID
 	}
 
-	// start自动renewal
+	// startrenewal
 	donec := make(chan struct{})
 	s.donec = donec
 	go s.keepAliveLoop(ctx, donec)
@@ -116,7 +116,7 @@ func NewSession(client *clientv3.Client, opts ...SessionOption) (*Session, error
 	return s, nil
 }
 
-// keepAliveLoop 自动renewal循环
+// keepAliveLoop renewal
 func (s *Session) keepAliveLoop(ctx context.Context, donec chan struct{}) {
 	defer close(donec)
 
@@ -126,18 +126,18 @@ func (s *Session) keepAliveLoop(ctx context.Context, donec chan struct{}) {
 		return
 	}
 
-	// 消费 KeepAlive response
+	//  KeepAlive response
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case ka, ok := <-kac:
 			if !ok {
-				// KeepAlive channelclose，session失效
+				// KeepAlive channelclose，session
 				return
 			}
 			if ka == nil {
-				// 收to nil response，mayisnetwork问题
+				// collectto nil response，mayisnetwork
 				continue
 			}
 			// successrenewal
@@ -145,7 +145,7 @@ func (s *Session) keepAliveLoop(ctx context.Context, donec chan struct{}) {
 	}
 }
 
-// Close closesession并revoke Lease
+// Close closesessionandrevoked Lease
 func (s *Session) Close() error {
 	s.mu.Lock()
 	if s.closed {
@@ -158,10 +158,10 @@ func (s *Session) Close() error {
 	// cancel context，stopped keepalive
 	s.cancel()
 
-	// wait keepalive 循环end
+	// wait keepalive end
 	<-s.donec
 
-	// revoke Lease（usenew context，因as原 context 已cancel）
+	// revoked Lease(usenew context，as context already cancel)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
@@ -174,13 +174,13 @@ func (s *Session) Lease() clientv3.LeaseID {
 	return s.id
 }
 
-// Done return一个 channel，whensession失效时will被close
+// Done returnfirst  channel，whensessionwhenwillbeclose
 func (s *Session) Done() <-chan struct{} {
 	return s.donec
 }
 
-// Orphan endsession但notrevoke Lease
-// 用atwillresource交给其他processmanagement
+// Orphan endsessionnotrevoked Lease
+// for willresourcetoprocessmanagement
 func (s *Session) Orphan() {
 	s.mu.Lock()
 	if s.closed {

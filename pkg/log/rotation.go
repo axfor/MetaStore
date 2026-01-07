@@ -24,15 +24,15 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-// RotationConfig log轮转config
+// RotationConfig logconfig
 type RotationConfig struct {
 	// Filename logfilepath
 	Filename string
 
-	// MaxSize 单个logfilemaximumsize（MB）
+	// MaxSize single logfilemaximumsize(MB)
 	MaxSize int
 
-	// MaxAge logfilemaximum保留天数
+	// MaxAge logfilemaximum
 	MaxAge int
 
 	// MaxBackups maximumbackupfilequantity
@@ -41,11 +41,11 @@ type RotationConfig struct {
 	// Compress isnocompressoldlog
 	Compress bool
 
-	// LocalTime isnouse本地time（default UTC）
+	// LocalTime isnousetime(default UTC)
 	LocalTime bool
 }
 
-// RotatingFileWriter supported轮转filewrite器
+// RotatingFileWriter supportedfilewrite
 type RotatingFileWriter struct {
 	mu     sync.Mutex
 	config RotationConfig
@@ -55,16 +55,16 @@ type RotatingFileWriter struct {
 	lastDay int
 }
 
-// NewRotatingFileWriter create轮转filewrite器
+// NewRotatingFileWriter createfilewrite
 func NewRotatingFileWriter(config RotationConfig) (*RotatingFileWriter, error) {
 	if config.MaxSize == 0 {
 		config.MaxSize = 100 // default 100 MB
 	}
 	if config.MaxAge == 0 {
-		config.MaxAge = 7 // default保留 7 天
+		config.MaxAge = 7 // default 7 
 	}
 	if config.MaxBackups == 0 {
-		config.MaxBackups = 10 // default保留 10 个backup
+		config.MaxBackups = 10 // default 10  backup
 	}
 
 	w := &RotatingFileWriter{
@@ -76,7 +76,7 @@ func NewRotatingFileWriter(config RotationConfig) (*RotatingFileWriter, error) {
 		return nil, err
 	}
 
-	// start定期clean up
+	// startclean up
 	go w.cleanupRoutine()
 
 	return w, nil
@@ -87,7 +87,7 @@ func (w *RotatingFileWriter) Write(p []byte) (n int, err error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	// checkisnoneed轮转
+	// checkisnoneed
 	if w.shouldRotate(len(p)) {
 		if err := w.rotate(); err != nil {
 			return 0, err
@@ -149,14 +149,14 @@ func (w *RotatingFileWriter) openFile() error {
 	return nil
 }
 
-// shouldRotate checkisnoneed轮转
+// shouldRotate checkisnoneed
 func (w *RotatingFileWriter) shouldRotate(writeLen int) bool {
 	// checkfilesize
 	if w.size+int64(writeLen) >= int64(w.config.MaxSize)*1024*1024 {
 		return true
 	}
 
-	// checkdate变化（每天轮转）
+	// checkdatechangetransform()
 	currentDay := time.Now().Day()
 	if currentDay != w.lastDay {
 		return true
@@ -165,7 +165,7 @@ func (w *RotatingFileWriter) shouldRotate(writeLen int) bool {
 	return false
 }
 
-// rotate executelog轮转
+// rotate executelog
 func (w *RotatingFileWriter) rotate() error {
 	// closecurrentfile
 	if w.file != nil {
@@ -177,11 +177,11 @@ func (w *RotatingFileWriter) rotate() error {
 	backupName := w.config.Filename + "." + timestamp
 
 	if err := os.Rename(w.config.Filename, backupName); err != nil {
-		// ifrenamefailure，直接opennewfile
+		// ifrenamefailure，opennewfile
 		return w.openFile()
 	}
 
-	// ifenabledcompress，compressoldfile（后台execute）
+	// ifenabledcompress，compressoldfile(backgroundexecute)
 	if w.config.Compress {
 		go compressFile(backupName)
 	}
@@ -190,7 +190,7 @@ func (w *RotatingFileWriter) rotate() error {
 	return w.openFile()
 }
 
-// cleanupRoutine 定期clean upoldlog
+// cleanupRoutine clean upoldlog
 func (w *RotatingFileWriter) cleanupRoutine() {
 	ticker := time.NewTicker(24 * time.Hour)
 	defer ticker.Stop()
@@ -213,7 +213,7 @@ func (w *RotatingFileWriter) cleanup() {
 		return
 	}
 
-	// 按modifytimesort，delete最oldfile
+	// modifytimesort，deleteoldfile
 	cutoff := time.Now().AddDate(0, 0, -w.config.MaxAge)
 
 	for _, file := range files {
@@ -222,7 +222,7 @@ func (w *RotatingFileWriter) cleanup() {
 			continue
 		}
 
-		// checkfile年龄
+		// checkfile
 		if info.ModTime().Before(cutoff) {
 			os.Remove(file)
 			continue
@@ -231,34 +231,34 @@ func (w *RotatingFileWriter) cleanup() {
 
 	// checkbackupquantity
 	if len(files) > w.config.MaxBackups {
-		// delete最oldfile
+		// deleteoldfile
 		for i := 0; i < len(files)-w.config.MaxBackups; i++ {
 			os.Remove(files[i])
 		}
 	}
 }
 
-// compressFile compressfile（简化version，仅rename）
+// compressFile compressfile(transformversion，rename)
 func compressFile(filename string) {
-	// 实际生产environmentcanuse gzip compress
-	// 这里as简化，只isadd .gz suffix
+	// environmentcanuse gzip compress
+	// astransform，isadd .gz suffix
 	newName := filename + ".gz"
 	os.Rename(filename, newName)
 }
 
-// NewRotatingLogger create带log轮转 Logger
+// NewRotatingLogger createlog Logger
 func NewRotatingLogger(cfg *Config, rotationCfg RotationConfig) (*Logger, error) {
 	if cfg == nil {
 		cfg = DefaultConfig
 	}
 
-	// create轮转write器
+	// createwrite
 	writer, err := NewRotatingFileWriter(rotationCfg)
 	if err != nil {
 		return nil, err
 	}
 
-	// 解析loglevel
+	// loglevel
 	level := zapcore.InfoLevel
 	if err := level.UnmarshalText([]byte(cfg.Level)); err != nil {
 		return nil, err
@@ -288,7 +288,7 @@ func NewRotatingLogger(cfg *Config, rotationCfg RotationConfig) (*Logger, error)
 		encoder = zapcore.NewConsoleEncoder(encoderConfig)
 	}
 
-	// create core（use轮转write器）
+	// create core(usewrite)
 	core := zapcore.NewCore(
 		encoder,
 		zapcore.AddSync(writer),

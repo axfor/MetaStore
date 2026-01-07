@@ -30,15 +30,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// BenchmarkLeaseReadVsNoLease compare Lease Read and非 Lease Read 性能
+// BenchmarkLeaseReadVsNoLease compare Lease Read and Lease Read performance
 func BenchmarkLeaseReadVsNoLease(b *testing.B) {
 	if testing.Short() {
 		b.Skip("Skipping Lease Read performance benchmark in short mode")
 	}
 
-	// test场景：
-	// 1. Lease Read enabled (Leader 带validlease)
-	// 2. Lease Read disabled (传统 Raft read)
+	// testscenarioscene：
+	// 1. Lease Read enabled (Leader validlease)
+	// 2. Lease Read disabled ( Raft read)
 
 	scenarios := []struct {
 		name           string
@@ -50,7 +50,7 @@ func BenchmarkLeaseReadVsNoLease(b *testing.B) {
 
 	for _, sc := range scenarios {
 		b.Run(sc.name, func(b *testing.B) {
-			// create单nodecluster用at性能test
+			// createsinglenodeclusterfor performancetest
 			peers := []string{"http://127.0.0.1:12000"}
 
 			// clean updatadirectory
@@ -84,7 +84,7 @@ func BenchmarkLeaseReadVsNoLease(b *testing.B) {
 				errorC,
 			)
 
-			// waitnode成as Leader
+			// waitnodebecomeas Leader
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 
@@ -104,18 +104,18 @@ func BenchmarkLeaseReadVsNoLease(b *testing.B) {
 				}
 			}
 
-			// ifenabled Lease Read，waitlease建立
+			// ifenabled Lease Read，waitleasebuild
 			if sc.enableLeaseRead {
 				time.Sleep(500 * time.Millisecond)
 
-				// verifylease已建立
+				// verifyleasealready build
 				lm := node.LeaseManager()
 				require.NotNil(b, lm)
 				require.True(b, lm.IsLeader())
 				require.True(b, lm.HasValidLease(), "Lease should be valid before benchmark")
 			}
 
-			// 预writesometestdata
+			// writesometestdata
 			for i := 0; i < 100; i++ {
 				key := fmt.Sprintf("bench-key-%d", i)
 				value := fmt.Sprintf("bench-value-%d", i)
@@ -126,7 +126,7 @@ func BenchmarkLeaseReadVsNoLease(b *testing.B) {
 			// waitdatacommit
 			time.Sleep(200 * time.Millisecond)
 
-			// 性能test：readoperation
+			// performancetest：readoperation
 			b.ResetTimer()
 
 			ctx2 := context.Background()
@@ -156,35 +156,35 @@ func BenchmarkLeaseReadVsNoLease(b *testing.B) {
 	}
 }
 
-// TestLeaseReadPerformanceGain test Lease Read 性能提升
+// TestLeaseReadPerformanceGain test Lease Read performance
 func TestLeaseReadPerformanceGain(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping Lease Read performance gain test in short mode")
 	}
 
-	// running两个场景并compare性能
+	// running scenariosceneandcompareperformance
 	withoutLeaseReadOps := benchmarkLeaseReadScenario(t, false, 10000)
 	withLeaseReadOps := benchmarkLeaseReadScenario(t, true, 10000)
 
 	t.Logf("Without Lease Read: %d ops/sec", withoutLeaseReadOps)
 	t.Logf("With Lease Read:    %d ops/sec", withLeaseReadOps)
 
-	// calculate性能提升
+	// calculateperformance
 	if withoutLeaseReadOps > 0 {
 		improvement := float64(withLeaseReadOps) / float64(withoutLeaseReadOps)
 		t.Logf("Performance improvement: %.2fx", improvement)
 
-		// Lease Read should显著提升性能
-		// 预期至少 2x，in某些场景下may达to 10-100x
+		// Lease Read shouldperformance
+		// tofew 2x，inscenarioscenenextmayto 10-100x
 		if improvement < 1.5 {
 			t.Logf("Warning: Lease Read improvement (%.2fx) is less than expected (>1.5x)", improvement)
 		}
 	}
 }
 
-// benchmarkLeaseReadScenario running单个性能test场景
+// benchmarkLeaseReadScenario runningsingle performancetestscenarioscene
 func benchmarkLeaseReadScenario(t *testing.T, enableLeaseRead bool, numOps int) int64 {
-	// create单nodecluster
+	// createsinglenodecluster
 	peers := []string{"http://127.0.0.1:12001"}
 
 	// clean updatadirectory
@@ -218,7 +218,7 @@ func benchmarkLeaseReadScenario(t *testing.T, enableLeaseRead bool, numOps int) 
 		errorC,
 	)
 
-	// wait Leader 选举
+	// wait Leader electelection
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -238,21 +238,21 @@ func benchmarkLeaseReadScenario(t *testing.T, enableLeaseRead bool, numOps int) 
 		}
 	}
 
-	// ifenabled Lease Read，waitlease建立
+	// ifenabled Lease Read，waitleasebuild
 	if enableLeaseRead {
-		// wait足够长time让lease续期（至少need几个心跳period）
+		// waitlongtimelease(tofewneed period)
 		time.Sleep(1500 * time.Millisecond)
 
 		lm := node.LeaseManager()
 		require.NotNil(t, lm)
 
-		// getleasestatus用atdebug
+		// getleasestatusfor debug
 		stats := lm.Stats()
 		t.Logf("  Lease stats: IsLeader=%v, HasValidLease=%v, RenewCount=%d, Remaining=%v",
 			stats.IsLeader, stats.HasValidLease, stats.LeaseRenewCount, stats.LeaseRemaining)
 
-		// 单node场景下，leasemayneed更多time建立
-		// iflease仍未建立，再wait一segmenttime
+		// singlenodescenarioscenenext，leasemayneedmanytimebuild
+		// ifleasenot build，waitfirstsegmenttime
 		if !lm.HasValidLease() {
 			t.Logf("  Waiting additional time for lease establishment...")
 			time.Sleep(1000 * time.Millisecond)
@@ -260,13 +260,13 @@ func benchmarkLeaseReadScenario(t *testing.T, enableLeaseRead bool, numOps int) 
 			t.Logf("  Updated stats: HasValidLease=%v, RenewCount=%d", stats.HasValidLease, stats.LeaseRenewCount)
 		}
 
-		// verifylease（if仍未建立，只warning而notfailuretest）
+		// verifylease(ifnot build，warningnotfailuretest)
 		if !lm.HasValidLease() {
 			t.Logf("  Warning: Lease not established in single-node scenario, continuing test anyway")
 		}
 	}
 
-	// 预writetestdata
+	// writetestdata
 	for i := 0; i < 100; i++ {
 		key := fmt.Sprintf("perf-key-%d", i)
 		value := fmt.Sprintf("perf-value-%d", i)
@@ -276,7 +276,7 @@ func benchmarkLeaseReadScenario(t *testing.T, enableLeaseRead bool, numOps int) 
 
 	time.Sleep(200 * time.Millisecond)
 
-	// executeread性能test
+	// executereadperformancetest
 	start := time.Now()
 
 	ctx2 := context.Background()

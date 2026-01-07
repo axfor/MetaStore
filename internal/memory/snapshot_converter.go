@@ -25,11 +25,11 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// 功能switch：enabled Protobuf snapshotserializeoptimize
-// TODO: 未来移toconfigfile中 (configs/config.yaml)
+// featureswitch：enabled Protobuf snapshotserializeoptimize
+// TODO: not cometoconfigfilein (configs/config.yaml)
 func enableSnapshotProtobuf() bool { return config.GetEnableSnapshotProtobuf() }
 
-// SnapshotData snapshotdatastructure（用at JSON 向后compatible）
+// SnapshotData snapshotdatastructure(for  JSON aftercompatible)
 type SnapshotData struct {
 	Revision int64
 	KVData   map[string]*kvstore.KeyValue
@@ -37,7 +37,7 @@ type SnapshotData struct {
 }
 
 // serializeSnapshot serializesnapshot
-// 优先use Protobuf（2-3x 性能提升），回退to JSON（向后compatible）
+// use Protobuf(2-3x performance)，to JSON(aftercompatible)
 func serializeSnapshot(revision int64, kvData map[string]*kvstore.KeyValue, leases map[int64]*kvstore.Lease) ([]byte, error) {
 	if enableSnapshotProtobuf() {
 		// use Protobuf serialize
@@ -63,11 +63,11 @@ func serializeSnapshot(revision int64, kvData map[string]*kvstore.KeyValue, leas
 			return nil, fmt.Errorf("protobuf marshal snapshot failed: %w", err)
 		}
 
-		// add Protobuf markerprefix（用atdeserialize时识别）
+		// add Protobuf markerprefix(for deserializewhen)
 		return append([]byte("SNAP-PB:"), data...), nil
 	}
 
-	// 回退to JSON（向后compatible）
+	// to JSON(aftercompatible)
 	snapshot := SnapshotData{
 		Revision: revision,
 		KVData:   kvData,
@@ -77,18 +77,18 @@ func serializeSnapshot(revision int64, kvData map[string]*kvstore.KeyValue, leas
 }
 
 // deserializeSnapshot deserializesnapshot
-// 自动检测 Protobuf or JSON format
+// test Protobuf or JSON format
 func deserializeSnapshot(data []byte) (*SnapshotData, error) {
-	// checkisnoas Protobuf format（以 "SNAP-PB:" prefix标识）
+	// checkisnoas Protobuf format( "SNAP-PB:" prefix)
 	const pbPrefix = "SNAP-PB:"
 	if len(data) >= len(pbPrefix) && string(data[:len(pbPrefix)]) == pbPrefix {
-		// Protobuf format（package括emptysnapshot情况）
+		// Protobuf format(packageemptysnapshot)
 		pbSnapshot := &raftpb.StoreSnapshot{}
 		if err := proto.Unmarshal(data[len(pbPrefix):], pbSnapshot); err != nil {
 			return nil, fmt.Errorf("protobuf unmarshal snapshot failed: %w", err)
 		}
 
-		// convert回 Go structure
+		// convert Go structure
 		snapshot := &SnapshotData{
 			Revision: pbSnapshot.Revision,
 			KVData:   make(map[string]*kvstore.KeyValue),
@@ -108,7 +108,7 @@ func deserializeSnapshot(data []byte) (*SnapshotData, error) {
 		return snapshot, nil
 	}
 
-	// JSON format（向后compatible）
+	// JSON format(aftercompatible)
 	var snapshot SnapshotData
 	if err := json.Unmarshal(data, &snapshot); err != nil {
 		return nil, fmt.Errorf("json unmarshal snapshot failed: %w", err)
@@ -148,13 +148,13 @@ func protoToKeyValue(pbKv *raftpb.KeyValueProto) *kvstore.KeyValue {
 }
 
 // leaseToProto will kvstore.Lease convertas Protobuf
-// 复用 common packageimplement
+//  common packageimplement
 func leaseToProto(lease *kvstore.Lease) *raftpb.LeaseProto {
 	return common.LeaseToProto(lease)
 }
 
 // protoToLease will Protobuf convertas kvstore.Lease
-// 复用 common packageimplement
+//  common packageimplement
 func protoToLease(pbLease *raftpb.LeaseProto) *kvstore.Lease {
 	return common.ProtoToLease(pbLease)
 }
