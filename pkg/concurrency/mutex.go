@@ -178,12 +178,24 @@ func (m *Mutex) waitDeletes(ctx context.Context, myKey string, myRev int64) erro
 func (m *Mutex) watchKeyDeletion(ctx context.Context, key string, revision int64) error {
 	client := m.s.client
 
+	// CRITICAL FIX: Check if key still exists before starting watch
+	// This prevents race condition where key is deleted between Get and Watch
+	gresp, err := client.Get(ctx, key)
+	if err != nil {
+		return err
+	}
+	if len(gresp.Kvs) == 0 {
+		// Key already deleted, no need to watch
+		return nil
+	}
+
 	// Create a cancellable context for watch
 	watchCtx, watchCancel := context.WithCancel(ctx)
 	defer watchCancel()
 
-	// Watch for deletion starting from the current revision
-	wch := client.Watch(watchCtx, key, clientv3.WithRev(revision))
+	// Watch for deletion starting from the revision when we checked the key
+	// This ensures we don't miss the deletion event if it happens right after our Get
+	wch := client.Watch(watchCtx, key, clientv3.WithRev(gresp.Header.Revision))
 
 	for wresp := range wch {
 		if wresp.Canceled {

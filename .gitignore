@@ -6,3 +6,8 @@ metaStore
 *.swp
 *.swo
 *.exe
+
+third_party/rocksdb/darwin-arm64
+third_party/rocksdb/darwin-x86_64
+third_party/rocksdb/linux-x86_64
+third_party/rocksdb/linux-aarch64
