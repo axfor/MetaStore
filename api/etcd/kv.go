@@ -195,14 +195,15 @@ func (s *KVServer) Txn(ctx context.Context, req *pb.TxnRequest) (*pb.TxnResponse
 	}
 
 	// Convert response
+	header := s.server.getResponseHeader()
 	resp := &pb.TxnResponse{
-		Header:    s.server.getResponseHeader(),
+		Header:    header,
 		Succeeded: txnResp.Succeeded,
 		Responses: make([]*pb.ResponseOp, len(txnResp.Responses)),
 	}
 
 	for i, opResp := range txnResp.Responses {
-		resp.Responses[i] = convertOpResponse(opResp)
+		resp.Responses[i] = convertOpResponse(opResp, header)
 	}
 
 	// Update revision in header
@@ -287,7 +288,7 @@ func convertRequestOp(reqOp *pb.RequestOp) kvstore.Op {
 }
 
 // Helper function: convert OpResponse
-func convertOpResponse(opResp kvstore.OpResponse) *pb.ResponseOp {
+func convertOpResponse(opResp kvstore.OpResponse, header *pb.ResponseHeader) *pb.ResponseOp {
 	resp := &pb.ResponseOp{}
 
 	switch opResp.Type {
@@ -306,15 +307,16 @@ func convertOpResponse(opResp kvstore.OpResponse) *pb.ResponseOp {
 			}
 			resp.Response = &pb.ResponseOp_ResponseRange{
 				ResponseRange: &pb.RangeResponse{
-					Kvs:   kvs,
-					More:  opResp.RangeResp.More,
-					Count: opResp.RangeResp.Count,
+					Header: header,
+					Kvs:    kvs,
+					More:   opResp.RangeResp.More,
+					Count:  opResp.RangeResp.Count,
 				},
 			}
 		}
 	case kvstore.OpPut:
 		if opResp.PutResp != nil {
-			putResp := &pb.PutResponse{}
+			putResp := &pb.PutResponse{Header: header}
 			if opResp.PutResp.PrevKv != nil {
 				putResp.PrevKv = &mvccpb.KeyValue{
 					Key:            opResp.PutResp.PrevKv.Key,
@@ -332,6 +334,7 @@ func convertOpResponse(opResp kvstore.OpResponse) *pb.ResponseOp {
 	case kvstore.OpDelete:
 		if opResp.DeleteResp != nil {
 			deleteResp := &pb.DeleteRangeResponse{
+				Header:  header,
 				Deleted: opResp.DeleteResp.Deleted,
 			}
 			if len(opResp.DeleteResp.PrevKvs) > 0 {
