@@ -743,3 +743,29 @@ func (m *Memory) Range(ctx context.Context, key, rangeEnd string, limit int64, r
 	// 未启用 Lease Read 或 RaftNode 不可用，直接读取
 	return m.MemoryEtcd.Range(ctx, key, rangeEnd, limit, revision)
 }
+
+// RangeWithOptions 执行范围查询（支持完整选项，带 Lease Read 优化）
+func (m *Memory) RangeWithOptions(ctx context.Context, key, rangeEnd string, opts kvstore.RangeOptions) (*kvstore.RangeResponse, error) {
+	// 如果启用了 Lease Read 且 RaftNode 可用
+	if m.raftNode != nil {
+		leaseManager := m.raftNode.LeaseManager()
+		readIndexManager := m.raftNode.ReadIndexManager()
+
+		if leaseManager != nil && readIndexManager != nil {
+			// Fast Path: Leader 有有效租约
+			if leaseManager.IsLeader() && leaseManager.HasValidLease() {
+				// 记录快速路径读取
+				readIndexManager.RecordFastPathRead()
+
+				// 直接读取本地状态（已由租约保证线性一致性）
+				return m.MemoryEtcd.RangeWithOptions(ctx, key, rangeEnd, opts)
+			}
+
+			// 当前简化实现：直接读取（在完整实现前保持向后兼容）
+			return m.MemoryEtcd.RangeWithOptions(ctx, key, rangeEnd, opts)
+		}
+	}
+
+	// 未启用 Lease Read 或 RaftNode 不可用，直接读取
+	return m.MemoryEtcd.RangeWithOptions(ctx, key, rangeEnd, opts)
+}

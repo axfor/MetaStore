@@ -72,6 +72,15 @@ func (m *MemoryEtcd) CurrentRevision() int64 {
 
 // Range 执行范围查询
 func (m *MemoryEtcd) Range(ctx context.Context, key, rangeEnd string, limit int64, revision int64) (*kvstore.RangeResponse, error) {
+	// 转换为 RangeOptions 调用
+	return m.RangeWithOptions(ctx, key, rangeEnd, kvstore.RangeOptions{
+		Limit:    limit,
+		Revision: revision,
+	})
+}
+
+// RangeWithOptions 执行范围查询（支持完整选项）
+func (m *MemoryEtcd) RangeWithOptions(ctx context.Context, key, rangeEnd string, opts kvstore.RangeOptions) (*kvstore.RangeResponse, error) {
 	var kvs []*kvstore.KeyValue
 
 	// 如果 rangeEnd 为空，查询单个键
@@ -81,23 +90,117 @@ func (m *MemoryEtcd) Range(ctx context.Context, key, rangeEnd string, limit int6
 		}
 	} else {
 		// 范围查询 - ShardedMap 内部会处理锁和排序
-		kvs = m.kvData.Range(key, rangeEnd, limit)
+		// 先获取全部，后面再应用过滤和排序
+		kvs = m.kvData.Range(key, rangeEnd, 0)
 	}
 
-	// 应用 limit（Range 已经处理了，这里是为了计算 more 和 count）
-	more := false
+	// Apply CreateRevision filter
+	// Note: MaxCreateRevision filtering should be applied when explicitly set
+	// When the etcd client uses WithMaxCreateRev(myRev-1) and myRev=1, MaxCreateRevision=0
+	// In this case, all keys should be filtered out (all keys have CreateRevision >= 1)
+	if opts.MaxCreateRevision > 0 || opts.MinCreateRevision > 0 {
+		filtered := make([]*kvstore.KeyValue, 0, len(kvs))
+		for _, kv := range kvs {
+			if opts.MaxCreateRevision > 0 && kv.CreateRevision > opts.MaxCreateRevision {
+				continue
+			}
+			if opts.MinCreateRevision > 0 && kv.CreateRevision < opts.MinCreateRevision {
+				continue
+			}
+			filtered = append(filtered, kv)
+		}
+		kvs = filtered
+	}
+
+	// 应用 ModRevision 过滤
+	if opts.MaxModRevision > 0 || opts.MinModRevision > 0 {
+		filtered := make([]*kvstore.KeyValue, 0, len(kvs))
+		for _, kv := range kvs {
+			if opts.MaxModRevision > 0 && kv.ModRevision > opts.MaxModRevision {
+				continue
+			}
+			if opts.MinModRevision > 0 && kv.ModRevision < opts.MinModRevision {
+				continue
+			}
+			filtered = append(filtered, kv)
+		}
+		kvs = filtered
+	}
+
+	// 应用排序
+	if opts.SortOrder != kvstore.SortNone && len(kvs) > 1 {
+		m.sortKvs(kvs, opts.SortTarget, opts.SortOrder)
+	}
+
+	// 计算 count（在应用 limit 之前）
 	count := int64(len(kvs))
-	if limit > 0 && int64(len(kvs)) > limit {
-		kvs = kvs[:limit]
+
+	// 如果只需要计数
+	if opts.CountOnly {
+		return &kvstore.RangeResponse{
+			Kvs:      nil,
+			More:     false,
+			Count:    count,
+			Revision: m.revision.Load(),
+		}, nil
+	}
+
+	// 应用 limit
+	more := false
+	if opts.Limit > 0 && int64(len(kvs)) > opts.Limit {
+		kvs = kvs[:opts.Limit]
 		more = true
+	}
+
+	// 如果只需要 keys
+	if opts.KeysOnly {
+		for _, kv := range kvs {
+			kv.Value = nil
+		}
 	}
 
 	return &kvstore.RangeResponse{
 		Kvs:      kvs,
 		More:     more,
 		Count:    count,
-		Revision: m.revision.Load(), // ✅ atomic 操作，无需加锁
+		Revision: m.revision.Load(),
 	}, nil
+}
+
+// sortKvs 对 kvs 进行排序
+func (m *MemoryEtcd) sortKvs(kvs []*kvstore.KeyValue, target kvstore.SortTarget, order kvstore.SortOrder) {
+	// 使用标准库排序
+	less := func(i, j int) bool {
+		var cmp int
+		switch target {
+		case kvstore.SortByKey:
+			cmp = bytes.Compare(kvs[i].Key, kvs[j].Key)
+		case kvstore.SortByCreate:
+			cmp = int(kvs[i].CreateRevision - kvs[j].CreateRevision)
+		case kvstore.SortByMod:
+			cmp = int(kvs[i].ModRevision - kvs[j].ModRevision)
+		case kvstore.SortByVersion:
+			cmp = int(kvs[i].Version - kvs[j].Version)
+		case kvstore.SortByValue:
+			cmp = bytes.Compare(kvs[i].Value, kvs[j].Value)
+		default:
+			cmp = bytes.Compare(kvs[i].Key, kvs[j].Key)
+		}
+		if order == kvstore.SortDescend {
+			return cmp > 0
+		}
+		return cmp < 0
+	}
+
+	// 简单的冒泡排序（对于分布式锁通常只有少量 key）
+	n := len(kvs)
+	for i := 0; i < n-1; i++ {
+		for j := 0; j < n-i-1; j++ {
+			if !less(j, j+1) {
+				kvs[j], kvs[j+1] = kvs[j+1], kvs[j]
+			}
+		}
+	}
 }
 
 // PutWithLease 存储键值对，可选关联 lease

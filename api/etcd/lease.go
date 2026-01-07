@@ -16,6 +16,7 @@ package etcd
 
 import (
 	"context"
+	"errors"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 )
@@ -31,9 +32,9 @@ func (s *LeaseServer) LeaseGrant(ctx context.Context, req *pb.LeaseGrantRequest)
 	ttl := req.TTL
 	id := req.ID
 
-	// 如果没有指定 ID，自动生成
+	// 如果没有指定 ID，自动生成唯一 ID
 	if id == 0 {
-		id = s.server.store.CurrentRevision() + 1
+		id = s.server.leaseMgr.GenerateLeaseID()
 	}
 
 	// 创建 lease
@@ -98,13 +99,23 @@ func (s *LeaseServer) LeaseTimeToLive(ctx context.Context, req *pb.LeaseTimeToLi
 	// 获取 lease 信息
 	lease, err := s.server.leaseMgr.TimeToLive(id)
 	if err != nil {
+		// 对于不存在的 Lease，etcd 返回 TTL=-1 而不是错误
+		// 这符合 etcd 客户端的期望行为
+		if errors.Is(err, ErrLeaseNotFound) {
+			return &pb.LeaseTimeToLiveResponse{
+				Header:     s.server.getResponseHeader(),
+				ID:         id,
+				TTL:        -1,
+				GrantedTTL: 0,
+			}, nil
+		}
 		return nil, toGRPCError(err)
 	}
 
 	resp := &pb.LeaseTimeToLiveResponse{
-		Header:    s.server.getResponseHeader(),
-		ID:        lease.ID,
-		TTL:       lease.Remaining(),
+		Header:     s.server.getResponseHeader(),
+		ID:         lease.ID,
+		TTL:        lease.Remaining(),
 		GrantedTTL: lease.TTL,
 	}
 

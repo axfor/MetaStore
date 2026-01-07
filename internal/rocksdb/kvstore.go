@@ -363,12 +363,15 @@ func (r *RocksDB) applyOperationsBatch(ops []*RaftOperation) {
 			}
 
 		case "LEASE_REVOKE":
-			if err := r.prepareLeaseRevokeBatch(batch, op.LeaseID); err != nil {
+			events, err := r.prepareLeaseRevokeBatch(batch, op.LeaseID)
+			if err != nil {
 				log.Error("Failed to prepare LEASE_REVOKE in batch",
 					zap.Error(err),
 					zap.Int64("leaseID", op.LeaseID),
 					zap.String("component", "storage-rocksdb"))
+				continue
 			}
+			watchEvents = append(watchEvents, events...)
 
 		case "TXN":
 			// Transactions need special handling - apply individually for now
@@ -483,6 +486,15 @@ func (r *RocksDB) incrementRevision() (int64, error) {
 
 // Range performs range query
 func (r *RocksDB) Range(ctx context.Context, key, rangeEnd string, limit int64, revision int64) (*kvstore.RangeResponse, error) {
+	// 转换为 RangeWithOptions 调用
+	return r.RangeWithOptions(ctx, key, rangeEnd, kvstore.RangeOptions{
+		Limit:    limit,
+		Revision: revision,
+	})
+}
+
+// RangeWithOptions performs range query with full options support
+func (r *RocksDB) RangeWithOptions(ctx context.Context, key, rangeEnd string, opts kvstore.RangeOptions) (*kvstore.RangeResponse, error) {
 	// Lease Read 优化: 检查是否可以使用快速路径
 	if r.raftNode != nil {
 		leaseManager := r.raftNode.LeaseManager()
@@ -503,8 +515,8 @@ func (r *RocksDB) Range(ctx context.Context, key, rangeEnd string, limit int64, 
 
 	// Pre-allocate slice with estimated capacity
 	estimatedCap := 100
-	if limit > 0 && limit < 100 {
-		estimatedCap = int(limit)
+	if opts.Limit > 0 && opts.Limit < 100 {
+		estimatedCap = int(opts.Limit)
 	}
 	kvs := make([]*kvstore.KeyValue, 0, estimatedCap)
 
@@ -532,11 +544,6 @@ func (r *RocksDB) Range(ctx context.Context, key, rangeEnd string, limit int64, 
 				if err == nil && kv != nil {
 					kvs = append(kvs, kv)
 				}
-
-				// Early exit if limit reached
-				if limit > 0 && int64(len(kvs)) >= limit {
-					break
-				}
 			}
 
 			if rangeEnd != "\x00" && k >= rangeEnd {
@@ -545,19 +552,73 @@ func (r *RocksDB) Range(ctx context.Context, key, rangeEnd string, limit int64, 
 
 			it.Next()
 		}
+	}
 
-		// Sort by key
+	// Apply CreateRevision filter
+	if opts.MaxCreateRevision > 0 || opts.MinCreateRevision > 0 {
+		filtered := make([]*kvstore.KeyValue, 0, len(kvs))
+		for _, kv := range kvs {
+			if opts.MaxCreateRevision > 0 && kv.CreateRevision > opts.MaxCreateRevision {
+				continue
+			}
+			if opts.MinCreateRevision > 0 && kv.CreateRevision < opts.MinCreateRevision {
+				continue
+			}
+			filtered = append(filtered, kv)
+		}
+		kvs = filtered
+	}
+
+	// Apply ModRevision filter
+	if opts.MaxModRevision > 0 || opts.MinModRevision > 0 {
+		filtered := make([]*kvstore.KeyValue, 0, len(kvs))
+		for _, kv := range kvs {
+			if opts.MaxModRevision > 0 && kv.ModRevision > opts.MaxModRevision {
+				continue
+			}
+			if opts.MinModRevision > 0 && kv.ModRevision < opts.MinModRevision {
+				continue
+			}
+			filtered = append(filtered, kv)
+		}
+		kvs = filtered
+	}
+
+	// Apply sorting
+	if opts.SortOrder != kvstore.SortNone && len(kvs) > 1 {
+		r.sortKvs(kvs, opts.SortTarget, opts.SortOrder)
+	} else if len(kvs) > 1 {
+		// Default sort by key
 		sort.Slice(kvs, func(i, j int) bool {
 			return string(kvs[i].Key) < string(kvs[j].Key)
 		})
 	}
 
+	// Calculate count before applying limit
+	count := int64(len(kvs))
+
+	// CountOnly: only return count
+	if opts.CountOnly {
+		return &kvstore.RangeResponse{
+			Kvs:      nil,
+			More:     false,
+			Count:    count,
+			Revision: r.CurrentRevision(),
+		}, nil
+	}
+
 	// Apply limit
 	more := false
-	count := int64(len(kvs))
-	if limit > 0 && int64(len(kvs)) > limit {
-		kvs = kvs[:limit]
+	if opts.Limit > 0 && int64(len(kvs)) > opts.Limit {
+		kvs = kvs[:opts.Limit]
 		more = true
+	}
+
+	// KeysOnly: clear values
+	if opts.KeysOnly {
+		for _, kv := range kvs {
+			kv.Value = nil
+		}
 	}
 
 	return &kvstore.RangeResponse{
@@ -566,6 +627,33 @@ func (r *RocksDB) Range(ctx context.Context, key, rangeEnd string, limit int64, 
 		Count:    count,
 		Revision: r.CurrentRevision(),
 	}, nil
+}
+
+// sortKvs sorts key-value pairs according to target and order
+func (r *RocksDB) sortKvs(kvs []*kvstore.KeyValue, target kvstore.SortTarget, order kvstore.SortOrder) {
+	less := func(i, j int) bool {
+		var cmp int
+		switch target {
+		case kvstore.SortByKey:
+			cmp = bytes.Compare(kvs[i].Key, kvs[j].Key)
+		case kvstore.SortByCreate:
+			cmp = int(kvs[i].CreateRevision - kvs[j].CreateRevision)
+		case kvstore.SortByMod:
+			cmp = int(kvs[i].ModRevision - kvs[j].ModRevision)
+		case kvstore.SortByVersion:
+			cmp = int(kvs[i].Version - kvs[j].Version)
+		case kvstore.SortByValue:
+			cmp = bytes.Compare(kvs[i].Value, kvs[j].Value)
+		default:
+			cmp = bytes.Compare(kvs[i].Key, kvs[j].Key)
+		}
+		if order == kvstore.SortDescend {
+			return cmp > 0
+		}
+		return cmp < 0
+	}
+
+	sort.Slice(kvs, less)
 }
 
 // PutWithLease stores key-value with optional lease
@@ -809,29 +897,59 @@ func (r *RocksDB) prepareLeaseGrantBatch(batch *grocksdb.WriteBatch, leaseID, tt
 }
 
 // prepareLeaseRevokeBatch prepares a LEASE_REVOKE operation to be added to a WriteBatch
-func (r *RocksDB) prepareLeaseRevokeBatch(batch *grocksdb.WriteBatch, leaseID int64) error {
+// Returns watch events to be emitted after batch write succeeds
+func (r *RocksDB) prepareLeaseRevokeBatch(batch *grocksdb.WriteBatch, leaseID int64) ([]kvstore.WatchEvent, error) {
 	// Get the lease to find associated keys
 	lease, err := r.getLease(leaseID)
 	if err != nil {
-		return fmt.Errorf("failed to get lease %d: %v", leaseID, err)
+		return nil, fmt.Errorf("failed to get lease %d: %v", leaseID, err)
 	}
 
 	if lease == nil {
 		// Lease doesn't exist, nothing to revoke
-		return nil
+		return nil, nil
 	}
 
-	// Delete all keys associated with this lease
+	var events []kvstore.WatchEvent
+
+	// Delete all keys associated with this lease and prepare watch events
 	for key := range lease.Keys {
+		// Get old value first for watch event
+		prevKv, _ := r.getKeyValue(key)
+
 		dbKey := []byte(kvPrefix + key)
 		batch.Delete(dbKey)
+
+		// Prepare watch event if key existed
+		if prevKv != nil {
+			// Get revision for watch event
+			newRevision, err := r.incrementRevision()
+			if err != nil {
+				return nil, err
+			}
+
+			deletedKv := &kvstore.KeyValue{
+				Key:            prevKv.Key,
+				Value:          nil,
+				CreateRevision: prevKv.CreateRevision,
+				ModRevision:    newRevision,
+				Version:        0,
+				Lease:          0,
+			}
+			events = append(events, kvstore.WatchEvent{
+				Type:     kvstore.EventTypeDelete,
+				Kv:       deletedKv,
+				PrevKv:   prevKv,
+				Revision: newRevision,
+			})
+		}
 	}
 
 	// Delete the lease itself
 	leaseKey := []byte(fmt.Sprintf("%s%d", leasePrefix, leaseID))
 	batch.Delete(leaseKey)
 
-	return nil
+	return events, nil
 }
 
 // putUnlocked applies put operation (called after Raft commit)
