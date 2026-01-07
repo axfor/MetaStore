@@ -26,13 +26,17 @@ type Store interface {
 
 	// etcd-compatible methods with Context support
 
-	// Range executes a range query
+	// Range executes a range query (legacy, for backward compatibility)
 	// ctx: context for timeout and cancellation
 	// key: start key
 	// rangeEnd: end key (empty for single key, "\x00" for all keys)
 	// limit: max keys to return (0 for unlimited)
 	// revision: query data at specific revision (0 for latest)
 	Range(ctx context.Context, key, rangeEnd string, limit int64, revision int64) (*RangeResponse, error)
+
+	// RangeWithOptions executes a range query with full options support
+	// This is the preferred method for complex queries (sorting, filtering by revision, etc.)
+	RangeWithOptions(ctx context.Context, key, rangeEnd string, opts RangeOptions) (*RangeResponse, error)
 
 	// PutWithLease stores a key-value pair with optional lease
 	// Returns new revision and previous value (if any)

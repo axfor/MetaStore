@@ -139,6 +139,40 @@ type OpResponse struct {
 	DeleteResp   *DeleteResponse
 }
 
+// RangeOptions Range 操作选项
+type RangeOptions struct {
+	Limit             int64           // 返回键数量限制
+	Revision          int64           // 查询指定 revision 的数据
+	SortOrder         SortOrder       // 排序顺序
+	SortTarget        SortTarget      // 排序目标
+	MaxCreateRevision int64           // 最大创建 revision 过滤
+	MinCreateRevision int64           // 最小创建 revision 过滤
+	MaxModRevision    int64           // 最大修改 revision 过滤
+	MinModRevision    int64           // 最小修改 revision 过滤
+	CountOnly         bool            // 只返回数量
+	KeysOnly          bool            // 只返回键
+}
+
+// SortOrder 排序顺序
+type SortOrder int
+
+const (
+	SortNone    SortOrder = 0
+	SortAscend  SortOrder = 1
+	SortDescend SortOrder = 2
+)
+
+// SortTarget 排序目标
+type SortTarget int
+
+const (
+	SortByKey     SortTarget = 0
+	SortByVersion SortTarget = 1
+	SortByCreate  SortTarget = 2
+	SortByMod     SortTarget = 3
+	SortByValue   SortTarget = 4
+)
+
 // RangeResponse Range 操作响应
 type RangeResponse struct {
 	Kvs      []*KeyValue

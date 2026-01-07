@@ -22,6 +22,7 @@ import (
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	mvccpb "go.etcd.io/etcd/api/v3/mvccpb"
 )
 
 var (
@@ -101,41 +102,11 @@ func (e *Election) Campaign(ctx context.Context, val string) error {
 }
 
 // waitLeader 等待成为 Leader（所有更早的 key 被删除）
+// Automatically retries if Watch is canceled or network errors occur
 func (e *Election) waitLeader(ctx context.Context, myKey string, myRev int64) error {
 	client := e.s.client
 
-	// 获取所有前缀匹配的 key
-	getOpts := append(clientv3.WithFirstCreate(), clientv3.WithMaxCreateRev(myRev-1))
 	for {
-		// 获取所有 CreateRevision < myRev 的 key
-		resp, err := client.Get(ctx, e.pfx, getOpts...)
-		if err != nil {
-			return err
-		}
-
-		// 没有更早的 key，成为 Leader
-		if len(resp.Kvs) == 0 {
-			return nil
-		}
-
-		// 找到最早的 key
-		lastKey := string(resp.Kvs[0].Key)
-
-		// Watch 该 key，等待其删除
-		wch := client.Watch(ctx, lastKey, clientv3.WithRev(myRev))
-		for wresp := range wch {
-			if wresp.Canceled {
-				return errors.New("watch canceled")
-			}
-			for _, ev := range wresp.Events {
-				if ev.Type == clientv3.EventTypeDelete {
-					// key 被删除，继续检查
-					goto RETRY
-				}
-			}
-		}
-		
-		RETRY:
 		// 检查会话是否还有效
 		select {
 		case <-e.s.Done():
@@ -144,7 +115,99 @@ func (e *Election) waitLeader(ctx context.Context, myKey string, myRev int64) er
 			return ctx.Err()
 		default:
 		}
+
+		// 获取所有前缀匹配的 key，按 CreateRevision 排序
+		resp, err := client.Get(ctx, e.pfx,
+			clientv3.WithPrefix(),
+			clientv3.WithSort(clientv3.SortByCreateRevision, clientv3.SortAscend))
+		if err != nil {
+			return err
+		}
+
+		// 手动过滤出 CreateRevision < myRev 的 key
+		var earlierKeys []*mvccpb.KeyValue
+		for _, kv := range resp.Kvs {
+			if kv.CreateRevision < myRev {
+				earlierKeys = append(earlierKeys, kv)
+			}
+		}
+
+		// 没有更早的 key，成为 Leader
+		if len(earlierKeys) == 0 {
+			return nil
+		}
+
+		// 找到最早的 key (first one after sorting and filtering)
+		lastKey := string(earlierKeys[0].Key)
+
+		// Watch for deletion with automatic retry on cancellation
+		err = e.watchKeyDeletion(ctx, lastKey, resp.Header.Revision)
+		if err != nil {
+			// If watch was canceled or had network error, retry the loop
+			// The loop will recheck if the key still exists
+			if isElectionWatchCanceledOrNetworkError(err) {
+				continue
+			}
+			return err
+		}
+
+		// Key was deleted, loop will recheck for more earlier keys
 	}
+}
+
+// watchKeyDeletion watches a specific key for deletion
+// Returns nil when key is deleted, error otherwise
+func (e *Election) watchKeyDeletion(ctx context.Context, key string, revision int64) error {
+	client := e.s.client
+
+	// Create a cancellable context for watch
+	watchCtx, watchCancel := context.WithCancel(ctx)
+	defer watchCancel()
+
+	// Watch for deletion starting from the current revision
+	wch := client.Watch(watchCtx, key, clientv3.WithRev(revision))
+
+	for wresp := range wch {
+		if wresp.Canceled {
+			// Watch was canceled - could be network error or context cancellation
+			if wresp.Err() != nil {
+				return wresp.Err()
+			}
+			return errors.New("watch canceled")
+		}
+		for _, ev := range wresp.Events {
+			if ev.Type == clientv3.EventTypeDelete {
+				// Key deleted successfully
+				return nil
+			}
+		}
+	}
+
+	// Watch channel closed without delete event, check context
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-e.s.Done():
+		return errors.New("session expired")
+	default:
+		// Watch channel closed unexpectedly, return error to trigger retry
+		return errors.New("watch channel closed")
+	}
+}
+
+// isElectionWatchCanceledOrNetworkError checks if error is due to watch cancellation or network issue
+func isElectionWatchCanceledOrNetworkError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	// Check for common watch cancellation and network error patterns
+	return errStr == "watch canceled" ||
+		errStr == "watch channel closed" ||
+		errStr == "context canceled" ||
+		errStr == "rpc error" ||
+		errStr == "connection" ||
+		errStr == "EOF"
 }
 
 // Resign 主动放弃 Leader 身份
