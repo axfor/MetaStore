@@ -165,60 +165,76 @@ func (s *WatchServer) sendEvents(stream pb.Watch_WatchServer, watchID int64) {
 		return
 	}
 
-	for event := range eventCh {
-		// 转换事件类型
-		var eventType mvccpb.Event_EventType
-		switch event.Type {
-		case kvstore.EventTypePut:
-			eventType = mvccpb.PUT
-		case kvstore.EventTypeDelete:
-			eventType = mvccpb.DELETE
-		}
+	// Ensure watch is cancelled when this goroutine exits
+	defer func() {
+		s.server.watchMgr.Cancel(watchID)
+	}()
 
-		// 构造 watch 事件
-		watchEvent := &mvccpb.Event{
-			Type: eventType,
-		}
-
-		// 添加当前键值对
-		// For both PUT and DELETE events, Kv is properly populated
-		if event.Kv != nil {
-			watchEvent.Kv = &mvccpb.KeyValue{
-				Key:            event.Kv.Key,
-				Value:          event.Kv.Value,
-				CreateRevision: event.Kv.CreateRevision,
-				ModRevision:    event.Kv.ModRevision,
-				Version:        event.Kv.Version,
-				Lease:          event.Kv.Lease,
+	for {
+		select {
+		case event, ok := <-eventCh:
+			if !ok {
+				// Channel closed, watch cancelled
+				return
 			}
-		}
 
-		// 添加前一个键值对（如果有）
-		// Note: event.PrevKv may be nil if prevKV option was false
-		if event.PrevKv != nil {
-			watchEvent.PrevKv = &mvccpb.KeyValue{
-				Key:            event.PrevKv.Key,
-				Value:          event.PrevKv.Value,
-				CreateRevision: event.PrevKv.CreateRevision,
-				ModRevision:    event.PrevKv.ModRevision,
-				Version:        event.PrevKv.Version,
-				Lease:          event.PrevKv.Lease,
+			// 转换事件类型
+			var eventType mvccpb.Event_EventType
+			switch event.Type {
+			case kvstore.EventTypePut:
+				eventType = mvccpb.PUT
+			case kvstore.EventTypeDelete:
+				eventType = mvccpb.DELETE
 			}
-		}
 
-		// 发送事件
-		resp := &pb.WatchResponse{
-			Header:  s.server.getResponseHeader(),
-			WatchId: watchID,
-			Events:  []*mvccpb.Event{watchEvent},
-		}
+			// 构造 watch 事件
+			watchEvent := &mvccpb.Event{
+				Type: eventType,
+			}
 
-		// 更新 header 中的 revision
-		resp.Header.Revision = event.Revision
+			// 添加当前键值对
+			// For both PUT and DELETE events, Kv is properly populated
+			if event.Kv != nil {
+				watchEvent.Kv = &mvccpb.KeyValue{
+					Key:            event.Kv.Key,
+					Value:          event.Kv.Value,
+					CreateRevision: event.Kv.CreateRevision,
+					ModRevision:    event.Kv.ModRevision,
+					Version:        event.Kv.Version,
+					Lease:          event.Kv.Lease,
+				}
+			}
 
-		if err := stream.Send(resp); err != nil {
-			log.Warn("Failed to send watch event", zap.Int64("watch_id", watchID), zap.Error(err), zap.String("component", "etcdapi-watch"))
-			s.server.watchMgr.Cancel(watchID)
+			// 添加前一个键值对（如果有）
+			// Note: event.PrevKv may be nil if prevKV option was false
+			if event.PrevKv != nil {
+				watchEvent.PrevKv = &mvccpb.KeyValue{
+					Key:            event.PrevKv.Key,
+					Value:          event.PrevKv.Value,
+					CreateRevision: event.PrevKv.CreateRevision,
+					ModRevision:    event.PrevKv.ModRevision,
+					Version:        event.PrevKv.Version,
+					Lease:          event.PrevKv.Lease,
+				}
+			}
+
+			// 发送事件
+			resp := &pb.WatchResponse{
+				Header:  s.server.getResponseHeader(),
+				WatchId: watchID,
+				Events:  []*mvccpb.Event{watchEvent},
+			}
+
+			// 更新 header 中的 revision
+			resp.Header.Revision = event.Revision
+
+			if err := stream.Send(resp); err != nil {
+				log.Warn("Failed to send watch event", zap.Int64("watch_id", watchID), zap.Error(err), zap.String("component", "etcdapi-watch"))
+				return
+			}
+
+		case <-stream.Context().Done():
+			// Stream context cancelled, clean up
 			return
 		}
 	}
