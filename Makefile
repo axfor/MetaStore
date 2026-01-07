@@ -251,7 +251,7 @@ rocksdb-download:
 	fi
 
 ## rocksdb: Build RocksDB and dependencies from local source
-rocksdb:
+rocksdb: rocksdb-clean
 	@# Check if libraries already exist
 	@if [ -f "$(ROCKSDB_DIR)/lib/librocksdb.a" ] && \
 	   [ -f "$(ROCKSDB_DIR)/lib/libzstd.a" ] && \
