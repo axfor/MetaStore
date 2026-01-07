@@ -76,14 +76,14 @@ type raftNodeRocks struct {
 	httpstopc chan struct{} // signals http server to shutdown
 	httpdonec chan struct{} // signals http server shutdown complete
 
-	// 批量提案系统（可选）
-	batcher         *batch.ProposalBatcher // 批量提案器（如果启用）
-	batchedProposeC <-chan []byte          // 批量提案通道（如果启用批量，从 batcher 获取）
+	// system(optional)
+	batcher         *batch.ProposalBatcher // (ifenabled)
+	batchedProposeC <-chan []byte          // channel(ifenabled，from batcher get)
 
-	// Lease Read 系统（可选）
-	smartLeaseConfig *lease.SmartLeaseConfig // 智能配置管理器（支持动态扩缩容）
-	leaseManager     *lease.LeaseManager     // 租约管理器（如果启用）
-	readIndexManager *lease.ReadIndexManager // ReadIndex 管理器（如果启用）
+	// Lease Read system(optional)
+	smartLeaseConfig *lease.SmartLeaseConfig // canconfigmanager(supporteddynamic)
+	leaseManager     *lease.LeaseManager     // leasemanager(ifenabled)
+	readIndexManager *lease.ReadIndexManager // ReadIndex manager(ifenabled)
 
 	logger *zap.Logger
 	cfg    *config.Config // Raft configuration
@@ -171,7 +171,7 @@ func (rc *raftNodeRocks) publishEntries(ents []raftpb.Entry) (<-chan struct{}, b
 				break
 			}
 
-			// 如果启用了批量提案，需要解码批量提案
+			// ifenabled，needdecode
 			if rc.cfg.Server.Raft.Batch.Enable {
 				proposals, err := batch.DecodeBatch(ents[i].Data)
 				if err != nil {
@@ -183,7 +183,7 @@ func (rc *raftNodeRocks) publishEntries(ents []raftpb.Entry) (<-chan struct{}, b
 				}
 				data = append(data, proposals...)
 			} else {
-				// 不启用批量提案，直接使用字符串
+				// notenabled，use
 				s := string(ents[i].Data)
 				data = append(data, s)
 			}
@@ -220,7 +220,7 @@ func (rc *raftNodeRocks) publishEntries(ents []raftpb.Entry) (<-chan struct{}, b
 	// after commit, update appliedIndex
 	rc.appliedIndex = ents[len(ents)-1].Index
 
-	// Lease Read: 通知 ReadIndexManager 应用进度
+	// Lease Read: notification ReadIndexManager applied
 	if rc.cfg.Server.Raft.LeaseRead.Enable && rc.readIndexManager != nil {
 		rc.readIndexManager.NotifyApplied(rc.appliedIndex)
 	}
@@ -350,25 +350,25 @@ func (rc *raftNodeRocks) startRaft() {
 	for i := range rpeers {
 		rpeers[i] = raft.Peer{ID: uint64(i + 1)}
 	}
-	// Raft 配置 - 从配置文件读取（基于业界最佳实践：etcd、TiKV、CockroachDB）
+	// Raft config - fromconfigfileread(at：etcd、TiKV、CockroachDB)
 	c := &raft.Config{
 		ID:            uint64(rc.id),
-		ElectionTick:  rc.cfg.Server.Raft.ElectionTick,  // 从配置读取
-		HeartbeatTick: rc.cfg.Server.Raft.HeartbeatTick, // 从配置读取
+		ElectionTick:  rc.cfg.Server.Raft.ElectionTick,  // fromconfigread
+		HeartbeatTick: rc.cfg.Server.Raft.HeartbeatTick, // fromconfigread
 
 		Storage: rc.raftStorage,
 
-		// 性能优化参数（从配置读取）
+		// performanceoptimizeargument(fromconfigread)
 		MaxSizePerMsg:             rc.cfg.Server.Raft.MaxSizePerMsg,
 		MaxInflightMsgs:           rc.cfg.Server.Raft.MaxInflightMsgs,
 		MaxUncommittedEntriesSize: rc.cfg.Server.Raft.MaxUncommittedEntriesSize,
 
-		// 稳定性优化（从配置读取）
+		// stableoptimize(fromconfigread)
 		PreVote:     rc.cfg.Server.Raft.PreVote,
 		CheckQuorum: rc.cfg.Server.Raft.CheckQuorum,
 
-		// 避免在网络分区时立即降级 leader
-		// DisableProposalForwarding: false, // 允许 follower 转发提案（默认行为）
+		// innetworkpartitionwhendegradation leader
+		// DisableProposalForwarding: false, // allow follower (defaultrowas)
 	}
 
 	if oldNode || rc.join {
@@ -394,7 +394,7 @@ func (rc *raftNodeRocks) startRaft() {
 		}
 	}
 
-	// 初始化批量提案系统（如果启用）
+	// initializesystem(ifenabled)
 	// Witness nodes don't propose data, so batch system is not needed
 	if rc.cfg.Server.Raft.Batch.Enable && !rc.isWitness() {
 		batchConfig := batch.BatchConfig{
@@ -404,10 +404,10 @@ func (rc *raftNodeRocks) startRaft() {
 			MaxTimeout:    rc.cfg.Server.Raft.Batch.MaxTimeout,
 			LoadThreshold: rc.cfg.Server.Raft.Batch.LoadThreshold,
 		}
-		// batcher 拥有并管理输出通道，通过 ProposeC() 获取
+		// batcher ownandmanagementoutputchannel，via ProposeC() get
 		rc.batcher = batch.NewProposalBatcher(batchConfig, rc.proposeC, rc.logger)
 		rc.batcher.Start(context.Background())
-		rc.batchedProposeC = rc.batcher.ProposeC() // 获取 batcher 的输出通道
+		rc.batchedProposeC = rc.batcher.ProposeC() // get batcher outputchannel
 		rc.logger.Info("batch proposal system enabled",
 			zap.Int("min_batch_size", batchConfig.MinBatchSize),
 			zap.Int("max_batch_size", batchConfig.MaxBatchSize),
@@ -422,20 +422,20 @@ func (rc *raftNodeRocks) startRaft() {
 		rc.logger.Info("batch proposal system disabled", zap.String("component", "raft-rocks"))
 	}
 
-	// 初始化 Lease Read 系统（如果启用）
+	// initialize Lease Read system(ifenabled)
 	if rc.cfg.Server.Raft.LeaseRead.Enable {
-		// 计算选举超时和心跳间隔
+		// calculateelectelectiontimeoutandinterval
 		electionTimeout := time.Duration(rc.cfg.Server.Raft.ElectionTick) * rc.cfg.Server.Raft.TickInterval
 		heartbeatInterval := time.Duration(rc.cfg.Server.Raft.HeartbeatTick) * rc.cfg.Server.Raft.TickInterval
 
-		// 1. 创建智能配置管理器（支持动态扩缩容）
+		// 1. createcanconfigmanager(supporteddynamic)
 		rc.smartLeaseConfig = lease.NewSmartLeaseConfig(true, rc.logger)
 
-		// 2. 检测初始集群规模
+		// 2. testinitialcluster
 		initialClusterSize := lease.DetectClusterSizeFromPeers(rc.peers)
 		rc.smartLeaseConfig.UpdateClusterSize(initialClusterSize)
 
-		// 3. ✅ 总是创建组件（即使单节点）- 支持动态扩缩容
+		// 3. ✅ alwayscreatecomponent(singlenode)- supporteddynamic
 		leaseConfig := lease.LeaseConfig{
 			ElectionTimeout: electionTimeout,
 			HeartbeatTick:   heartbeatInterval,
@@ -444,22 +444,22 @@ func (rc *raftNodeRocks) startRaft() {
 		rc.leaseManager = lease.NewLeaseManager(leaseConfig, rc.smartLeaseConfig, rc.logger)
 		rc.readIndexManager = lease.NewReadIndexManager(rc.smartLeaseConfig, rc.logger)
 
-		// 4. 启动自动检测集群规模变化（每60秒检测一次）
+		// 4. starttestclusterchangetransform(60secondstestfirst time)
 		go rc.smartLeaseConfig.StartAutoDetection(
 			func() int {
-				// 从 Raft 节点状态获取当前集群规模
+				// from Raft nodestatusgetcurrentcluster
 				status := rc.node.Status()
 				clusterSize := len(status.Progress)
 
-				// 容错：如果 Raft 状态还未就绪（Progress 为空），使用 peers 作为后备
+				// ：if Raft statusstillnot ready(Progress asempty)，use peers asafterprepare
 				if clusterSize == 0 {
 					clusterSize = len(rc.peers)
 				}
 
 				return clusterSize
 			},
-			60*time.Second, // 检测间隔
-			rc.stopc,       // 停止信号
+			60*time.Second, // testinterval
+			rc.stopc,       // stopped
 		)
 
 		rc.logger.Info("lease read system enabled with smart scaling",
@@ -518,7 +518,7 @@ func (rc *raftNodeRocks) startRaft() {
 func (rc *raftNodeRocks) stop() {
 	rc.stopHTTP()
 
-	// 停止批量提案器（如果启用）
+	// stopped(ifenabled)
 	if rc.batcher != nil {
 		rc.batcher.Stop()
 	}
@@ -616,7 +616,7 @@ func (rc *raftNodeRocks) serveChannels() {
 	rc.snapshotIndex = snap.Metadata.Index
 	rc.appliedIndex = snap.Metadata.Index
 
-	// 使用配置文件中的 tick 间隔
+	// use RocksDB config from config file tick interval
 	ticker := time.NewTicker(rc.cfg.Server.Raft.TickInterval)
 	defer ticker.Stop()
 
@@ -624,7 +624,7 @@ func (rc *raftNodeRocks) serveChannels() {
 	go func() {
 		confChangeCount := uint64(0)
 
-		// 如果启用了批量提案，从 batchedProposeC 读取
+		// ifenabled，from batchedProposeC read
 		if rc.cfg.Server.Raft.Batch.Enable {
 			for rc.batchedProposeC != nil && rc.confChangeC != nil {
 				select {
@@ -632,7 +632,7 @@ func (rc *raftNodeRocks) serveChannels() {
 					if !ok {
 						rc.batchedProposeC = nil
 					} else {
-						// 批量提案已经编码为 []byte，直接提交
+						// alreadyencodeas []byte，commit
 						rc.node.Propose(context.TODO(), batchedProp)
 					}
 
@@ -647,7 +647,7 @@ func (rc *raftNodeRocks) serveChannels() {
 				}
 			}
 		} else {
-			// 不启用批量提案，使用原始逻辑
+			// notenabled，usestart
 			for rc.proposeC != nil && rc.confChangeC != nil {
 				select {
 				case prop, ok := <-rc.proposeC:
@@ -673,8 +673,8 @@ func (rc *raftNodeRocks) serveChannels() {
 		close(rc.stopc)
 	}()
 
-	// 单节点租约续期定时器（方案3：单节点特殊处理）
-	// 用于单节点场景下定期续约租约,因为单节点没有心跳消息触发Ready事件
+	// singlenodeleaseschedule(3：singlenodehandle)
+	// for singlenodescenarioscenenextrenewallease,assinglenodenonemessagetriggerReadyevent
 	heartbeatInterval := time.Duration(rc.cfg.Server.Raft.HeartbeatTick) * rc.cfg.Server.Raft.TickInterval
 	leaseRenewTicker := time.NewTicker(heartbeatInterval / 2)
 	defer leaseRenewTicker.Stop()
@@ -685,14 +685,14 @@ func (rc *raftNodeRocks) serveChannels() {
 		case <-ticker.C:
 			rc.node.Tick()
 
-		// 单节点租约续期定时器触发
+		// singlenodeleasescheduletrigger
 		case <-leaseRenewTicker.C:
-			// 仅在单节点场景下执行租约续期
+			// insinglenodescenarioscenenextexecutelease
 			if rc.cfg.Server.Raft.LeaseRead.Enable && rc.leaseManager != nil && rc.leaseManager.IsLeader() {
 				status := rc.node.Status()
 				totalNodes := len(status.Progress)
 
-				// 仅对单节点执行定时续约
+				// tosinglenodeexecuteschedulerenewal
 				if totalNodes == 1 {
 					rc.tryRenewLease()
 				}
@@ -700,10 +700,10 @@ func (rc *raftNodeRocks) serveChannels() {
 
 		// store raft entries to RocksDB, then publish over commit channel
 		case rd := <-rc.node.Ready():
-			// Lease Read: 处理角色变更
+			// Lease Read: handlerolechange
 			if rc.cfg.Server.Raft.LeaseRead.Enable && rc.leaseManager != nil {
 				if rd.SoftState != nil {
-					// 检查角色变更
+					// checkrolechange
 					if rd.SoftState.RaftState == raft.StateLeader {
 						rc.leaseManager.OnBecomeLeader()
 					} else {
@@ -740,7 +740,7 @@ func (rc *raftNodeRocks) serveChannels() {
 			// Send messages to peers
 			rc.transport.Send(rc.processMessages(rd.Messages))
 
-			// Lease Read: 处理心跳响应以续约租约(多节点场景)
+			// Lease Read: handleresponserenewallease(manynodescenarioscene)
 			if rc.cfg.Server.Raft.LeaseRead.Enable && rc.leaseManager != nil && rc.leaseManager.IsLeader() {
 				rc.tryRenewLease()
 			}
@@ -810,7 +810,7 @@ func (rc *raftNodeRocks) ReportSnapshot(id uint64, status raft.SnapshotStatus) {
 	rc.node.ReportSnapshot(id, status)
 }
 
-// Status 返回 Raft 状态信息
+// Status return Raft status info
 func (rc *raftNodeRocks) Status() kvstore.RaftStatus {
 	status := rc.node.Status()
 	return kvstore.RaftStatus{
@@ -823,51 +823,51 @@ func (rc *raftNodeRocks) Status() kvstore.RaftStatus {
 	}
 }
 
-// TransferLeadership 将 leader 角色转移到指定节点
+// TransferLeadership will leader roletospecifiednode
 func (rc *raftNodeRocks) TransferLeadership(targetID uint64) error {
 	rc.node.TransferLeadership(context.TODO(), 0, targetID)
 	return nil
 }
 
-// LeaseManager 返回租约管理器（用于测试）
+// LeaseManager returnleasemanager(for test)
 func (rc *raftNodeRocks) LeaseManager() *lease.LeaseManager {
 	return rc.leaseManager
 }
 
-// ReadIndexManager 返回读索引管理器（用于测试）
+// ReadIndexManager returnindexmanager(for test)
 func (rc *raftNodeRocks) ReadIndexManager() *lease.ReadIndexManager {
 	return rc.readIndexManager
 }
 
-// tryRenewLease 尝试续约租约
-// 统计活跃节点数量并调用租约管理器进行续约
-// 该方法被以下两个场景调用：
-// 1. 单节点场景：定时器触发
-// 2. 多节点场景：Ready 事件触发（心跳响应）
+// tryRenewLease testrenewallease
+// statisticsactivenodequantityandcallleasemanagerrowrenewal
+// shouldmethodbenext scenarioscenecall：
+// 1. singlenodescenarioscene：scheduletrigger
+// 2. manynodescenarioscene：Ready eventtrigger(response)
 func (rc *raftNodeRocks) tryRenewLease() {
 	status := rc.node.Status()
 	totalNodes := len(status.Progress)
 	activeNodes := 0
 
-	// 统计活跃的节点数量（包括自己）
+	// statisticsactivenodequantity(package)
 	for _, pr := range status.Progress {
 		if pr.RecentActive {
 			activeNodes++
 		}
 	}
 
-	// 调用租约管理器续约
+	// callleasemanagerrenewal
 	renewed := rc.leaseManager.RenewLease(activeNodes, totalNodes)
 
-	// 只在首次续约或调试时记录日志
+	// in timerenewalordebugwhenrecordlog
 	if renewed && rc.cfg.Server.Raft.LeaseRead.Enable {
-		// rc.logger.Info("租约续约成功",
+		// rc.logger.Info("leaserenewalsuccess",
 		// 	zap.Int("activeNodes", activeNodes),
 		// 	zap.Int("totalNodes", totalNodes))
 	}
 }
 
-// IsStopped 检查节点是否已停止（用于测试）
+// IsStopped checknodeisnoalready stopped(for test)
 func (rc *raftNodeRocks) IsStopped() bool {
 	select {
 	case <-rc.stopc:

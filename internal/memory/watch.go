@@ -24,12 +24,12 @@ import (
 	"go.uber.org/zap"
 )
 
-// Watch 创建一个 watch，返回事件通道
+// Watch createfirst  watch，returneventchannel
 func (m *MemoryEtcd) Watch(ctx context.Context, key, rangeEnd string, startRevision int64, watchID int64) (<-chan kvstore.WatchEvent, error) {
 	return m.WatchWithOptions(key, rangeEnd, startRevision, watchID, nil)
 }
 
-// WatchWithOptions 创建带选项的 watch
+// WatchWithOptions createoption watch
 func (m *MemoryEtcd) WatchWithOptions(key, rangeEnd string, startRevision int64, watchID int64, opts *kvstore.WatchOptions) (<-chan kvstore.WatchEvent, error) {
 	m.watchMu.Lock()
 	defer m.watchMu.Unlock()
@@ -39,7 +39,7 @@ func (m *MemoryEtcd) WatchWithOptions(key, rangeEnd string, startRevision int64,
 		return nil, fmt.Errorf("watch ID %d already exists", watchID)
 	}
 
-	// 创建事件通道（带缓冲以避免阻塞）
+	// createeventchannel(bufferblocking)
 	eventCh := make(chan kvstore.WatchEvent, 100)
 
 	// Parse options
@@ -52,7 +52,7 @@ func (m *MemoryEtcd) WatchWithOptions(key, rangeEnd string, startRevision int64,
 		fragment = opts.Fragment
 	}
 
-	// 创建订阅
+	// createsubscribe
 	sub := &watchSubscription{
 		watchID:        watchID,
 		key:            key,
@@ -68,40 +68,40 @@ func (m *MemoryEtcd) WatchWithOptions(key, rangeEnd string, startRevision int64,
 
 	m.watches[watchID] = sub
 
-	// 如果 startRevision > 0，发送历史事件
-	// 注意：当前实现不保留完整历史，只能从当前数据生成初始快照
+	// if startRevision > 0，sendevent
+	// note：currentimplementnotcomplete，canfromcurrentdatabecomeinitialsnapshot
 	if startRevision > 0 && startRevision < m.revision.Load() {
-		// 异步发送当前所有匹配的键作为 PUT 事件
+		// asynchronoussendcurrentallmatchkeyas PUT event
 		go m.sendHistoricalEvents(sub, key, rangeEnd)
 	}
 
 	return eventCh, nil
 }
 
-// sendHistoricalEvents 发送历史事件（从当前数据快照）
+// sendHistoricalEvents sendevent(fromcurrentdatasnapshot)
 func (m *MemoryEtcd) sendHistoricalEvents(sub *watchSubscription, key, rangeEnd string) {
-	// 使用 ShardedMap.GetAll() 获取所有数据（内部加锁）
+	// use ShardedMap.GetAll() getalldata(internallock)
 	allData := m.kvData.GetAll()
 
-	// 获取所有匹配的键
+	// getallmatchkey
 	for k, kv := range allData {
 		if m.matchWatch(k, key, rangeEnd) {
 			event := kvstore.WatchEvent{
 				Type:     kvstore.EventTypePut,
 				Kv:       kv,
-				PrevKv:   nil, // 历史事件不返回 prevKv
+				PrevKv:   nil, // eventnotreturn prevKv
 				Revision: kv.ModRevision,
 			}
 
-			// 非阻塞发送
+			// non-blockingsend
 			select {
 			case sub.eventCh <- event:
-				// 成功发送
+				// successsend
 			case <-sub.cancel:
-				// Watch 已取消
+				// Watch already cancel
 				return
 			default:
-				// Channel 满了，跳过此事件
+				// Channel full，skipevent
 				log.Warn("Watch channel full, skipping historical event",
 				zap.Int64("watchID", sub.watchID),
 				zap.String("key", k),
@@ -111,7 +111,7 @@ func (m *MemoryEtcd) sendHistoricalEvents(sub *watchSubscription, key, rangeEnd 
 	}
 }
 
-// CancelWatch 取消一个 watch
+// CancelWatch cancelfirst  watch
 func (m *MemoryEtcd) CancelWatch(watchID int64) error {
 	m.watchMu.Lock()
 	sub, ok := m.watches[watchID]
@@ -139,7 +139,7 @@ func (m *MemoryEtcd) CancelWatch(watchID int64) error {
 	return nil
 }
 
-// notifyWatches 通知所有匹配的 watch (high-performance lock-free version)
+// notifyWatches notificationallmatch watch (high-performance lock-free version)
 func (m *MemoryEtcd) notifyWatches(event kvstore.WatchEvent) {
 	key := ""
 	if event.Kv != nil {
@@ -179,9 +179,9 @@ func (m *MemoryEtcd) notifyWatches(event kvstore.WatchEvent) {
 		case sub.eventCh <- eventToSend:
 			// Success
 		case <-sub.cancel:
-			// Watch已取消
+			// Watchalready cancel
 		default:
-			// Channel满了，异步发送（慢客户端）
+			// Channelfull，asynchronoussend(slowclient)
 			go m.slowSendEvent(sub, eventToSend)
 		}
 	}
@@ -221,22 +221,22 @@ func (m *MemoryEtcd) slowSendEvent(sub *watchSubscription, event kvstore.WatchEv
 	}
 }
 
-// matchWatch 检查 key 是否匹配 watch 范围
+// matchWatch check key isnomatch watch range
 func (m *MemoryEtcd) matchWatch(key, watchKey, rangeEnd string) bool {
 	if rangeEnd == "" {
-		// 单键匹配
+		// singlekeymatch
 		return key == watchKey
 	}
-	// 范围匹配
+	// rangematch
 	return key >= watchKey && (rangeEnd == "\x00" || key < rangeEnd)
 }
 
-// LeaseGrant 创建一个新的 lease
+// LeaseGrant createfirst new lease
 func (m *MemoryEtcd) LeaseGrant(ctx context.Context, id int64, ttl int64) (*kvstore.Lease, error) {
 	m.leaseMu.Lock()
 	defer m.leaseMu.Unlock()
 
-	// 检查 lease 是否已存在
+	// check lease isnoexists
 	if _, ok := m.leases[id]; ok {
 		return nil, fmt.Errorf("lease already exists: %d", id)
 	}
@@ -252,7 +252,7 @@ func (m *MemoryEtcd) LeaseGrant(ctx context.Context, id int64, ttl int64) (*kvst
 	return lease, nil
 }
 
-// LeaseRevoke 撤销一个 lease（删除所有关联的键）
+// LeaseRevoke revokedfirst  lease(deleteallclosekey)
 func (m *MemoryEtcd) LeaseRevoke(ctx context.Context, id int64) error {
 	m.leaseMu.Lock()
 
@@ -265,13 +265,13 @@ func (m *MemoryEtcd) LeaseRevoke(ctx context.Context, id int64) error {
 	// Collect events to send after releasing lock
 	events := make([]kvstore.WatchEvent, 0, len(lease.Keys))
 
-	// 删除所有关联的键
+	// deleteallclosekey
 	for key := range lease.Keys {
 		if kv, exists := m.kvData.Get(key); exists {
-			// 递增 revision
+			// increase revision
 			newRevision := m.revision.Add(1)
 
-			// 删除键（ShardedMap 内部加锁）
+			// deletekey(ShardedMap internallock)
 			m.kvData.Delete(key)
 
 			// Prepare watch event
@@ -293,13 +293,13 @@ func (m *MemoryEtcd) LeaseRevoke(ctx context.Context, id int64) error {
 		}
 	}
 
-	// 删除 lease
+	// delete lease
 	delete(m.leases, id)
 
 	// Release lock before notifying watches (data is already committed)
 	m.leaseMu.Unlock()
 
-	// 触发 watch 事件
+	// trigger watch event
 	for _, event := range events {
 		m.notifyWatches(event)
 	}
@@ -307,7 +307,7 @@ func (m *MemoryEtcd) LeaseRevoke(ctx context.Context, id int64) error {
 	return nil
 }
 
-// LeaseRenew 续约一个 lease
+// LeaseRenew renewalfirst  lease
 func (m *MemoryEtcd) LeaseRenew(ctx context.Context, id int64) (*kvstore.Lease, error) {
 	m.leaseMu.Lock()
 	defer m.leaseMu.Unlock()
@@ -317,12 +317,12 @@ func (m *MemoryEtcd) LeaseRenew(ctx context.Context, id int64) (*kvstore.Lease, 
 		return nil, fmt.Errorf("lease not found: %d", id)
 	}
 
-	// 续约
+	// renewal
 	lease.Renew(lease.TTL)
 	return lease, nil
 }
 
-// LeaseTimeToLive 获取 lease 的剩余时间
+// LeaseTimeToLive get lease time
 func (m *MemoryEtcd) LeaseTimeToLive(ctx context.Context, id int64) (*kvstore.Lease, error) {
 	m.leaseMu.RLock()
 	defer m.leaseMu.RUnlock()
@@ -332,7 +332,7 @@ func (m *MemoryEtcd) LeaseTimeToLive(ctx context.Context, id int64) (*kvstore.Le
 		return nil, fmt.Errorf("lease not found: %d", id)
 	}
 
-	// 返回 lease 的副本
+	// return lease replica
 	leaseCopy := &kvstore.Lease{
 		ID:        lease.ID,
 		TTL:       lease.TTL,
@@ -346,7 +346,7 @@ func (m *MemoryEtcd) LeaseTimeToLive(ctx context.Context, id int64) (*kvstore.Le
 	return leaseCopy, nil
 }
 
-// Leases 返回所有 lease
+// Leases returnall lease
 func (m *MemoryEtcd) Leases(ctx context.Context) ([]*kvstore.Lease, error) {
 	m.leaseMu.RLock()
 	defer m.leaseMu.RUnlock()

@@ -26,24 +26,24 @@ import (
 	"go.etcd.io/etcd/api/v3/authpb"
 )
 
-// setupAuthTest 创建测试环境
+// setupAuthTest creates test environment
 func setupAuthTest(t *testing.T) (*Server, func()) {
-	// 创建内存存储
+	// Create memory storage
 	store := memory.NewMemoryEtcd()
 
-	// 创建测试配置
+	// Create test configuration
 	testCfg := createAuthTestConfig()
 
-	// 创建服务器配置
+	// Create server configuration
 	cfg := ServerConfig{
 		Store:     store,
-		Address:   ":0", // 随机端口
+		Address:   ":0", // random port
 		ClusterID: 1,
 		MemberID:  1,
-		Config:    testCfg, // 使用配置
+		Config:    testCfg, // use configuration
 	}
 
-	// 创建服务器（但不启动）
+	// Create server (but don't start)
 	srv, err := NewServer(cfg)
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
@@ -56,31 +56,31 @@ func setupAuthTest(t *testing.T) (*Server, func()) {
 	return srv, cleanup
 }
 
-// createAuthTestConfig 创建认证测试专用配置
+// createAuthTestConfig creates authentication test configuration
 func createAuthTestConfig() *config.Config {
 	cfg := config.DefaultConfig(1, 1, ":2379")
 
-	// 测试环境优化：使用较低的 bcrypt cost 加快测试速度
-	cfg.Server.Auth.BcryptCost = 4  // 默认 10，测试用 4
+	// Test environment optimization: use lower bcrypt cost to speed up tests
+	cfg.Server.Auth.BcryptCost = 4  // default 10, use 4 for testing
 	cfg.Server.Auth.TokenTTL = 10 * time.Minute
 	cfg.Server.Auth.TokenCleanupInterval = 1 * time.Minute
-	cfg.Server.Auth.EnableAudit = false // 测试环境不需要审计日志
+	cfg.Server.Auth.EnableAudit = false // test environment doesn't need audit logs
 
-	// 配置限制
+	// Configure limits
 	cfg.Server.Limits.MaxWatchCount = 1000
 	cfg.Server.Limits.MaxLeaseCount = 10000
 
-	// 禁用监控避免端口冲突
+	// Disable monitoring to avoid port conflicts
 	cfg.Server.Monitoring.EnablePrometheus = false
 
-	// 快速超时
+	// Fast timeouts
 	cfg.Server.Reliability.ShutdownTimeout = 5 * time.Second
 	cfg.Server.Reliability.DrainTimeout = 2 * time.Second
 
 	return cfg
 }
 
-// TestAuthBasicFlow 测试基本认证流程
+// TestAuthBasicFlow tests basic authentication flow
 func TestAuthBasicFlow(t *testing.T) {
 	srv, cleanup := setupAuthTest(t)
 	defer cleanup()
@@ -88,7 +88,7 @@ func TestAuthBasicFlow(t *testing.T) {
 	ctx := context.Background()
 	authSrv := &AuthServer{server: srv}
 
-	// 1. 添加 root 用户
+	// 1. Add root user
 	t.Run("AddRootUser", func(t *testing.T) {
 		_, err := authSrv.UserAdd(ctx, &pb.AuthUserAddRequest{
 			Name:     "root",
@@ -99,7 +99,7 @@ func TestAuthBasicFlow(t *testing.T) {
 		}
 	})
 
-	// 2. 启用认证
+	// 2. Enable authentication
 	t.Run("EnableAuth", func(t *testing.T) {
 		_, err := authSrv.AuthEnable(ctx, &pb.AuthEnableRequest{})
 		if err != nil {
@@ -107,7 +107,7 @@ func TestAuthBasicFlow(t *testing.T) {
 		}
 	})
 
-	// 3. 检查状态
+	// 3. Check status
 	t.Run("CheckAuthStatus", func(t *testing.T) {
 		resp, err := authSrv.AuthStatus(ctx, &pb.AuthStatusRequest{})
 		if err != nil {
@@ -118,7 +118,7 @@ func TestAuthBasicFlow(t *testing.T) {
 		}
 	})
 
-	// 4. 认证
+	// 4. Authenticate
 	t.Run("Authenticate", func(t *testing.T) {
 		resp, err := authSrv.Authenticate(ctx, &pb.AuthenticateRequest{
 			Name:     "root",
@@ -131,7 +131,7 @@ func TestAuthBasicFlow(t *testing.T) {
 			t.Fatal("Token should not be empty")
 		}
 
-		// 验证 token
+		// Validate token
 		tokenInfo, err := srv.authMgr.ValidateToken(resp.Token)
 		if err != nil {
 			t.Fatalf("Failed to validate token: %v", err)
@@ -141,14 +141,14 @@ func TestAuthBasicFlow(t *testing.T) {
 		}
 	})
 
-	// 5. 禁用认证
+	// 5. Disable authentication
 	t.Run("DisableAuth", func(t *testing.T) {
 		_, err := authSrv.AuthDisable(ctx, &pb.AuthDisableRequest{})
 		if err != nil {
 			t.Fatalf("Failed to disable auth: %v", err)
 		}
 
-		// 检查状态
+		// Check status
 		resp, err := authSrv.AuthStatus(ctx, &pb.AuthStatusRequest{})
 		if err != nil {
 			t.Fatalf("Failed to get auth status: %v", err)
@@ -159,7 +159,7 @@ func TestAuthBasicFlow(t *testing.T) {
 	})
 }
 
-// TestUserManagement 测试用户管理
+// TestUserManagement tests user management
 func TestUserManagement(t *testing.T) {
 	srv, cleanup := setupAuthTest(t)
 	defer cleanup()
@@ -167,7 +167,7 @@ func TestUserManagement(t *testing.T) {
 	ctx := context.Background()
 	authSrv := &AuthServer{server: srv}
 
-	// 添加用户
+	// Add user
 	t.Run("AddUser", func(t *testing.T) {
 		_, err := authSrv.UserAdd(ctx, &pb.AuthUserAddRequest{
 			Name:     "alice",
@@ -178,7 +178,7 @@ func TestUserManagement(t *testing.T) {
 		}
 	})
 
-	// 获取用户
+	// Get user
 	t.Run("GetUser", func(t *testing.T) {
 		resp, err := authSrv.UserGet(ctx, &pb.AuthUserGetRequest{
 			Name: "alice",
@@ -191,7 +191,7 @@ func TestUserManagement(t *testing.T) {
 		}
 	})
 
-	// 列出用户
+	// List users
 	t.Run("ListUsers", func(t *testing.T) {
 		resp, err := authSrv.UserList(ctx, &pb.AuthUserListRequest{})
 		if err != nil {
@@ -205,7 +205,7 @@ func TestUserManagement(t *testing.T) {
 		}
 	})
 
-	// 修改密码
+	// Change password
 	t.Run("ChangePassword", func(t *testing.T) {
 		_, err := authSrv.UserChangePassword(ctx, &pb.AuthUserChangePasswordRequest{
 			Name:     "alice",
@@ -215,20 +215,20 @@ func TestUserManagement(t *testing.T) {
 			t.Fatalf("Failed to change password: %v", err)
 		}
 
-		// 验证新密码
+		// Verify new password
 		_, err = srv.authMgr.Authenticate("alice", "newpass")
 		if err != nil {
 			t.Fatalf("Failed to authenticate with new password: %v", err)
 		}
 
-		// 验证旧密码失败
+		// Verify old password fails
 		_, err = srv.authMgr.Authenticate("alice", "alicepass")
 		if err == nil {
 			t.Fatal("Old password should not work")
 		}
 	})
 
-	// 删除用户
+	// Delete user
 	t.Run("DeleteUser", func(t *testing.T) {
 		_, err := authSrv.UserDelete(ctx, &pb.AuthUserDeleteRequest{
 			Name: "alice",
@@ -237,7 +237,7 @@ func TestUserManagement(t *testing.T) {
 			t.Fatalf("Failed to delete user: %v", err)
 		}
 
-		// 验证用户已删除
+		// Verify user is deleted
 		resp, err := authSrv.UserList(ctx, &pb.AuthUserListRequest{})
 		if err != nil {
 			t.Fatalf("Failed to list users: %v", err)
@@ -248,7 +248,7 @@ func TestUserManagement(t *testing.T) {
 	})
 }
 
-// TestRoleManagement 测试角色管理
+// TestRoleManagement tests role management
 func TestRoleManagement(t *testing.T) {
 	srv, cleanup := setupAuthTest(t)
 	defer cleanup()
@@ -256,7 +256,7 @@ func TestRoleManagement(t *testing.T) {
 	ctx := context.Background()
 	authSrv := &AuthServer{server: srv}
 
-	// 添加角色
+	// Add role
 	t.Run("AddRole", func(t *testing.T) {
 		_, err := authSrv.RoleAdd(ctx, &pb.AuthRoleAddRequest{
 			Name: "admin",
@@ -266,7 +266,7 @@ func TestRoleManagement(t *testing.T) {
 		}
 	})
 
-	// 获取角色
+	// Get role
 	t.Run("GetRole", func(t *testing.T) {
 		resp, err := authSrv.RoleGet(ctx, &pb.AuthRoleGetRequest{
 			Role: "admin",
@@ -279,7 +279,7 @@ func TestRoleManagement(t *testing.T) {
 		}
 	})
 
-	// 授予权限
+	// Grant permission
 	t.Run("GrantPermission", func(t *testing.T) {
 		_, err := authSrv.RoleGrantPermission(ctx, &pb.AuthRoleGrantPermissionRequest{
 			Name: "admin",
@@ -293,7 +293,7 @@ func TestRoleManagement(t *testing.T) {
 			t.Fatalf("Failed to grant permission: %v", err)
 		}
 
-		// 验证权限
+		// Verify permission
 		resp, err := authSrv.RoleGet(ctx, &pb.AuthRoleGetRequest{
 			Role: "admin",
 		})
@@ -305,7 +305,7 @@ func TestRoleManagement(t *testing.T) {
 		}
 	})
 
-	// 撤销权限
+	// Revoke permission
 	t.Run("RevokePermission", func(t *testing.T) {
 		_, err := authSrv.RoleRevokePermission(ctx, &pb.AuthRoleRevokePermissionRequest{
 			Role:     "admin",
@@ -316,7 +316,7 @@ func TestRoleManagement(t *testing.T) {
 			t.Fatalf("Failed to revoke permission: %v", err)
 		}
 
-		// 验证权限已撤销
+		// Verify permission is revoked
 		resp, err := authSrv.RoleGet(ctx, &pb.AuthRoleGetRequest{
 			Role: "admin",
 		})
@@ -328,7 +328,7 @@ func TestRoleManagement(t *testing.T) {
 		}
 	})
 
-	// 列出角色
+	// List roles
 	t.Run("ListRoles", func(t *testing.T) {
 		resp, err := authSrv.RoleList(ctx, &pb.AuthRoleListRequest{})
 		if err != nil {
@@ -339,7 +339,7 @@ func TestRoleManagement(t *testing.T) {
 		}
 	})
 
-	// 删除角色
+	// Delete role
 	t.Run("DeleteRole", func(t *testing.T) {
 		_, err := authSrv.RoleDelete(ctx, &pb.AuthRoleDeleteRequest{
 			Role: "admin",
@@ -348,7 +348,7 @@ func TestRoleManagement(t *testing.T) {
 			t.Fatalf("Failed to delete role: %v", err)
 		}
 
-		// 验证角色已删除
+		// Verify role is deleted
 		resp, err := authSrv.RoleList(ctx, &pb.AuthRoleListRequest{})
 		if err != nil {
 			t.Fatalf("Failed to list roles: %v", err)
@@ -359,7 +359,7 @@ func TestRoleManagement(t *testing.T) {
 	})
 }
 
-// TestUserRoleBinding 测试用户角色绑定
+// TestUserRoleBinding tests user role binding
 func TestUserRoleBinding(t *testing.T) {
 	srv, cleanup := setupAuthTest(t)
 	defer cleanup()
@@ -367,11 +367,11 @@ func TestUserRoleBinding(t *testing.T) {
 	ctx := context.Background()
 	authSrv := &AuthServer{server: srv}
 
-	// 创建用户和角色
+	// Create user and role
 	_, _ = authSrv.UserAdd(ctx, &pb.AuthUserAddRequest{Name: "bob", Password: "bobpass"})
 	_, _ = authSrv.RoleAdd(ctx, &pb.AuthRoleAddRequest{Name: "viewer"})
 
-	// 授予角色
+	// Grant role
 	t.Run("GrantRole", func(t *testing.T) {
 		_, err := authSrv.UserGrantRole(ctx, &pb.AuthUserGrantRoleRequest{
 			User: "bob",
@@ -381,7 +381,7 @@ func TestUserRoleBinding(t *testing.T) {
 			t.Fatalf("Failed to grant role: %v", err)
 		}
 
-		// 验证角色
+		// Verify role
 		resp, err := authSrv.UserGet(ctx, &pb.AuthUserGetRequest{Name: "bob"})
 		if err != nil {
 			t.Fatalf("Failed to get user: %v", err)
@@ -391,7 +391,7 @@ func TestUserRoleBinding(t *testing.T) {
 		}
 	})
 
-	// 撤销角色
+	// Revoke role
 	t.Run("RevokeRole", func(t *testing.T) {
 		_, err := authSrv.UserRevokeRole(ctx, &pb.AuthUserRevokeRoleRequest{
 			Name: "bob",
@@ -401,7 +401,7 @@ func TestUserRoleBinding(t *testing.T) {
 			t.Fatalf("Failed to revoke role: %v", err)
 		}
 
-		// 验证角色已撤销
+		// Verify role is revoked
 		resp, err := authSrv.UserGet(ctx, &pb.AuthUserGetRequest{Name: "bob"})
 		if err != nil {
 			t.Fatalf("Failed to get user: %v", err)
@@ -412,52 +412,52 @@ func TestUserRoleBinding(t *testing.T) {
 	})
 }
 
-// TestTokenExpiration 测试 token 过期
+// TestTokenExpiration tests token expiration
 func TestTokenExpiration(t *testing.T) {
 	srv, cleanup := setupAuthTest(t)
 	defer cleanup()
 
-	// 创建用户
+	// Create user
 	err := srv.authMgr.AddUser("test", "testpass")
 	if err != nil {
 		t.Fatalf("Failed to add user: %v", err)
 	}
 
-	// 生成 token
+	// Generate token
 	token, err := srv.authMgr.Authenticate("test", "testpass")
 	if err != nil {
 		t.Fatalf("Failed to authenticate: %v", err)
 	}
 
-	// 验证 token 有效
+	// Verify token is valid
 	_, err = srv.authMgr.ValidateToken(token)
 	if err != nil {
 		t.Fatalf("Token should be valid: %v", err)
 	}
 
-	// 手动修改 token 过期时间为过去
+	// Manually modify token expiration time to the past
 	if tokenInfo, exists := srv.authMgr.tokens.Load(token); exists {
 		tokenInfo.ExpiresAt = time.Now().Add(-1 * time.Hour).Unix()
 		srv.authMgr.tokens.Store(token, tokenInfo)
 	}
 
-	// 验证 token 已过期
+	// Verify token has expired
 	_, err = srv.authMgr.ValidateToken(token)
 	if err == nil {
 		t.Fatal("Expired token should not be valid")
 	}
 }
 
-// TestPermissionCheck 测试权限检查
+// TestPermissionCheck tests permission checking
 func TestPermissionCheck(t *testing.T) {
 	srv, cleanup := setupAuthTest(t)
 	defer cleanup()
 
-	// 创建用户和角色
+	// Create user and role
 	_ = srv.authMgr.AddUser("user1", "pass")
 	_ = srv.authMgr.AddRole("role1")
 
-	// 授予权限
+	// Grant permission
 	perm := Permission{
 		Type:     PermissionReadWrite,
 		Key:      []byte("/data/"),
@@ -466,7 +466,7 @@ func TestPermissionCheck(t *testing.T) {
 	_ = srv.authMgr.GrantPermission("role1", perm)
 	_ = srv.authMgr.GrantRole("user1", "role1")
 
-	// 测试权限检查
+	// Test permission check
 	t.Run("AllowedKey", func(t *testing.T) {
 		err := srv.authMgr.CheckPermission("user1", []byte("/data/test"), PermissionRead)
 		if err != nil {
@@ -482,7 +482,7 @@ func TestPermissionCheck(t *testing.T) {
 	})
 
 	t.Run("RootUser", func(t *testing.T) {
-		// root 用户应该有所有权限
+		// root user should have all permissions
 		err := srv.authMgr.CheckPermission("root", []byte("/any/key"), PermissionReadWrite)
 		if err != nil {
 			t.Fatalf("Root should have all permissions: %v", err)
@@ -490,7 +490,7 @@ func TestPermissionCheck(t *testing.T) {
 	})
 }
 
-// BenchmarkAuthenticate 基准测试认证性能
+// BenchmarkAuthenticate benchmark authentication performance
 func BenchmarkAuthenticate(b *testing.B) {
 	srv, cleanup := setupAuthTest(&testing.T{})
 	defer cleanup()
@@ -503,7 +503,7 @@ func BenchmarkAuthenticate(b *testing.B) {
 	}
 }
 
-// BenchmarkValidateToken 基准测试 token 验证性能
+// BenchmarkValidateToken benchmark token validation performance
 func BenchmarkValidateToken(b *testing.B) {
 	srv, cleanup := setupAuthTest(&testing.T{})
 	defer cleanup()

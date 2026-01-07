@@ -20,31 +20,31 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 )
 
-// AlarmManager 管理集群告警
+// AlarmManager manages cluster alarms
 type AlarmManager struct {
 	mu     sync.RWMutex
 	alarms map[uint64]*pb.AlarmMember // memberID -> alarm
 }
 
-// NewAlarmManager 创建告警管理器
+// NewAlarmManager creates an alarm manager
 func NewAlarmManager() *AlarmManager {
 	return &AlarmManager{
 		alarms: make(map[uint64]*pb.AlarmMember),
 	}
 }
 
-// Activate 激活告警
+// Activate activates an alarm
 func (am *AlarmManager) Activate(alarm *pb.AlarmMember) {
 	am.mu.Lock()
 	defer am.mu.Unlock()
 	am.alarms[alarm.MemberID] = alarm
 }
 
-// Deactivate 取消告警
+// Deactivate deactivates an alarm
 func (am *AlarmManager) Deactivate(memberID uint64, alarmType pb.AlarmType) {
 	am.mu.Lock()
 	defer am.mu.Unlock()
-	
+
 	if alarm, exists := am.alarms[memberID]; exists {
 		if alarm.Alarm == alarmType || alarmType == pb.AlarmType_NONE {
 			delete(am.alarms, memberID)
@@ -52,18 +52,18 @@ func (am *AlarmManager) Deactivate(memberID uint64, alarmType pb.AlarmType) {
 	}
 }
 
-// Get 获取指定成员的告警
+// Get gets the alarm for a specified member
 func (am *AlarmManager) Get(memberID uint64) *pb.AlarmMember {
 	am.mu.RLock()
 	defer am.mu.RUnlock()
 	return am.alarms[memberID]
 }
 
-// List 列出所有告警
+// List lists all alarms
 func (am *AlarmManager) List() []*pb.AlarmMember {
 	am.mu.RLock()
 	defer am.mu.RUnlock()
-	
+
 	alarms := make([]*pb.AlarmMember, 0, len(am.alarms))
 	for _, alarm := range am.alarms {
 		alarms = append(alarms, alarm)
@@ -71,30 +71,30 @@ func (am *AlarmManager) List() []*pb.AlarmMember {
 	return alarms
 }
 
-// CheckStorageQuota 检查存储配额
+// CheckStorageQuota checks storage quota
 func (am *AlarmManager) CheckStorageQuota(memberID uint64, dbSize int64, quotaBytes int64) {
 	if quotaBytes <= 0 {
-		return // 未设置配额
+		return // quota not set
 	}
-	
+
 	if dbSize >= quotaBytes {
-		// 触发 NOSPACE 告警
+		// trigger NOSPACE alarm
 		alarm := &pb.AlarmMember{
 			MemberID: memberID,
 			Alarm:    pb.AlarmType_NOSPACE,
 		}
 		am.Activate(alarm)
 	} else if dbSize < int64(float64(quotaBytes)*0.9) {
-		// 如果使用率低于 90%，取消告警
+		// if usage is below 90%, deactivate alarm
 		am.Deactivate(memberID, pb.AlarmType_NOSPACE)
 	}
 }
 
-// HasAlarm 检查是否有指定类型的告警
+// HasAlarm checks if there is an alarm of the specified type
 func (am *AlarmManager) HasAlarm(alarmType pb.AlarmType) bool {
 	am.mu.RLock()
 	defer am.mu.RUnlock()
-	
+
 	for _, alarm := range am.alarms {
 		if alarmType == pb.AlarmType_NONE || alarm.Alarm == alarmType {
 			return true

@@ -151,7 +151,7 @@ func TestRocksDBPerformance_SustainedLoad(t *testing.T) {
 	defer cli.Close()
 
 	// Test parameters
-	duration := 10 * time.Minute // 5分钟持续负载测试
+	duration := 10 * time.Minute // 5separateholdloadtest
 	numClients := 20
 
 	t.Logf("Starting RocksDB sustained load test: %d clients for %v", numClients, duration)
@@ -234,7 +234,7 @@ func TestRocksDBPerformance_MixedWorkload(t *testing.T) {
 	defer cli.Close()
 
 	// Test parameters
-	testDuration := 10 * time.Minute // 5分钟混合负载测试
+	testDuration := 10 * time.Minute // 5separatemergeloadtest
 	numClients := 30
 
 	t.Logf("Starting RocksDB mixed workload test: %d clients for %v", numClients, testDuration)

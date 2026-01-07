@@ -26,40 +26,40 @@ import (
 	"go.uber.org/zap"
 )
 
-// LeaseManager 管理所有的 lease
+// LeaseManager manages all leases
 type LeaseManager struct {
 	mu      sync.RWMutex
 	store   kvstore.Store
 	leases  map[int64]*kvstore.Lease // leaseID -> Lease
-	stopped atomic.Bool               // 是否已停止
-	stopCh  chan struct{}             // 停止信号
+	stopped atomic.Bool               // whether stopped
+	stopCh  chan struct{}             // stop signal
 
-	// 配置
-	checkInterval time.Duration // Lease 过期检查间隔
-	defaultTTL    time.Duration // 默认 TTL
-	maxLeaseCount int           // 最大 Lease 数量限制（0 表示无限制）
+	// Configuration
+	checkInterval time.Duration // Lease expiry check interval
+	defaultTTL    time.Duration // default TTL
+	maxLeaseCount int           // maximum lease count limit (0 means unlimited)
 
-	// Lease ID 生成器 (集群安全)
-	// ID 格式: 高16位为节点ID，低48位为计数器
+	// Lease ID generator (cluster-safe)
+	// ID format: upper 16 bits for node ID, lower 48 bits for counter
 	nodeID         uint64
 	leaseIDCounter atomic.Int64
 }
 
-// NewLeaseManager 创建新的 Lease 管理器
-// 参数: store, leaseConfig (可选), limitsConfig (可选)
+// NewLeaseManager creates a new Lease manager
+// Parameters: store, leaseConfig (optional), limitsConfig (optional)
 func NewLeaseManager(store kvstore.Store, leaseCfg *config.LeaseConfig, limitsCfg *config.LimitsConfig) *LeaseManager {
 	return NewLeaseManagerWithNodeID(store, leaseCfg, limitsCfg, 1)
 }
 
-// NewLeaseManagerWithNodeID 创建新的 Lease 管理器（带节点 ID，用于集群）
+// NewLeaseManagerWithNodeID creates a new Lease manager (with node ID for cluster)
 func NewLeaseManagerWithNodeID(store kvstore.Store, leaseCfg *config.LeaseConfig, limitsCfg *config.LimitsConfig, nodeID uint64) *LeaseManager {
-	// 使用配置或默认值
+	// Use configuration or defaults
 	if leaseCfg == nil {
 		defaultCfg := config.DefaultConfig(1, 1, ":2379")
 		leaseCfg = &defaultCfg.Server.Lease
 	}
 
-	maxLeases := 0 // 默认无限制
+	maxLeases := 0 // default unlimited
 	if limitsCfg != nil {
 		maxLeases = limitsCfg.MaxLeaseCount
 	}
@@ -75,12 +75,12 @@ func NewLeaseManagerWithNodeID(store kvstore.Store, leaseCfg *config.LeaseConfig
 	}
 }
 
-// Start 启动 Lease 管理器（开始过期检查）
+// Start starts the Lease manager (begins expiry checking)
 func (lm *LeaseManager) Start() {
 	go lm.expiryChecker()
 }
 
-// Stop 停止 Lease 管理器
+// Stop stops the Lease manager
 func (lm *LeaseManager) Stop() {
 	if !lm.stopped.CompareAndSwap(false, true) {
 		return
@@ -88,17 +88,17 @@ func (lm *LeaseManager) Stop() {
 	close(lm.stopCh)
 }
 
-// GenerateLeaseID 生成集群唯一的 Lease ID
-// ID 格式: 高16位为节点ID，低48位为计数器
-// 这样每个节点可以独立生成不冲突的 ID
+// GenerateLeaseID generates a cluster-unique Lease ID
+// ID format: upper 16 bits for node ID, lower 48 bits for counter
+// This allows each node to independently generate non-conflicting IDs
 func (lm *LeaseManager) GenerateLeaseID() int64 {
 	counter := lm.leaseIDCounter.Add(1)
-	// 高16位: nodeID, 低48位: counter
-	// 支持最多 65535 个节点，每个节点 2^48 个 Lease
+	// Upper 16 bits: nodeID, lower 48 bits: counter
+	// Supports up to 65535 nodes, each with 2^48 leases
 	return int64(lm.nodeID<<48) | (counter & 0x0000FFFFFFFFFFFF)
 }
 
-// Grant 创建一个新的 lease
+// Grant creates a new lease
 func (lm *LeaseManager) Grant(id int64, ttl int64) (*kvstore.Lease, error) {
 	if lm.stopped.Load() {
 		return nil, ErrLeaseNotFound
@@ -113,7 +113,7 @@ func (lm *LeaseManager) Grant(id int64, ttl int64) (*kvstore.Lease, error) {
 		return nil, ErrTooManyLeases
 	}
 
-	// 委托给 store
+	// Delegate to store
 	lease, err := lm.store.LeaseGrant(context.Background(), id, ttl)
 	if err != nil {
 		return nil, err
@@ -126,7 +126,7 @@ func (lm *LeaseManager) Grant(id int64, ttl int64) (*kvstore.Lease, error) {
 	return lease, nil
 }
 
-// Revoke 撤销一个 lease（删除所有关联的键）
+// Revoke revokes a lease (deletes all associated keys)
 func (lm *LeaseManager) Revoke(id int64) error {
 	lm.mu.Lock()
 	_, ok := lm.leases[id]
@@ -139,11 +139,11 @@ func (lm *LeaseManager) Revoke(id int64) error {
 		return ErrLeaseNotFound
 	}
 
-	// 委托给 store（会删除所有关联的键）
+	// Delegate to store (will delete all associated keys)
 	return lm.store.LeaseRevoke(context.Background(), id)
 }
 
-// Renew 续约一个 lease
+// Renew renews a lease
 func (lm *LeaseManager) Renew(id int64) (*kvstore.Lease, error) {
 	lm.mu.RLock()
 	_, ok := lm.leases[id]
@@ -153,7 +153,7 @@ func (lm *LeaseManager) Renew(id int64) (*kvstore.Lease, error) {
 		return nil, ErrLeaseNotFound
 	}
 
-	// 委托给 store
+	// Delegate to store
 	lease, err := lm.store.LeaseRenew(context.Background(), id)
 	if err != nil {
 		return nil, err
@@ -166,7 +166,7 @@ func (lm *LeaseManager) Renew(id int64) (*kvstore.Lease, error) {
 	return lease, nil
 }
 
-// TimeToLive 获取 lease 的剩余时间
+// TimeToLive gets the remaining time for a lease
 func (lm *LeaseManager) TimeToLive(id int64) (*kvstore.Lease, error) {
 	lm.mu.RLock()
 	_, ok := lm.leases[id]
@@ -176,18 +176,18 @@ func (lm *LeaseManager) TimeToLive(id int64) (*kvstore.Lease, error) {
 		return nil, ErrLeaseNotFound
 	}
 
-	// 委托给 store
+	// Delegate to store
 	return lm.store.LeaseTimeToLive(context.Background(), id)
 }
 
-// Leases 返回所有 lease
+// Leases returns all leases
 func (lm *LeaseManager) Leases() ([]*kvstore.Lease, error) {
 	return lm.store.Leases(context.Background())
 }
 
-// expiryChecker 定期检查并清理过期的 lease
+// expiryChecker periodically checks and cleans up expired leases
 func (lm *LeaseManager) expiryChecker() {
-	ticker := time.NewTicker(lm.checkInterval) // 使用配置的检查间隔
+	ticker := time.NewTicker(lm.checkInterval) // Use configured check interval
 	defer ticker.Stop()
 
 	log.Info("Lease expiry checker started",
@@ -205,7 +205,7 @@ func (lm *LeaseManager) expiryChecker() {
 	}
 }
 
-// checkExpiredLeases 检查并清理过期的 lease
+// checkExpiredLeases checks and cleans up expired leases
 func (lm *LeaseManager) checkExpiredLeases() {
 	lm.mu.RLock()
 	expiredIDs := make([]int64, 0)
@@ -216,7 +216,7 @@ func (lm *LeaseManager) checkExpiredLeases() {
 	}
 	lm.mu.RUnlock()
 
-	// 撤销过期的 lease
+	// Revoke expired leases
 	for _, id := range expiredIDs {
 		if err := lm.Revoke(id); err != nil {
 			log.Error("Failed to revoke expired lease", zap.Int64("lease_id", id), zap.Error(err), zap.String("component", "lease-manager"))

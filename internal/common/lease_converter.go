@@ -26,19 +26,19 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// 功能开关：启用 Protobuf Lease 序列化优化
-// TODO: 未来移到配置文件中 (configs/config.yaml)
+// featureswitch：enabled Protobuf Lease serializeoptimize
+// TODO: not cometoconfigfilein (configs/config.yaml)
 func EnableLeaseProtobuf() bool { return config.GetEnableLeaseProtobuf() }
 
-// SerializeLease 序列化 Lease
-// 优先使用 Protobuf（2-4x 性能提升），回退到 GOB（向后兼容）
+// SerializeLease serialize Lease
+// use Protobuf(2-4x performance)，to GOB(aftercompatible)
 func SerializeLease(lease *kvstore.Lease) ([]byte, error) {
 	if lease == nil {
 		return nil, fmt.Errorf("lease is nil")
 	}
 
 	if EnableLeaseProtobuf() {
-		// 使用 Protobuf 序列化
+		// use Protobuf serialize
 		pbLease := LeaseToProto(lease)
 
 		data, err := proto.Marshal(pbLease)
@@ -46,11 +46,11 @@ func SerializeLease(lease *kvstore.Lease) ([]byte, error) {
 			return nil, fmt.Errorf("protobuf marshal lease failed: %w", err)
 		}
 
-		// 添加 Protobuf 标记前缀（用于反序列化时识别）
+		// add Protobuf markerprefix(for deserializewhen)
 		return append([]byte("LEASE-PB:"), data...), nil
 	}
 
-	// 回退到 GOB（向后兼容）
+	// to GOB(aftercompatible)
 	var buf bytes.Buffer
 	if err := gob.NewEncoder(&buf).Encode(lease); err != nil {
 		return nil, fmt.Errorf("gob encode lease failed: %w", err)
@@ -58,17 +58,17 @@ func SerializeLease(lease *kvstore.Lease) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// DeserializeLease 反序列化 Lease
-// 自动检测 Protobuf 或 GOB 格式
+// DeserializeLease deserialize Lease
+// test Protobuf or GOB format
 func DeserializeLease(data []byte) (*kvstore.Lease, error) {
 	if len(data) == 0 {
 		return nil, fmt.Errorf("empty lease data")
 	}
 
-	// 检查是否为 Protobuf 格式（以 "LEASE-PB:" 前缀标识）
+	// checkisnoas Protobuf format( "LEASE-PB:" prefix)
 	const pbPrefix = "LEASE-PB:"
 	if len(data) >= len(pbPrefix) && string(data[:len(pbPrefix)]) == pbPrefix {
-		// Protobuf 格式
+		// Protobuf format
 		pbLease := &raftpb.LeaseProto{}
 		if err := proto.Unmarshal(data[len(pbPrefix):], pbLease); err != nil {
 			return nil, fmt.Errorf("protobuf unmarshal lease failed: %w", err)
@@ -77,7 +77,7 @@ func DeserializeLease(data []byte) (*kvstore.Lease, error) {
 		return ProtoToLease(pbLease), nil
 	}
 
-	// GOB 格式（向后兼容旧数据）
+	// GOB format(aftercompatibleolddata)
 	var lease kvstore.Lease
 	buf := bytes.NewBuffer(data)
 	if err := gob.NewDecoder(buf).Decode(&lease); err != nil {
@@ -87,7 +87,7 @@ func DeserializeLease(data []byte) (*kvstore.Lease, error) {
 	return &lease, nil
 }
 
-// LeaseToProto 将 kvstore.Lease 转换为 Protobuf
+// LeaseToProto will kvstore.Lease convertas Protobuf
 func LeaseToProto(lease *kvstore.Lease) *raftpb.LeaseProto {
 	if lease == nil {
 		return nil
@@ -106,7 +106,7 @@ func LeaseToProto(lease *kvstore.Lease) *raftpb.LeaseProto {
 	}
 }
 
-// ProtoToLease 将 Protobuf 转换为 kvstore.Lease
+// ProtoToLease will Protobuf convertas kvstore.Lease
 func ProtoToLease(pbLease *raftpb.LeaseProto) *kvstore.Lease {
 	if pbLease == nil {
 		return nil

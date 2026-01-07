@@ -23,8 +23,8 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
-// Session 表示一个基于 Lease 的会话
-// 会话会自动续约 Lease，当会话关闭时会自动撤销 Lease
+// Session indicatesfirst at Lease session
+// sessionwillrenewal Lease，whensessionclosewhenwillrevoked Lease
 type Session struct {
 	client *clientv3.Client
 	lease  clientv3.Lease
@@ -36,7 +36,7 @@ type Session struct {
 	closed  bool
 }
 
-// SessionOption 会话配置选项
+// SessionOption sessionconfigoption
 type SessionOption func(*sessionOptions)
 
 type sessionOptions struct {
@@ -45,7 +45,7 @@ type sessionOptions struct {
 	ctx     context.Context
 }
 
-// WithTTL 设置会话 TTL（秒）
+// WithTTL setsession TTL(seconds)
 func WithTTL(ttl int) SessionOption {
 	return func(so *sessionOptions) {
 		if ttl > 0 {
@@ -54,24 +54,24 @@ func WithTTL(ttl int) SessionOption {
 	}
 }
 
-// WithLease 使用现有的 Lease ID
+// WithLease use existing Lease ID
 func WithLease(leaseID clientv3.LeaseID) SessionOption {
 	return func(so *sessionOptions) {
 		so.leaseID = leaseID
 	}
 }
 
-// WithContext 设置 context
+// WithContext set context
 func WithContext(ctx context.Context) SessionOption {
 	return func(so *sessionOptions) {
 		so.ctx = ctx
 	}
 }
 
-// NewSession 创建新的会话
+// NewSession create newsession
 func NewSession(client *clientv3.Client, opts ...SessionOption) (*Session, error) {
 	options := &sessionOptions{
-		ttl: 60, // 默认 60 秒
+		ttl: 60, // default 60 seconds
 		ctx: context.Background(),
 	}
 
@@ -86,7 +86,7 @@ func NewSession(client *clientv3.Client, opts ...SessionOption) (*Session, error
 		cancel: cancel,
 	}
 
-	// 如果没有提供 LeaseID，创建新的 Lease
+	// ifnone LeaseID，create new Lease
 	if options.leaseID == clientv3.NoLease {
 		resp, err := s.lease.Grant(ctx, int64(options.ttl))
 		if err != nil {
@@ -95,7 +95,7 @@ func NewSession(client *clientv3.Client, opts ...SessionOption) (*Session, error
 		}
 		s.id = resp.ID
 	} else {
-		// 使用现有 Lease，验证其是否有效
+		// use existing Lease，verifyisnovalid
 		ttlResp, err := s.lease.TimeToLive(ctx, options.leaseID)
 		if err != nil {
 			cancel()
@@ -108,7 +108,7 @@ func NewSession(client *clientv3.Client, opts ...SessionOption) (*Session, error
 		s.id = options.leaseID
 	}
 
-	// 启动自动续约
+	// startrenewal
 	donec := make(chan struct{})
 	s.donec = donec
 	go s.keepAliveLoop(ctx, donec)
@@ -116,36 +116,36 @@ func NewSession(client *clientv3.Client, opts ...SessionOption) (*Session, error
 	return s, nil
 }
 
-// keepAliveLoop 自动续约循环
+// keepAliveLoop renewal
 func (s *Session) keepAliveLoop(ctx context.Context, donec chan struct{}) {
 	defer close(donec)
 
-	// 创建 KeepAlive 通道
+	// create KeepAlive channel
 	kac, err := s.lease.KeepAlive(ctx, s.id)
 	if err != nil {
 		return
 	}
 
-	// 消费 KeepAlive 响应
+	//  KeepAlive response
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case ka, ok := <-kac:
 			if !ok {
-				// KeepAlive 通道关闭，会话失效
+				// KeepAlive channelclose，session
 				return
 			}
 			if ka == nil {
-				// 收到 nil 响应，可能是网络问题
+				// collectto nil response，mayisnetwork
 				continue
 			}
-			// 成功续约
+			// successrenewal
 		}
 	}
 }
 
-// Close 关闭会话并撤销 Lease
+// Close close sessionandrevoked Lease
 func (s *Session) Close() error {
 	s.mu.Lock()
 	if s.closed {
@@ -155,13 +155,13 @@ func (s *Session) Close() error {
 	s.closed = true
 	s.mu.Unlock()
 
-	// 取消 context，停止 keepalive
+	// cancel context，stopped keepalive
 	s.cancel()
 
-	// 等待 keepalive 循环结束
+	// wait keepalive end
 	<-s.donec
 
-	// 撤销 Lease（使用新的 context，因为原 context 已取消）
+	// revoked Lease(usenew context，as context already cancel)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
@@ -169,18 +169,18 @@ func (s *Session) Close() error {
 	return err
 }
 
-// Lease 返回会话的 Lease ID
+// Lease returnsession Lease ID
 func (s *Session) Lease() clientv3.LeaseID {
 	return s.id
 }
 
-// Done 返回一个 channel，当会话失效时会被关闭
+// Done returnfirst  channel，whensessionwhenwillbeclose
 func (s *Session) Done() <-chan struct{} {
 	return s.donec
 }
 
-// Orphan 结束会话但不撤销 Lease
-// 用于将资源交给其他进程管理
+// Orphan endsessionnotrevoked Lease
+// for willresourcetoprocessmanagement
 func (s *Session) Orphan() {
 	s.mu.Lock()
 	if s.closed {

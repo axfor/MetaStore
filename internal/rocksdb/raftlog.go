@@ -643,18 +643,18 @@ func binaryReadUint64BigEndian(b []byte) (uint64, error) {
 
 // OpenRocksDB opens a RocksDB database with optimal settings for raft storage
 func Open(path string, cfg ...*config.RocksDBConfig) (*grocksdb.DB, error) {
-	// 使用配置或默认值
+	// useconfigordefaultvalue
 	var rocksCfg *config.RocksDBConfig
 	if len(cfg) > 0 && cfg[0] != nil {
 		rocksCfg = cfg[0]
 	} else {
-		// 使用默认配置
+		// usedefaultconfig
 		defaultCfg := config.DefaultConfig(1, 1, ":2379")
 		rocksCfg = &defaultCfg.Server.RocksDB
 	}
 
 	bbto := grocksdb.NewDefaultBlockBasedTableOptions()
-	bbto.SetBlockCache(grocksdb.NewLRUCache(rocksCfg.BlockCacheSize)) // 使用配置的 Block Cache
+	bbto.SetBlockCache(grocksdb.NewLRUCache(rocksCfg.BlockCacheSize)) // useconfig Block Cache
 	if rocksCfg.BlockBasedTableBloomFilter {
 		bbto.SetFilterPolicy(grocksdb.NewBloomFilter(float64(rocksCfg.BloomFilterBitsPerKey)))
 	}
@@ -668,19 +668,19 @@ func Open(path string, cfg ...*config.RocksDBConfig) (*grocksdb.DB, error) {
 	// Write settings for durability (WAL is enabled by default in RocksDB)
 	opts.SetManualWALFlush(false)
 
-	// Performance settings - 使用配置文件的值
+	// Performance settings - useconfigfilevalue
 	opts.SetMaxBackgroundJobs(rocksCfg.MaxBackgroundJobs)
 	opts.SetMaxOpenFiles(rocksCfg.MaxOpenFiles)
 	opts.SetWriteBufferSize(rocksCfg.WriteBufferSize)
 	opts.SetMaxWriteBufferNumber(rocksCfg.MaxWriteBufferNumber)
 	opts.SetMinWriteBufferNumberToMerge(rocksCfg.MinWriteBufferNumberToMerge)
 
-	// Compaction settings - 使用配置文件的值
+	// Compaction settings - useconfigfilevalue
 	opts.SetLevel0FileNumCompactionTrigger(rocksCfg.Level0FileNumCompactionTrigger)
 	opts.SetLevel0SlowdownWritesTrigger(rocksCfg.Level0SlowdownWritesTrigger)
 	opts.SetLevel0StopWritesTrigger(rocksCfg.Level0StopWritesTrigger)
 
-	// Sync settings - 使用配置文件的值
+	// Sync settings - useconfigfilevalue
 	if rocksCfg.BytesPerSync > 0 {
 		opts.SetBytesPerSync(rocksCfg.BytesPerSync)
 	}

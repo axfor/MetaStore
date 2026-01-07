@@ -29,10 +29,10 @@ var (
 	ErrElectionNotLeader = errors.New("not elected as leader")
 )
 
-// Election 实现 Leader 选举
+// Election implement Leader electelection
 type Election struct {
 	s   *Session
-	pfx string // key 前缀
+	pfx string // key prefix
 
 	leaderKey   string
 	leaderRev   int64
@@ -42,7 +42,7 @@ type Election struct {
 	mu     sync.Mutex
 }
 
-// NewElection 创建新的选举
+// NewElection create newelectelection
 func NewElection(s *Session, pfx string) *Election {
 	return &Election{
 		s:   s,
@@ -50,24 +50,24 @@ func NewElection(s *Session, pfx string) *Election {
 	}
 }
 
-// Campaign 参与竞选，阻塞直到成为 Leader
+// Campaign andcampaign，blockinguntilbecomeas Leader
 func (e *Election) Campaign(ctx context.Context, val string) error {
 	s := e.s
 	client := s.client
 
 	e.mu.Lock()
-	// 如果已经是 Leader，直接返回
+	// ifalreadyis Leader，return
 	if e.leaderKey != "" {
 		e.mu.Unlock()
 		return nil
 	}
 	e.mu.Unlock()
 
-	// 创建竞选 key
-	// key 格式: prefix/lease_id
+	// createcampaign key
+	// key format: prefix/lease_id
 	myKey := fmt.Sprintf("%s%x", e.pfx, s.Lease())
 	
-	// 使用事务创建 key
+	// usetransactioncreate key
 	cmp := clientv3.Compare(clientv3.CreateRevision(myKey), "=", 0)
 	put := clientv3.OpPut(myKey, val, clientv3.WithLease(s.Lease()))
 	get := clientv3.OpGet(myKey)
@@ -84,13 +84,13 @@ func (e *Election) Campaign(ctx context.Context, val string) error {
 		myRev = resp.Responses[0].GetResponseRange().Kvs[0].CreateRevision
 	}
 
-	// 等待成为 Leader
+	// waitbecomeas Leader
 	err = e.waitLeader(ctx, myKey, myRev)
 	if err != nil {
 		return err
 	}
 
-	// 成为 Leader
+	// becomeas Leader
 	e.mu.Lock()
 	e.leaderKey = myKey
 	e.leaderRev = myRev
@@ -101,13 +101,13 @@ func (e *Election) Campaign(ctx context.Context, val string) error {
 	return nil
 }
 
-// waitLeader 等待成为 Leader（所有更早的 key 被删除）
+// waitLeader waitbecomeas Leader(all key bedelete)
 // Automatically retries if Watch is canceled or network errors occur
 func (e *Election) waitLeader(ctx context.Context, myKey string, myRev int64) error {
 	client := e.s.client
 
 	for {
-		// 检查会话是否还有效
+		// checksessionisnostill valid
 		select {
 		case <-e.s.Done():
 			return errors.New("session expired")
@@ -116,7 +116,7 @@ func (e *Election) waitLeader(ctx context.Context, myKey string, myRev int64) er
 		default:
 		}
 
-		// 获取所有前缀匹配的 key，按 CreateRevision 排序
+		// getallprefixmatch key， CreateRevision sort
 		resp, err := client.Get(ctx, e.pfx,
 			clientv3.WithPrefix(),
 			clientv3.WithSort(clientv3.SortByCreateRevision, clientv3.SortAscend))
@@ -124,7 +124,7 @@ func (e *Election) waitLeader(ctx context.Context, myKey string, myRev int64) er
 			return err
 		}
 
-		// 手动过滤出 CreateRevision < myRev 的 key
+		// manuallyfilter CreateRevision < myRev  key
 		var earlierKeys []*mvccpb.KeyValue
 		for _, kv := range resp.Kvs {
 			if kv.CreateRevision < myRev {
@@ -132,12 +132,12 @@ func (e *Election) waitLeader(ctx context.Context, myKey string, myRev int64) er
 			}
 		}
 
-		// 没有更早的 key，成为 Leader
+		// none key，becomeas Leader
 		if len(earlierKeys) == 0 {
 			return nil
 		}
 
-		// 找到最早的 key (first one after sorting and filtering)
+		// to key (first one after sorting and filtering)
 		lastKey := string(earlierKeys[0].Key)
 
 		// Watch for deletion with automatic retry on cancellation
@@ -210,7 +210,7 @@ func isElectionWatchCanceledOrNetworkError(err error) bool {
 		errStr == "EOF"
 }
 
-// Resign 主动放弃 Leader 身份
+// Resign release Leader 
 func (e *Election) Resign(ctx context.Context) error {
 	e.mu.Lock()
 	if e.leaderKey == "" {
@@ -225,11 +225,11 @@ func (e *Election) Resign(ctx context.Context) error {
 	return err
 }
 
-// Leader 返回当前的 Leader 信息
+// Leader returncurrent Leader info
 func (e *Election) Leader(ctx context.Context) (*pb.ResponseHeader, string, error) {
 	client := e.s.client
 
-	// 获取 CreateRevision 最小的 key（第一个创建的）
+	// get CreateRevision minimum key(firstcreate)
 	resp, err := client.Get(ctx, e.pfx, clientv3.WithFirstCreate()...)
 	if err != nil {
 		return nil, "", err
@@ -242,8 +242,8 @@ func (e *Election) Leader(ctx context.Context) (*pb.ResponseHeader, string, erro
 	return resp.Header, string(resp.Kvs[0].Value), nil
 }
 
-// Observe 监听 Leader 变化
-// 返回一个 channel，每当 Leader 变化时会发送新的 Leader 值
+// Observe listen Leader changetransform
+// returnfirst  channel，when Leader changetransformwhenwillsendnew Leader value
 func (e *Election) Observe(ctx context.Context) <-chan string {
 	client := e.s.client
 	ch := make(chan string, 1)
@@ -251,7 +251,7 @@ func (e *Election) Observe(ctx context.Context) <-chan string {
 	go func() {
 		defer close(ch)
 
-		// 先发送当前 Leader
+		// sendcurrent Leader
 		_, leader, err := e.Leader(ctx)
 		if err != nil {
 			return
@@ -263,14 +263,14 @@ func (e *Election) Observe(ctx context.Context) <-chan string {
 			return
 		}
 
-		// Watch 前缀，监听变化
+		// Watch prefix，listenchangetransform
 		wch := client.Watch(ctx, e.pfx, clientv3.WithPrefix())
 		for wresp := range wch {
 			if wresp.Canceled {
 				return
 			}
 
-			// 有事件发生，重新查询 Leader
+			// haveeventoccur，newquery Leader
 			_, leader, err := e.Leader(ctx)
 			if err != nil {
 				return
@@ -287,28 +287,28 @@ func (e *Election) Observe(ctx context.Context) <-chan string {
 	return ch
 }
 
-// IsLeader 检查当前是否是 Leader
+// IsLeader checkcurrentisnois Leader
 func (e *Election) IsLeader() bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.leaderKey != ""
 }
 
-// Key 返回 Leader 的 key
+// Key return Leader  key
 func (e *Election) Key() string {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.leaderKey
 }
 
-// Rev 返回 Leader key 的 revision
+// Rev return Leader key  revision
 func (e *Election) Rev() int64 {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.leaderRev
 }
 
-// Header 返回竞选成功时的响应头
+// Header returncampaignsuccesswhenresponse
 func (e *Election) Header() *pb.ResponseHeader {
 	e.mu.Lock()
 	defer e.mu.Unlock()

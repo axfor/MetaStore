@@ -24,28 +24,28 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-// RotationConfig 日志轮转配置
+// RotationConfig logconfig
 type RotationConfig struct {
-	// Filename 日志文件路径
+	// Filename logfilepath
 	Filename string
 
-	// MaxSize 单个日志文件最大大小（MB）
+	// MaxSize single logfilemaximumsize(MB)
 	MaxSize int
 
-	// MaxAge 日志文件最大保留天数
+	// MaxAge logfilemaximum
 	MaxAge int
 
-	// MaxBackups 最大备份文件数量
+	// MaxBackups maximumbackupfilequantity
 	MaxBackups int
 
-	// Compress 是否压缩旧日志
+	// Compress isnocompressoldlog
 	Compress bool
 
-	// LocalTime 是否使用本地时间（默认 UTC）
+	// LocalTime isnousetime(default UTC)
 	LocalTime bool
 }
 
-// RotatingFileWriter 支持轮转的文件写入器
+// RotatingFileWriter supportedfilewrite
 type RotatingFileWriter struct {
 	mu     sync.Mutex
 	config RotationConfig
@@ -55,39 +55,39 @@ type RotatingFileWriter struct {
 	lastDay int
 }
 
-// NewRotatingFileWriter 创建轮转文件写入器
+// NewRotatingFileWriter createfilewrite
 func NewRotatingFileWriter(config RotationConfig) (*RotatingFileWriter, error) {
 	if config.MaxSize == 0 {
-		config.MaxSize = 100 // 默认 100 MB
+		config.MaxSize = 100 // default 100 MB
 	}
 	if config.MaxAge == 0 {
-		config.MaxAge = 7 // 默认保留 7 天
+		config.MaxAge = 7 // default 7 
 	}
 	if config.MaxBackups == 0 {
-		config.MaxBackups = 10 // 默认保留 10 个备份
+		config.MaxBackups = 10 // default 10  backup
 	}
 
 	w := &RotatingFileWriter{
 		config: config,
 	}
 
-	// 打开日志文件
+	// openlogfile
 	if err := w.openFile(); err != nil {
 		return nil, err
 	}
 
-	// 启动定期清理
+	// startclean up
 	go w.cleanupRoutine()
 
 	return w, nil
 }
 
-// Write 实现 io.Writer
+// Write implement io.Writer
 func (w *RotatingFileWriter) Write(p []byte) (n int, err error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	// 检查是否需要轮转
+	// checkisnoneed
 	if w.shouldRotate(len(p)) {
 		if err := w.rotate(); err != nil {
 			return 0, err
@@ -99,7 +99,7 @@ func (w *RotatingFileWriter) Write(p []byte) (n int, err error) {
 	return n, err
 }
 
-// Sync 实现 zapcore.WriteSyncer
+// Sync implement zapcore.WriteSyncer
 func (w *RotatingFileWriter) Sync() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -110,7 +110,7 @@ func (w *RotatingFileWriter) Sync() error {
 	return nil
 }
 
-// Close 关闭文件
+// Close closefile
 func (w *RotatingFileWriter) Close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -121,21 +121,21 @@ func (w *RotatingFileWriter) Close() error {
 	return nil
 }
 
-// openFile 打开日志文件
+// openFile openlogfile
 func (w *RotatingFileWriter) openFile() error {
-	// 创建目录
+	// createdirectory
 	dir := filepath.Dir(w.config.Filename)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
 
-	// 打开文件
+	// openfile
 	file, err := os.OpenFile(w.config.Filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
 
-	// 获取当前文件大小
+	// getcurrentfilesize
 	info, err := file.Stat()
 	if err != nil {
 		file.Close()
@@ -149,14 +149,14 @@ func (w *RotatingFileWriter) openFile() error {
 	return nil
 }
 
-// shouldRotate 检查是否需要轮转
+// shouldRotate checkisnoneed
 func (w *RotatingFileWriter) shouldRotate(writeLen int) bool {
-	// 检查文件大小
+	// checkfilesize
 	if w.size+int64(writeLen) >= int64(w.config.MaxSize)*1024*1024 {
 		return true
 	}
 
-	// 检查日期变化（每天轮转）
+	// checkdatechangetransform()
 	currentDay := time.Now().Day()
 	if currentDay != w.lastDay {
 		return true
@@ -165,32 +165,32 @@ func (w *RotatingFileWriter) shouldRotate(writeLen int) bool {
 	return false
 }
 
-// rotate 执行日志轮转
+// rotate executelog
 func (w *RotatingFileWriter) rotate() error {
-	// 关闭当前文件
+	// closecurrentfile
 	if w.file != nil {
 		w.file.Close()
 	}
 
-	// 重命名当前文件
+	// renamecurrentfile
 	timestamp := time.Now().Format("2006-01-02-15-04-05")
 	backupName := w.config.Filename + "." + timestamp
 
 	if err := os.Rename(w.config.Filename, backupName); err != nil {
-		// 如果重命名失败，直接打开新文件
+		// ifrenamefailure，opennewfile
 		return w.openFile()
 	}
 
-	// 如果启用压缩，压缩旧文件（后台执行）
+	// ifenabledcompress，compressoldfile(backgroundexecute)
 	if w.config.Compress {
 		go compressFile(backupName)
 	}
 
-	// 打开新文件
+	// opennewfile
 	return w.openFile()
 }
 
-// cleanupRoutine 定期清理旧日志
+// cleanupRoutine clean upoldlog
 func (w *RotatingFileWriter) cleanupRoutine() {
 	ticker := time.NewTicker(24 * time.Hour)
 	defer ticker.Stop()
@@ -200,7 +200,7 @@ func (w *RotatingFileWriter) cleanupRoutine() {
 	}
 }
 
-// cleanup 清理过期日志
+// cleanup clean upexpirationlog
 func (w *RotatingFileWriter) cleanup() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -213,7 +213,7 @@ func (w *RotatingFileWriter) cleanup() {
 		return
 	}
 
-	// 按修改时间排序，删除最旧的文件
+	// modifytimesort，deleteoldfile
 	cutoff := time.Now().AddDate(0, 0, -w.config.MaxAge)
 
 	for _, file := range files {
@@ -222,49 +222,49 @@ func (w *RotatingFileWriter) cleanup() {
 			continue
 		}
 
-		// 检查文件年龄
+		// checkfile
 		if info.ModTime().Before(cutoff) {
 			os.Remove(file)
 			continue
 		}
 	}
 
-	// 检查备份数量
+	// checkbackupquantity
 	if len(files) > w.config.MaxBackups {
-		// 删除最旧的文件
+		// deleteoldfile
 		for i := 0; i < len(files)-w.config.MaxBackups; i++ {
 			os.Remove(files[i])
 		}
 	}
 }
 
-// compressFile 压缩文件（简化版本，仅重命名）
+// compressFile compressfile(transformversion，rename)
 func compressFile(filename string) {
-	// 实际生产环境可以使用 gzip 压缩
-	// 这里为了简化，只是添加 .gz 后缀
+	// environmentcanuse gzip compress
+	// astransform，isadd .gz suffix
 	newName := filename + ".gz"
 	os.Rename(filename, newName)
 }
 
-// NewRotatingLogger 创建带日志轮转的 Logger
+// NewRotatingLogger createlog Logger
 func NewRotatingLogger(cfg *Config, rotationCfg RotationConfig) (*Logger, error) {
 	if cfg == nil {
 		cfg = DefaultConfig
 	}
 
-	// 创建轮转写入器
+	// createwrite
 	writer, err := NewRotatingFileWriter(rotationCfg)
 	if err != nil {
 		return nil, err
 	}
 
-	// 解析日志级别
+	// loglevel
 	level := zapcore.InfoLevel
 	if err := level.UnmarshalText([]byte(cfg.Level)); err != nil {
 		return nil, err
 	}
 
-	// 创建 encoder 配置
+	// create encoder config
 	encoderConfig := zapcore.EncoderConfig{
 		TimeKey:        "time",
 		LevelKey:       "level",
@@ -280,7 +280,7 @@ func NewRotatingLogger(cfg *Config, rotationCfg RotationConfig) (*Logger, error)
 		EncodeCaller:   zapcore.ShortCallerEncoder,
 	}
 
-	// 创建 encoder
+	// create encoder
 	var encoder zapcore.Encoder
 	if cfg.Encoding == "json" {
 		encoder = zapcore.NewJSONEncoder(encoderConfig)
@@ -288,14 +288,14 @@ func NewRotatingLogger(cfg *Config, rotationCfg RotationConfig) (*Logger, error)
 		encoder = zapcore.NewConsoleEncoder(encoderConfig)
 	}
 
-	// 创建 core（使用轮转写入器）
+	// create core(usewrite)
 	core := zapcore.NewCore(
 		encoder,
 		zapcore.AddSync(writer),
 		level,
 	)
 
-	// 创建 zap logger
+	// create zap logger
 	opts := []zap.Option{
 		zap.AddCaller(),
 	}

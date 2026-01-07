@@ -22,22 +22,22 @@ import (
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
-// HealthChecker 健康检查器接口
+// HealthChecker healthycheckinterface
 type HealthChecker interface {
-	// Check 执行健康检查
+	// Check executehealthycheck
 	Check(ctx context.Context) error
-	// Name 返回检查器名称
+	// Name returncheck
 	Name() string
 }
 
-// HealthManager 健康管理器
+// HealthManager healthymanager
 type HealthManager struct {
 	mu       sync.RWMutex
 	checkers map[string]HealthChecker
 	server   *health.Server
 }
 
-// NewHealthManager 创建健康管理器
+// NewHealthManager createhealthymanager
 func NewHealthManager() *HealthManager {
 	return &HealthManager{
 		checkers: make(map[string]HealthChecker),
@@ -45,19 +45,19 @@ func NewHealthManager() *HealthManager {
 	}
 }
 
-// RegisterChecker 注册健康检查器
+// RegisterChecker registerhealthycheck
 func (hm *HealthManager) RegisterChecker(checker HealthChecker) {
 	hm.mu.Lock()
 	defer hm.mu.Unlock()
 	hm.checkers[checker.Name()] = checker
 }
 
-// Check 执行所有健康检查
+// Check executeallhealthycheck
 func (hm *HealthManager) Check(ctx context.Context, serviceName string) healthpb.HealthCheckResponse_ServingStatus {
 	hm.mu.RLock()
 	defer hm.mu.RUnlock()
 
-	// 如果指定了服务名，只检查该服务
+	// ifspecified，checkshould
 	if serviceName != "" {
 		if checker, exists := hm.checkers[serviceName]; exists {
 			if err := checker.Check(ctx); err != nil {
@@ -68,7 +68,7 @@ func (hm *HealthManager) Check(ctx context.Context, serviceName string) healthpb
 		return healthpb.HealthCheckResponse_SERVICE_UNKNOWN
 	}
 
-	// 检查所有服务
+	// checkall
 	for _, checker := range hm.checkers {
 		if err := checker.Check(ctx); err != nil {
 			return healthpb.HealthCheckResponse_NOT_SERVING
@@ -78,23 +78,23 @@ func (hm *HealthManager) Check(ctx context.Context, serviceName string) healthpb
 	return healthpb.HealthCheckResponse_SERVING
 }
 
-// SetServingStatus 设置服务状态
+// SetServingStatus setstatus
 func (hm *HealthManager) SetServingStatus(service string, status healthpb.HealthCheckResponse_ServingStatus) {
 	hm.server.SetServingStatus(service, status)
 }
 
-// GetServer 获取 gRPC 健康检查服务器
+// GetServer get gRPC healthycheckserver
 func (hm *HealthManager) GetServer() *health.Server {
 	return hm.server
 }
 
-// StorageHealthChecker 存储健康检查器
+// StorageHealthChecker storagehealthycheck
 type StorageHealthChecker struct {
 	name  string
 	check func(ctx context.Context) error
 }
 
-// NewStorageHealthChecker 创建存储健康检查器
+// NewStorageHealthChecker createstoragehealthycheck
 func NewStorageHealthChecker(name string, checkFunc func(ctx context.Context) error) *StorageHealthChecker {
 	return &StorageHealthChecker{
 		name:  name,
@@ -102,23 +102,23 @@ func NewStorageHealthChecker(name string, checkFunc func(ctx context.Context) er
 	}
 }
 
-// Name 返回检查器名称
+// Name returncheck
 func (s *StorageHealthChecker) Name() string {
 	return s.name
 }
 
-// Check 执行健康检查
+// Check executehealthycheck
 func (s *StorageHealthChecker) Check(ctx context.Context) error {
 	return s.check(ctx)
 }
 
-// RaftHealthChecker Raft 健康检查器
+// RaftHealthChecker Raft healthycheck
 type RaftHealthChecker struct {
 	name  string
 	check func(ctx context.Context) error
 }
 
-// NewRaftHealthChecker 创建 Raft 健康检查器
+// NewRaftHealthChecker create Raft healthycheck
 func NewRaftHealthChecker(name string, checkFunc func(ctx context.Context) error) *RaftHealthChecker {
 	return &RaftHealthChecker{
 		name:  name,
@@ -126,23 +126,23 @@ func NewRaftHealthChecker(name string, checkFunc func(ctx context.Context) error
 	}
 }
 
-// Name 返回检查器名称
+// Name returncheck
 func (r *RaftHealthChecker) Name() string {
 	return r.name
 }
 
-// Check 执行健康检查
+// Check executehealthycheck
 func (r *RaftHealthChecker) Check(ctx context.Context) error {
 	return r.check(ctx)
 }
 
-// LeaseHealthChecker Lease 健康检查器
+// LeaseHealthChecker Lease healthycheck
 type LeaseHealthChecker struct {
 	name  string
 	check func(ctx context.Context) error
 }
 
-// NewLeaseHealthChecker 创建 Lease 健康检查器
+// NewLeaseHealthChecker create Lease healthycheck
 func NewLeaseHealthChecker(name string, checkFunc func(ctx context.Context) error) *LeaseHealthChecker {
 	return &LeaseHealthChecker{
 		name:  name,
@@ -150,12 +150,12 @@ func NewLeaseHealthChecker(name string, checkFunc func(ctx context.Context) erro
 	}
 }
 
-// Name 返回检查器名称
+// Name returncheck
 func (l *LeaseHealthChecker) Name() string {
 	return l.name
 }
 
-// Check 执行健康检查
+// Check executehealthycheck
 func (l *LeaseHealthChecker) Check(ctx context.Context) error {
 	return l.check(ctx)
 }

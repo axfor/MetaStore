@@ -21,49 +21,49 @@ import (
 	"go.uber.org/zap"
 )
 
-// SmartLeaseConfig 智能 Lease Read 配置管理器
-// 自动感知集群环境并智能启用/禁用 Lease Read
+// SmartLeaseConfig can Lease Read configmanager
+// clusterenvironmentandcanenabled/disabled Lease Read
 type SmartLeaseConfig struct {
-	// 用户配置
-	userEnabled atomic.Bool // 用户是否启用了 Lease Read
+	// userconfig
+	userEnabled atomic.Bool // userisnoenabled Lease Read
 
-	// 运行时状态
-	actualEnabled   atomic.Bool // 实际是否启用（考虑集群规模）
+	// runningwhenstatus
+	actualEnabled   atomic.Bool // isnoenabled(cluster)
 	clusterSize     atomic.Int32
 	lastUpdateTime  atomic.Int64 // Unix nano
 
-	// 依赖
+	// 
 	logger *zap.Logger
 }
 
-// NewSmartLeaseConfig 创建智能配置管理器
+// NewSmartLeaseConfig createcanconfigmanager
 func NewSmartLeaseConfig(userEnabled bool, logger *zap.Logger) *SmartLeaseConfig {
 	slc := &SmartLeaseConfig{
 		logger: logger,
 	}
 	slc.userEnabled.Store(userEnabled)
-	slc.actualEnabled.Store(false) // 初始禁用，等待集群规模检测
+	slc.actualEnabled.Store(false) // initialdisabled，waitclustertest
 	slc.clusterSize.Store(0)
 	slc.lastUpdateTime.Store(time.Now().UnixNano())
 
 	return slc
 }
 
-// UpdateClusterSize 更新集群规模并重新评估是否启用 Lease Read
+// UpdateClusterSize updateclusterandnewisnoenabled Lease Read
 //
-// 智能启用策略：
-//   - 单节点 (size=1): 禁用 Lease Read（已知限制）
-//   - 多节点 (size>=2): 根据用户配置决定
-//   - 未知 (size=0): 禁用（安全起见）
+// canenabledpolicy：
+//   - singlenode (size=1): disabled Lease Read(knownlimit)
+//   - manynode (size>=2): rootuserconfig
+//   - unknown (size=0): disabled(safe)
 func (slc *SmartLeaseConfig) UpdateClusterSize(size int) {
 	oldSize := slc.clusterSize.Swap(int32(size))
 	slc.lastUpdateTime.Store(time.Now().UnixNano())
 
-	// 评估是否应该启用
+	// isnoshouldenabled
 	shouldEnable := slc.shouldEnableLeaseRead(size)
 	oldEnabled := slc.actualEnabled.Swap(shouldEnable)
 
-	// 如果状态发生变化，记录日志
+	// ifstatusoccurchangetransform，recordlog
 	if oldEnabled != shouldEnable || oldSize != int32(size) {
 		slc.logger.Info("Lease Read smart config updated",
 			zap.Int("old_cluster_size", int(oldSize)),
@@ -75,17 +75,17 @@ func (slc *SmartLeaseConfig) UpdateClusterSize(size int) {
 	}
 }
 
-// IsEnabled 返回 Lease Read 是否实际启用
+// IsEnabled return Lease Read isnoenabled
 func (slc *SmartLeaseConfig) IsEnabled() bool {
 	return slc.actualEnabled.Load()
 }
 
-// GetClusterSize 获取当前集群规模
+// GetClusterSize getcurrentcluster
 func (slc *SmartLeaseConfig) GetClusterSize() int {
 	return int(slc.clusterSize.Load())
 }
 
-// SetUserEnabled 设置用户配置
+// SetUserEnabled setuserconfig
 func (slc *SmartLeaseConfig) SetUserEnabled(enabled bool) {
 	oldEnabled := slc.userEnabled.Swap(enabled)
 
@@ -94,14 +94,14 @@ func (slc *SmartLeaseConfig) SetUserEnabled(enabled bool) {
 			zap.Bool("old_enabled", oldEnabled),
 			zap.Bool("new_enabled", enabled))
 
-		// 重新评估是否应该启用
+		// newisnoshouldenabled
 		size := int(slc.clusterSize.Load())
 		shouldEnable := slc.shouldEnableLeaseRead(size)
 		slc.actualEnabled.Store(shouldEnable)
 	}
 }
 
-// GetStatus 获取详细状态信息
+// GetStatus getfinestatus info
 func (slc *SmartLeaseConfig) GetStatus() SmartConfigStatus {
 	lastUpdate := time.Unix(0, slc.lastUpdateTime.Load())
 
@@ -114,7 +114,7 @@ func (slc *SmartLeaseConfig) GetStatus() SmartConfigStatus {
 	}
 }
 
-// SmartConfigStatus 智能配置状态
+// SmartConfigStatus canconfigstatus
 type SmartConfigStatus struct {
 	UserEnabled    bool
 	ActualEnabled  bool
@@ -123,31 +123,31 @@ type SmartConfigStatus struct {
 	Reason         string
 }
 
-// shouldEnableLeaseRead 判断是否应该启用 Lease Read
+// shouldEnableLeaseRead isnoshouldenabled Lease Read
 func (slc *SmartLeaseConfig) shouldEnableLeaseRead(clusterSize int) bool {
-	// 如果用户没有启用，直接返回 false
+	// ifusernoneenabled，return false
 	if !slc.userEnabled.Load() {
 		return false
 	}
 
-	// 根据集群规模判断
+	// rootcluster
 	switch {
 	case clusterSize == 0:
-		// 未知集群规模，保守禁用
+		// unknowncluster，disabled
 		return false
 
 	case clusterSize >= 1:
-		// 单节点/多节点集群，启用（参考 etcd 实现）
-		// 单节点时自己就是 quorum，理论上可以工作
+		// singlenode/manynodecluster，enabled(reference etcd implement)
+		// singlenodewhenis quorum，previouscan
 		return true
 
 	default:
-		// 异常情况，禁用
+		// exception，disabled
 		return false
 	}
 }
 
-// getEnableReason 获取启用/禁用的原因说明
+// getEnableReason getenabled/disabledreasondescription
 func (slc *SmartLeaseConfig) getEnableReason(clusterSize int) string {
 	if !slc.userEnabled.Load() {
 		return "User disabled Lease Read in configuration"
@@ -168,23 +168,23 @@ func (slc *SmartLeaseConfig) getEnableReason(clusterSize int) string {
 	}
 }
 
-// DetectClusterSizeFromPeers 从 peer URLs 列表检测集群规模
+// DetectClusterSizeFromPeers from peer URLs listtestcluster
 func DetectClusterSizeFromPeers(peers []string) int {
 	return len(peers)
 }
 
-// StartAutoDetection 启动自动检测（周期性）
+// StartAutoDetection starttest(period)
 //
-// 参数:
-//   - getClusterSize: 获取当前集群规模的函数
-//   - interval: 检测间隔
-//   - stopC: 停止信号
+// argument:
+//   - getClusterSize: getcurrentclusterfunction
+//   - interval: testinterval
+//   - stopC: stopped
 func (slc *SmartLeaseConfig) StartAutoDetection(
 	getClusterSize func() int,
 	interval time.Duration,
 	stopC <-chan struct{},
 ) {
-	// 立即执行一次检测
+	// executefirst timetest
 	size := getClusterSize()
 	slc.UpdateClusterSize(size)
 
