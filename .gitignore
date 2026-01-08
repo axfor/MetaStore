@@ -9,6 +9,7 @@ metaStore
 
 # Test data and runtime files
 store-*/
+store-*-rocksdb/
 *.wal
 *.tmp
 
