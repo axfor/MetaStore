@@ -17,6 +17,7 @@ package http
 import (
 	"context"
 	"io"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -28,7 +29,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// Server HTTP API server
 type Server struct {
 	store       kvstore.Store
 	confChangeC chan<- raftpb.ConfChange
@@ -51,6 +51,7 @@ func NewServer(cfg Config) *Server {
 
 	mux := http.NewServeMux()
 	mux.Handle("/", s)
+	mux.HandleFunc("/version", s.handleVersion)
 
 	s.httpServer = &http.Server{
 		Addr:    ":" + strconv.Itoa(cfg.Port),
@@ -66,7 +67,12 @@ func (s *Server) Start() error {
 	return s.httpServer.ListenAndServe()
 }
 
-// Stop stops the HTTP server
+// Serve 接收监听器并处理 HTTP 请求 (用于多路复用)
+func (s *Server) Serve(l net.Listener) error {
+	log.Info("Starting HTTP API server on multiplexed listener", zap.String("component", "http"))
+	return s.httpServer.Serve(l)
+}
+
 func (s *Server) Stop() error {
 	log.Info("Stopping HTTP API server", zap.String("component", "http"))
 	return s.httpServer.Close()
@@ -244,4 +250,20 @@ func ServeHTTPKVAPI(kv kvstore.Store, port int, confChangeC chan<- raftpb.ConfCh
 	if err, ok := <-errorC; ok {
 		log.Fatal("Raft error", zap.Error(err), zap.String("component", "http"))
 	}
+}
+
+// handleVersion handles the /version endpoint for etcd compatibility
+func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
+	// Only handle GET requests for version info
+	if r.Method != http.MethodGet {
+		// Fallback to KV logic for other methods (e.g. valid KV operations on key "version")
+		s.ServeHTTP(w, r)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	// Return versions compatible with etcd clients
+	// etcdserver: 3.6.0
+	// etcdcluster: 3.5.0 (safe default)
+	w.Write([]byte(`{"etcdserver":"3.6.0","etcdcluster":"3.5.0"}`))
 }
