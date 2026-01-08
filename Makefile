@@ -111,12 +111,24 @@ check-deps:
 				MISSING_LIBS="$$MISSING_LIBS $$lib"; \
 			fi; \
 		done; \
+		if ! ([ -f "/usr/lib/x86_64-linux-gnu/libbz2.a" ] || \
+		      [ -f "/usr/lib/aarch64-linux-gnu/libbz2.a" ] || \
+		      [ -f "/usr/lib64/libbz2.a" ] || \
+		      [ -f "/usr/lib/libbz2.a" ]); then \
+			MISSING_LIBS="$$MISSING_LIBS bz2"; \
+		fi; \
+		if ! ([ -f "/usr/lib/x86_64-linux-gnu/libz.a" ] || \
+		      [ -f "/usr/lib/aarch64-linux-gnu/libz.a" ] || \
+		      [ -f "/usr/lib64/libz.a" ] || \
+		      [ -f "/usr/lib/libz.a" ]); then \
+			MISSING_LIBS="$$MISSING_LIBS z"; \
+		fi; \
 		if [ -n "$$MISSING_LIBS" ]; then \
 			echo "$(YELLOW)Installing compression libraries:$$MISSING_LIBS$(NO_COLOR)"; \
 			if command -v apt-get >/dev/null 2>&1; then \
-				apt-get update && apt-get install -y liblz4-dev libzstd-dev libsnappy-dev; \
+				apt-get update && apt-get install -y liblz4-dev libzstd-dev libsnappy-dev libbz2-dev zlib1g-dev; \
 			elif command -v yum >/dev/null 2>&1; then \
-				yum install -y lz4-devel libzstd-devel snappy-devel; \
+				yum install -y lz4-devel libzstd-devel snappy-devel bzip2-devel zlib-devel; \
 			fi; \
 		else \
 			echo "$(GREEN)Compression libraries found$(NO_COLOR)"; \
@@ -155,8 +167,15 @@ check-deps:
 ## build: Build MetaStore binary with both storage engines (using GreenTea GC)
 build: check-deps rocksdb
 	@echo "$(CYAN)Building MetaStore with GreenTea GC...$(NO_COLOR)"
-	@# First try with greenteagc, fall back to regular build if not supported
-	@if CGO_ENABLED=1 CGO_CFLAGS="$(CGO_CFLAGS)" CGO_LDFLAGS="$(CGO_LDFLAGS)" GOEXPERIMENT=greenteagc $(GOBUILD) --help >/dev/null 2>&1; then \
+	@# Ensure go.sum exists by downloading dependencies if needed
+	@if [ ! -f "go.sum" ] || [ -z "$$(cat go.sum 2>/dev/null)" ]; then \
+		echo "$(YELLOW)Downloading Go dependencies...$(NO_COLOR)"; \
+		export GOPROXY=https://goproxy.cn,https://proxy.golang.org,direct; \
+		go mod download && go mod tidy; \
+	fi
+	@# Set GOPROXY for better connectivity (especially in China)
+	@export GOPROXY=https://goproxy.cn,https://proxy.golang.org,direct; \
+	if CGO_ENABLED=1 CGO_CFLAGS="$(CGO_CFLAGS)" CGO_LDFLAGS="$(CGO_LDFLAGS)" GOEXPERIMENT=greenteagc $(GOBUILD) --help >/dev/null 2>&1; then \
 		echo "$(YELLOW)Building with GreenTea GC experiment...$(NO_COLOR)"; \
 		CGO_ENABLED=1 CGO_CFLAGS="$(CGO_CFLAGS)" CGO_LDFLAGS="$(CGO_LDFLAGS)" GOEXPERIMENT=greenteagc $(GOBUILD) $(LDFLAGS) -o $(BINARY_NAME) $(CMD_PATH); \
 	else \
@@ -379,6 +398,11 @@ rocksdb:
 	fi
 	@mkdir -p $(ROCKSDB_DIR)/include
 	@mkdir -p $(ROCKSDB_DIR)/lib
+	@# Clean any pre-built libraries from source directory (prevents cross-platform issues)
+	@if [ -f "third_party/rocksdb/src/v10.4.2/librocksdb.a" ]; then \
+		echo "$(YELLOW)Cleaning pre-built RocksDB libraries from source...$(NO_COLOR)"; \
+		cd third_party/rocksdb/src/v10.4.2 && $(MAKE) clean >/dev/null 2>&1; \
+	fi
 	@# Build RocksDB static library
 	@echo "$(YELLOW)Compiling RocksDB (this may take a while)...$(NO_COLOR)"
 	@cd third_party/rocksdb/src/v10.4.2 && \
