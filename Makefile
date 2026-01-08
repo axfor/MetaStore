@@ -46,23 +46,130 @@ NO_COLOR=\033[0m
 GREEN=\033[0;32m
 YELLOW=\033[0;33m
 CYAN=\033[0;36m
+RED=\033[0;31m
 
-.PHONY: all build clean test help deps tidy run-memory run-rocksdb cluster-memory cluster-rocksdb install test-perf test-perf-memory test-perf-rocksdb benchmark rocksdb-download rocksdb rocksdb-clean rocksdb-compression
+.PHONY: all build clean test help deps tidy run-memory run-rocksdb cluster-memory cluster-rocksdb install test-perf test-perf-memory test-perf-rocksdb benchmark rocksdb-download rocksdb rocksdb-clean rocksdb-compression check-deps
 
 ## all: Default target - build the binary
 all: build
 
+## check-deps: Check and install required dependencies
+check-deps:
+	@echo "$(CYAN)Checking system dependencies...$(NO_COLOR)"
+	@# Check for Go
+	@if ! command -v go >/dev/null 2>&1; then \
+		echo "$(YELLOW)Go not found, installing...$(NO_COLOR)"; \
+		if [ "$(UNAME_S)" = "Linux" ]; then \
+			if command -v apt-get >/dev/null 2>&1; then \
+				echo "$(YELLOW)Installing Go via apt-get...$(NO_COLOR)"; \
+				apt-get update && apt-get install -y golang-go; \
+			elif command -v yum >/dev/null 2>&1; then \
+				echo "$(YELLOW)Installing Go via yum...$(NO_COLOR)"; \
+				yum install -y golang; \
+			else \
+				echo "$(RED)Cannot install Go automatically. Please install Go manually.$(NO_COLOR)"; \
+				echo "$(YELLOW)Visit: https://golang.org/doc/install$(NO_COLOR)"; \
+				exit 1; \
+			fi; \
+		elif [ "$(UNAME_S)" = "Darwin" ]; then \
+			if command -v brew >/dev/null 2>&1; then \
+				echo "$(YELLOW)Installing Go via Homebrew...$(NO_COLOR)"; \
+				brew install go; \
+			else \
+				echo "$(RED)Homebrew not found. Please install Go manually.$(NO_COLOR)"; \
+				echo "$(YELLOW)Visit: https://golang.org/doc/install$(NO_COLOR)"; \
+				exit 1; \
+			fi; \
+		fi; \
+	else \
+		echo "$(GREEN)Go found: $$(go version)$(NO_COLOR)"; \
+	fi
+	@# Check for build essentials
+	@if [ "$(UNAME_S)" = "Linux" ]; then \
+		echo "$(YELLOW)Checking build tools...$(NO_COLOR)"; \
+		if ! command -v make >/dev/null 2>&1 || ! command -v g++ >/dev/null 2>&1; then \
+			if command -v apt-get >/dev/null 2>&1; then \
+				echo "$(YELLOW)Installing build-essential...$(NO_COLOR)"; \
+				apt-get update && apt-get install -y build-essential; \
+			elif command -v yum >/dev/null 2>&1; then \
+				echo "$(YELLOW)Installing development tools...$(NO_COLOR)"; \
+				yum groupinstall -y "Development Tools"; \
+			fi; \
+		else \
+			echo "$(GREEN)Build tools found$(NO_COLOR)"; \
+		fi; \
+	fi
+	@# Check for compression libraries
+	@if [ "$(UNAME_S)" = "Linux" ]; then \
+		echo "$(YELLOW)Checking compression libraries...$(NO_COLOR)"; \
+		MISSING_LIBS=""; \
+		for lib in lz4 zstd snappy; do \
+			if ! ([ -f "/usr/lib/x86_64-linux-gnu/lib$$lib.a" ] || \
+			      [ -f "/usr/lib/aarch64-linux-gnu/lib$$lib.a" ] || \
+			      [ -f "/usr/lib64/lib$$lib.a" ] || \
+			      [ -f "/usr/lib/lib$$lib.a" ]); then \
+				MISSING_LIBS="$$MISSING_LIBS $$lib"; \
+			fi; \
+		done; \
+		if [ -n "$$MISSING_LIBS" ]; then \
+			echo "$(YELLOW)Installing compression libraries:$$MISSING_LIBS$(NO_COLOR)"; \
+			if command -v apt-get >/dev/null 2>&1; then \
+				apt-get update && apt-get install -y liblz4-dev libzstd-dev libsnappy-dev; \
+			elif command -v yum >/dev/null 2>&1; then \
+				yum install -y lz4-devel libzstd-devel snappy-devel; \
+			fi; \
+		else \
+			echo "$(GREEN)Compression libraries found$(NO_COLOR)"; \
+		fi; \
+	elif [ "$(UNAME_S)" = "Darwin" ]; then \
+		if command -v brew >/dev/null 2>&1; then \
+			echo "$(YELLOW)Checking compression libraries...$(NO_COLOR)"; \
+			for lib in lz4 zstd snappy; do \
+				if ! brew list $$lib >/dev/null 2>&1; then \
+					echo "$(YELLOW)Installing $$lib via Homebrew...$(NO_COLOR)"; \
+					brew install $$lib; \
+				fi; \
+			done; \
+			echo "$(GREEN)Compression libraries ready$(NO_COLOR)"; \
+		fi; \
+	fi
+	@# Check for git
+	@if ! command -v git >/dev/null 2>&1; then \
+		echo "$(YELLOW)Git not found, installing...$(NO_COLOR)"; \
+		if [ "$(UNAME_S)" = "Linux" ]; then \
+			if command -v apt-get >/dev/null 2>&1; then \
+				apt-get update && apt-get install -y git; \
+			elif command -v yum >/dev/null 2>&1; then \
+				yum install -y git; \
+			fi; \
+		elif [ "$(UNAME_S)" = "Darwin" ]; then \
+			if command -v brew >/dev/null 2>&1; then \
+				brew install git; \
+			fi; \
+		fi; \
+	else \
+		echo "$(GREEN)Git found: $$(git --version)$(NO_COLOR)"; \
+	fi
+	@echo "$(GREEN)All dependencies checked!$(NO_COLOR)"
+
 ## build: Build MetaStore binary with both storage engines (using GreenTea GC)
-build: rocksdb
+build: check-deps rocksdb
 	@echo "$(CYAN)Building MetaStore with GreenTea GC...$(NO_COLOR)"
-	@CGO_ENABLED=1 CGO_CFLAGS="$(CGO_CFLAGS)" CGO_LDFLAGS="$(CGO_LDFLAGS)" GOEXPERIMENT=greenteagc $(GOBUILD) $(LDFLAGS) -o $(BINARY_NAME) $(CMD_PATH)
+	@# First try with greenteagc, fall back to regular build if not supported
+	@if CGO_ENABLED=1 CGO_CFLAGS="$(CGO_CFLAGS)" CGO_LDFLAGS="$(CGO_LDFLAGS)" GOEXPERIMENT=greenteagc $(GOBUILD) --help >/dev/null 2>&1; then \
+		echo "$(YELLOW)Building with GreenTea GC experiment...$(NO_COLOR)"; \
+		CGO_ENABLED=1 CGO_CFLAGS="$(CGO_CFLAGS)" CGO_LDFLAGS="$(CGO_LDFLAGS)" GOEXPERIMENT=greenteagc $(GOBUILD) $(LDFLAGS) -o $(BINARY_NAME) $(CMD_PATH); \
+	else \
+		echo "$(YELLOW)GreenTea GC not supported, building with standard GC...$(NO_COLOR)"; \
+		CGO_ENABLED=1 CGO_CFLAGS="$(CGO_CFLAGS)" CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOBUILD) $(LDFLAGS) -o $(BINARY_NAME) $(CMD_PATH); \
+	fi
 	@echo "$(GREEN)Build complete: $(BINARY_NAME)$(NO_COLOR)"
 	@ls -lh $(BINARY_NAME)
 
 ## clean: Remove binary and clean build cache
 clean:
 	@echo "$(YELLOW)Cleaning...$(NO_COLOR)"
-	@$(GOCLEAN)
+	@if command -v go >/dev/null 2>&1; then $(GOCLEAN); fi
 	@rm -f $(BINARY_NAME)
 	@rm -rf data/
 	@rm -rf test/data/
@@ -223,7 +330,8 @@ help:
 	@sed -n 's/^##//p' Makefile | column -t -s ':' | sed -e 's/^/  /'
 	@echo ""
 	@echo "$(YELLOW)Examples:$(NO_COLOR)"
-	@echo "  make build              # Build the binary"
+	@echo "  make build              # Build the binary (auto-checks dependencies)"
+	@echo "  make check-deps         # Check and install system dependencies"
 	@echo "  make test               # Run all tests (excluding perf/benchmark)"
 	@echo "  make test-unit          # Run unit tests only"
 	@echo "  make test-integration   # Run integration tests only"
@@ -238,28 +346,18 @@ help:
 	@echo "  make rocksdb            # Build RocksDB from local source"
 	@echo "  make clean              # Clean build artifacts"
 
-## rocksdb-download: Download RocksDB source code and create tarball
+## rocksdb-download: Download RocksDB source code
 rocksdb-download:
 	@echo "$(CYAN)Downloading RocksDB 10.4.2 source code...$(NO_COLOR)"
-	@if [ -f "third_party/rocksdb/rocksdb-10.4.2.tar.gz" ]; then \
-		echo "$(GREEN)RocksDB source tarball already exists$(NO_COLOR)"; \
-		echo "$(YELLOW)Location: third_party/rocksdb/rocksdb-10.4.2.tar.gz$(NO_COLOR)"; \
-		ls -lh third_party/rocksdb/rocksdb-10.4.2.tar.gz; \
-	elif [ -d "third_party/rocksdb/src/v10.4.2" ]; then \
-		echo "$(YELLOW)RocksDB source exists, creating tarball...$(NO_COLOR)"; \
-		tar czf third_party/rocksdb/rocksdb-10.4.2.tar.gz -C third_party/rocksdb/src v10.4.2; \
-		echo "$(GREEN)Tarball created: third_party/rocksdb/rocksdb-10.4.2.tar.gz$(NO_COLOR)"; \
-		ls -lh third_party/rocksdb/rocksdb-10.4.2.tar.gz; \
+	@if [ -d "third_party/rocksdb/src/v10.4.2" ]; then \
+		echo "$(GREEN)RocksDB source already exists$(NO_COLOR)"; \
+		echo "$(YELLOW)Location: third_party/rocksdb/src/v10.4.2$(NO_COLOR)"; \
 	else \
 		mkdir -p third_party/rocksdb/src; \
 		echo "$(YELLOW)Cloning RocksDB from GitHub...$(NO_COLOR)"; \
 		git clone --depth 1 --branch v10.4.2 https://github.com/facebook/rocksdb.git third_party/rocksdb/src/v10.4.2; \
 		rm -rf third_party/rocksdb/src/v10.4.2/.git; \
-		echo "$(YELLOW)Creating tarball for offline use...$(NO_COLOR)"; \
-		tar czf third_party/rocksdb/rocksdb-10.4.2.tar.gz -C third_party/rocksdb/src v10.4.2; \
-		echo "$(GREEN)RocksDB source downloaded and packaged$(NO_COLOR)"; \
-		echo "$(GREEN)Tarball: third_party/rocksdb/rocksdb-10.4.2.tar.gz$(NO_COLOR)"; \
-		ls -lh third_party/rocksdb/rocksdb-10.4.2.tar.gz; \
+		echo "$(GREEN)RocksDB source downloaded$(NO_COLOR)"; \
 	fi
 
 ## rocksdb: Build RocksDB and dependencies from local source
@@ -274,18 +372,10 @@ rocksdb:
 	fi
 	@echo "$(CYAN)Building RocksDB from source for $(OS_ARCH)...$(NO_COLOR)"
 	@echo "$(YELLOW)This will take 10-20 minutes...$(NO_COLOR)"
-	@# Extract tarball if source doesn't exist
+	@# Download source if it doesn't exist
 	@if [ ! -d "third_party/rocksdb/src/v10.4.2" ]; then \
-		if [ -f "third_party/rocksdb/rocksdb-10.4.2.tar.gz" ]; then \
-			echo "$(YELLOW)Extracting RocksDB source from tarball...$(NO_COLOR)"; \
-			mkdir -p third_party/rocksdb/src; \
-			cd third_party/rocksdb/src && tar xzf ../rocksdb-10.4.2.tar.gz; \
-			echo "$(GREEN)Source extracted successfully$(NO_COLOR)"; \
-		else \
-			echo "$(YELLOW)RocksDB source not found!$(NO_COLOR)"; \
-			echo "$(YELLOW)Please run 'make rocksdb-download' first to download the source code$(NO_COLOR)"; \
-			exit 1; \
-		fi; \
+		echo "$(YELLOW)RocksDB source not found, downloading...$(NO_COLOR)"; \
+		$(MAKE) rocksdb-download; \
 	fi
 	@mkdir -p $(ROCKSDB_DIR)/include
 	@mkdir -p $(ROCKSDB_DIR)/lib
@@ -332,6 +422,8 @@ else
 	@for lib in lz4 zstd snappy; do \
 		if [ -f "/usr/lib/x86_64-linux-gnu/lib$$lib.a" ]; then \
 			cp /usr/lib/x86_64-linux-gnu/lib$$lib.a $(ROCKSDB_DIR)/lib/; \
+		elif [ -f "/usr/lib/aarch64-linux-gnu/lib$$lib.a" ]; then \
+			cp /usr/lib/aarch64-linux-gnu/lib$$lib.a $(ROCKSDB_DIR)/lib/; \
 		elif [ -f "/usr/lib64/lib$$lib.a" ]; then \
 			cp /usr/lib64/lib$$lib.a $(ROCKSDB_DIR)/lib/; \
 		elif [ -f "/usr/lib/lib$$lib.a" ]; then \
