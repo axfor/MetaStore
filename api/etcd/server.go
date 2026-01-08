@@ -28,28 +28,28 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/keepalive"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/keepalive"
 )
 
 // Server etcd-compatible gRPC server
 type Server struct {
 	mu       sync.RWMutex
-	store    kvstore.Store    // Underlying storage
-	grpcSrv  *grpc.Server     // gRPC server
-	listener net.Listener     // Network listener
+	store    kvstore.Store // Underlying storage
+	grpcSrv  *grpc.Server  // gRPC server
+	listener net.Listener  // Network listener
 
 	// Management components
-	watchMgr   *WatchManager    // Watch manager
-	leaseMgr   *LeaseManager    // Lease manager
-	clusterMgr *ClusterManager  // Cluster manager
-	authMgr    *AuthManager     // Auth manager
-	alarmMgr   *AlarmManager    // Alarm manager
+	watchMgr   *WatchManager   // Watch manager
+	leaseMgr   *LeaseManager   // Lease manager
+	clusterMgr *ClusterManager // Cluster manager
+	authMgr    *AuthManager    // Auth manager
+	alarmMgr   *AlarmManager   // Alarm manager
 
 	// Reliability components
-	shutdownMgr  *reliability.GracefulShutdown  // Graceful shutdown manager
-	resourceMgr  *reliability.ResourceManager   // Resource manager
-	healthMgr    *reliability.HealthManager     // Health manager
+	shutdownMgr   *reliability.GracefulShutdown // Graceful shutdown manager
+	resourceMgr   *reliability.ResourceManager  // Resource manager
+	healthMgr     *reliability.HealthManager    // Health manager
 	dataValidator *reliability.DataValidator    // Data validator
 
 	// Configuration
@@ -60,19 +60,20 @@ type Server struct {
 
 // ServerConfig server configuration
 type ServerConfig struct {
-	Store       kvstore.Store              // Underlying storage (required)
-	Address     string                     // Listen address (e.g. ":2379")
-	ClusterID   uint64                     // Cluster ID
-	MemberID    uint64                     // Member ID
-	ClusterPeers []string                  // Peer URLs of all cluster members (for member list)
-	ConfChangeC chan<- raftpb.ConfChange   // Raft ConfChange channel (optional)
-	Config      *config.Config             // Full configuration object (optional, values from this take precedence if provided)
+	Store        kvstore.Store            // Underlying storage (required)
+	Address      string                   // Listen address (e.g. ":2379")
+	ClusterID    uint64                   // Cluster ID
+	MemberID     uint64                   // Member ID
+	ClusterPeers []string                 // Peer URLs of all cluster members (for member list)
+	ConfChangeC  chan<- raftpb.ConfChange // Raft ConfChange channel (optional)
+	Config       *config.Config           // Full configuration object (optional, values from this take precedence if provided)
+	Listener     net.Listener             // External listener (optional, if provided, Address is ignored)
 
 	// Reliability configuration (kept for backward compatibility, but overridden if Config is provided)
-	ResourceLimits    *reliability.ResourceLimits  // Resource limits configuration (optional)
-	ShutdownTimeout   time.Duration                // Shutdown timeout (optional, default 30s)
-	EnableCRC         bool                         // Whether to enable CRC validation (optional, default false)
-	EnableHealthCheck bool                         // Whether to enable health check (optional, default true)
+	ResourceLimits    *reliability.ResourceLimits // Resource limits configuration (optional)
+	ShutdownTimeout   time.Duration               // Shutdown timeout (optional, default 30s)
+	EnableCRC         bool                        // Whether to enable CRC validation (optional, default false)
+	EnableHealthCheck bool                        // Whether to enable health check (optional, default true)
 }
 
 // NewServer creates a new etcd-compatible server
@@ -127,9 +128,15 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	}
 
 	// Create listener
-	listener, err := net.Listen("tcp", cfg.Address)
-	if err != nil {
-		return nil, fmt.Errorf("failed to listen on %s: %v", cfg.Address, err)
+	var listener net.Listener
+	var err error
+	if cfg.Listener != nil {
+		listener = cfg.Listener
+	} else {
+		listener, err = net.Listen("tcp", cfg.Address)
+		if err != nil {
+			return nil, fmt.Errorf("failed to listen on %s: %v", cfg.Address, err)
+		}
 	}
 
 	// Initialize reliability components
@@ -400,6 +407,14 @@ func (s *Server) Start() error {
 
 	// Start gRPC service
 	return s.grpcSrv.Serve(s.listener)
+}
+
+// Serve accepts a listener and serves gRPC requests on it.
+func (s *Server) Serve(l net.Listener) error {
+	s.mu.Lock()
+	s.listener = l
+	s.mu.Unlock()
+	return s.Start()
 }
 
 // Stop stops the gRPC server (triggers graceful shutdown)

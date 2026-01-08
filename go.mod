@@ -46,6 +46,7 @@ require (
 	github.com/prometheus/common v0.62.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/shopspring/decimal v1.2.0 // indirect
+	github.com/soheilhy/cmux v0.1.5 // indirect
 	github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2 // indirect
 	go.etcd.io/etcd/pkg/v3 v3.6.4 // indirect
 	go.uber.org/atomic v1.11.0 // indirect

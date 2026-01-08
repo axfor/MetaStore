@@ -17,19 +17,22 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"strings"
 
-	// "metaStore/internal/batch" // disabled BatchProposer
+	"github.com/soheilhy/cmux"
+
+	// "metaStore/internal/batch" // 已禁用 BatchProposer
+	"metaStore/api/etcd"
+	"metaStore/api/http"
+	"metaStore/api/mysql"
 	"metaStore/internal/memory"
 	"metaStore/internal/raft"
 	"metaStore/internal/rocksdb"
 	"metaStore/pkg/config"
-	"metaStore/api/etcd"
-	"metaStore/api/http"
 	"metaStore/pkg/log"
 	"metaStore/pkg/metrics"
-	"metaStore/api/mysql"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"go.etcd.io/raft/v3/raftpb"
@@ -167,12 +170,6 @@ func main() {
 		// inject raft node reference，used to getstatus info
 		kvs.SetRaftNode(raftNode, cfg.Server.MemberID)
 
-		// Start HTTP API server
-		go func() {
-			log.Info("Starting HTTP API", zap.Int("port", *kvport), zap.String("component", "main"))
-			http.ServeHTTPKVAPI(kvs, *kvport, confChangeC, errorC)
-		}()
-
 		// Start MySQL protocol server
 		mysqlServer, err := mysql.NewServer(mysql.ServerConfig{
 			Store:    kvs,
@@ -198,6 +195,32 @@ func main() {
 			}
 		}()
 
+		// Start unified listener (cmux)
+		log.Info("Starting unified listener", zap.String("address", cfg.Server.Etcd.Address), zap.String("component", "main"))
+		l, err := net.Listen("tcp", cfg.Server.Etcd.Address)
+		if err != nil {
+			log.Fatalf("Failed to listen on %s: %v", cfg.Server.Etcd.Address, err)
+			os.Exit(-1)
+		}
+
+		m := cmux.New(l)
+		grpcL := m.Match(cmux.HTTP2HeaderField("content-type", "application/grpc"))
+		httpL := m.Match(cmux.HTTP1Fast())
+
+		// Start HTTP API server
+		httpServer := http.NewServer(http.Config{
+			Store:       kvs,
+			Port:        *kvport, // Configured port (mostly for display/struct init)
+			ConfChangeC: confChangeC,
+		})
+
+		go func() {
+			log.Info("Starting HTTP API on multiplexed listener", zap.String("component", "main"))
+			if err := httpServer.Serve(httpL); err != nil {
+				log.Error("HTTP API server failed", zap.Error(err), zap.String("component", "main"))
+			}
+		}()
+
 		// Start etcd gRPC server
 		log.Info("Starting etcd gRPC server",
 			zap.String("address", cfg.Server.Etcd.Address),
@@ -212,6 +235,7 @@ func main() {
 			ClusterPeers: strings.Split(*cluster, ","),
 			ConfChangeC:  confChangeC,
 			Config:       cfg,
+			Listener:     grpcL, // Inject matched listener
 		})
 		if err != nil {
 			log.Fatalf("Failed to create etcd server: %v", err)
@@ -219,10 +243,18 @@ func main() {
 			return
 		}
 
-		if err := etcdServer.Start(); err != nil {
-			log.Fatalf("etcd server failed: %v", err)
+		go func() {
+			if err := etcdServer.Start(); err != nil {
+				log.Fatalf("etcd server failed: %v", err)
+				os.Exit(-1)
+			}
+		}()
+
+		// Block on cmux serving
+		log.Info("Starting cmux multiplexing", zap.String("address", cfg.Server.Etcd.Address), zap.String("component", "main"))
+		if err := m.Serve(); err != nil {
+			log.Fatalf("cmux failed: %v", err)
 			os.Exit(-1)
-			return
 		}
 
 	case "memory":
@@ -238,12 +270,6 @@ func main() {
 		// inject raft node reference，used to getstatus info
 		kvs.SetRaftNode(raftNode, cfg.Server.MemberID)
 
-		// Start HTTP API server
-		go func() {
-			log.Info("Starting HTTP API", zap.Int("port", *kvport), zap.String("component", "main"))
-			http.ServeHTTPKVAPI(kvs, *kvport, confChangeC, errorC)
-		}()
-
 		// Start MySQL protocol server
 		mysqlServer, err := mysql.NewServer(mysql.ServerConfig{
 			Store:    kvs,
@@ -269,6 +295,32 @@ func main() {
 			}
 		}()
 
+		// Start unified listener (cmux)
+		log.Info("Starting unified listener", zap.String("address", cfg.Server.Etcd.Address), zap.String("component", "main"))
+		l, err := net.Listen("tcp", cfg.Server.Etcd.Address)
+		if err != nil {
+			log.Fatalf("Failed to listen on %s: %v", cfg.Server.Etcd.Address, err)
+			os.Exit(-1)
+		}
+
+		m := cmux.New(l)
+		grpcL := m.Match(cmux.HTTP2HeaderField("content-type", "application/grpc"))
+		httpL := m.Match(cmux.HTTP1Fast())
+
+		// Start HTTP API server
+		httpServer := http.NewServer(http.Config{
+			Store:       kvs,
+			Port:        *kvport,
+			ConfChangeC: confChangeC,
+		})
+
+		go func() {
+			log.Info("Starting HTTP API on multiplexed listener", zap.String("component", "main"))
+			if err := httpServer.Serve(httpL); err != nil {
+				log.Error("HTTP API server failed", zap.Error(err), zap.String("component", "main"))
+			}
+		}()
+
 		// Start etcd gRPC server
 		log.Info("Starting etcd gRPC server",
 			zap.String("address", cfg.Server.Etcd.Address),
@@ -283,6 +335,7 @@ func main() {
 			ClusterPeers: strings.Split(*cluster, ","),
 			ConfChangeC:  confChangeC,
 			Config:       cfg,
+			Listener:     grpcL, // Inject matched listener
 		})
 		if err != nil {
 			log.Fatalf("Failed to create etcd server: %v", err)
@@ -290,10 +343,18 @@ func main() {
 			return
 		}
 
-		if err := etcdServer.Start(); err != nil {
-			log.Fatalf("etcd server failed: %v", err)
+		go func() {
+			if err := etcdServer.Start(); err != nil {
+				log.Fatalf("etcd server failed: %v", err)
+				os.Exit(-1)
+			}
+		}()
+
+		// Block on cmux serving
+		log.Info("Starting cmux multiplexing", zap.String("address", cfg.Server.Etcd.Address), zap.String("component", "main"))
+		if err := m.Serve(); err != nil {
+			log.Fatalf("cmux failed: %v", err)
 			os.Exit(-1)
-			return
 		}
 
 	default:
