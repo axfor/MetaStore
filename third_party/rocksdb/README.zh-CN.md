@@ -4,66 +4,64 @@
 
 ## 快速开始
 
-构建 RocksDB 依赖有两种方式：
+MetaStore 使用 RocksDB 作为存储引擎，构建流程已完全优化：
 
-### 方式 1: 在线构建（一步完成）
-
-如果有网络连接，可以一次性下载并构建：
+### 推荐方式：一步完成
 
 ```bash
-# 下载源码
+make rocksdb-download  # 首次下载源码并打包（304MB tarball）
+make build             # 自动解压、构建 RocksDB 和项目
+```
+
+**工作原理**:
+1. `make rocksdb-download` 下载 RocksDB 源码并创建 `rocksdb-10.4.2.tar.gz`
+2. `make build` 自动从 tarball 解压源码并构建（如果库不存在）
+3. tarball 可以提交到 git，支持离线构建
+
+### 方式 1: 在线构建
+
+如果有网络连接：
+
+```bash
+# 下载源码并打包（只需运行一次）
 make rocksdb-download
 
-# 从本地源码构建
-make rocksdb
-
-# 构建项目
+# 构建项目（自动处理 RocksDB）
 make build
 ```
 
-### 方式 2: 离线构建（支持无网络环境）
+### 方式 2: 离线构建
 
-如果源码已经在 `third_party/rocksdb/src/v10.4.2/` 目录（例如已提交到 git），可以直接构建：
+如果 tarball 已在 `third_party/rocksdb/rocksdb-10.4.2.tar.gz`（已提交到 git）：
 
 ```bash
-# 直接从本地源码构建（不需要网络）
-make rocksdb
-
-# 构建项目
+# 直接构建（自动解压 tarball）
 make build
-```
-
-**注意**: `make build` 会自动调用 `make rocksdb`，所以通常只需要：
-```bash
-make rocksdb-download  # 首次下载源码
-make build             # 自动构建 RocksDB 和项目
 ```
 
 ## 目录结构
 
 ```
 third_party/rocksdb/
-├── src/                   # RocksDB 源代码目录
-│   └── v10.4.2/           # RocksDB 10.4.2 源码
-│       ├── include/       # 源码头文件
-│       ├── *.cc           # 源文件
-│       └── librocksdb.a   # 构建的静态库
-├── darwin-arm64/          # macOS Apple Silicon (M1/M2/M3)
-│   ├── include/
-│   │   └── rocksdb/       # 已安装的头文件
+├── rocksdb-10.4.2.tar.gz  # RocksDB 源码包 (~304MB, 提交到 git)
+├── src/                   # 临时解压目录（构建时自动创建，git 忽略）
+│   └── v10.4.2/           # RocksDB 10.4.2 源码（从 tarball 解压）
+├── darwin-arm64/          # macOS Apple Silicon 构建产物（git 忽略）
+│   ├── include/rocksdb/   # 已安装的头文件
 │   └── lib/               # 已安装的库
-│       ├── librocksdb.a   # 静态库 (~27MB)
+│       ├── librocksdb.a   # 静态库 (~661MB)
 │       ├── libzstd.a
 │       ├── liblz4.a
 │       └── libsnappy.a
-├── darwin-x86_64/         # macOS Intel
-├── linux-x86_64/          # Linux x86_64
-└── linux-aarch64/         # Linux ARM64
+├── darwin-x86_64/         # macOS Intel（git 忽略）
+├── linux-x86_64/          # Linux x86_64（git 忽略）
+└── linux-aarch64/         # Linux ARM64（git 忽略）
 ```
 
-**源代码**: `src/v10.4.2/` 目录包含 RocksDB 源代码 (v10.4.2)，可以提交到 git 以支持离线构建。
-
-**构建产物**: 编译的 `.o` 文件和中间构建产物会被 git 忽略。
+**重要说明**:
+- **提交到 git**: `rocksdb-10.4.2.tar.gz` (304MB)
+- **git 忽略**: `src/`, `darwin-arm64/`, 等构建产物
+- **构建流程**: tarball → 解压到 src/ → 编译 → 安装到平台目录
 
 ## 支持的版本
 
@@ -245,35 +243,33 @@ rm -rf third_party/rocksdb/src/ third_party/rocksdb/*/
 
 ## 离线构建支持
 
-`third_party/rocksdb/src/v10.4.2/` 中的源代码可以提交到 git 仓库，实现离线构建：
+RocksDB 源码 tarball 可以提交到 git 仓库，实现真正的离线构建：
 
 ### 工作流程：
 
 **开发机器（有网络）**:
 ```bash
-# 1. 下载源码
+# 1. 下载源码并打包
 make rocksdb-download
 
-# 2. 提交源码到 git
-git add third_party/rocksdb/src/v10.4.2/
-git commit -m "Add RocksDB 10.4.2 source code for offline builds"
+# 2. 提交 tarball 到 git（304MB）
+git add third_party/rocksdb/rocksdb-10.4.2.tar.gz
+git commit -m "Add RocksDB 10.4.2 source tarball for offline builds"
 git push
 ```
 
 **生产服务器（无网络）**:
 ```bash
-# 1. 克隆仓库（源码已包含）
+# 1. 克隆仓库（包含 tarball）
 git clone <your-repo-url>
 cd MetaStore
 
-# 2. 直接构建（不需要网络）
-make rocksdb
-
-# 3. 构建项目
+# 2. 直接构建（自动解压 tarball）
 make build
 ```
 
 ### 说明：
-- 构建产物（`src/v10.4.2/` 中的 `.o`, `.a` 文件）会自动被 git 忽略
-- 只有源码文件（`.cc`, `.h` 等）会被提交到 git
-- 这样可以在没有网络的环境下进行构建
+- **Tarball 大小**: 304MB（压缩后）
+- **解压后**: ~2.5GB（构建时临时解压，构建后可删除）
+- **构建产物**: `src/` 目录会被 git 忽略
+- **平台支持**: 自动检测 macOS/Linux 和 arm64/x86_64

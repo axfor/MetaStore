@@ -238,21 +238,32 @@ help:
 	@echo "  make rocksdb            # Build RocksDB from local source"
 	@echo "  make clean              # Clean build artifacts"
 
-## rocksdb-download: Download RocksDB source code
+## rocksdb-download: Download RocksDB source code and create tarball
 rocksdb-download:
 	@echo "$(CYAN)Downloading RocksDB 10.4.2 source code...$(NO_COLOR)"
-	@if [ -d "third_party/rocksdb/src/v10.4.2" ]; then \
-		echo "$(YELLOW)RocksDB source already exists at third_party/rocksdb/src/v10.4.2$(NO_COLOR)"; \
-		echo "$(YELLOW)To re-download, first remove: rm -rf third_party/rocksdb/src/v10.4.2$(NO_COLOR)"; \
+	@if [ -f "third_party/rocksdb/rocksdb-10.4.2.tar.gz" ]; then \
+		echo "$(GREEN)RocksDB source tarball already exists$(NO_COLOR)"; \
+		echo "$(YELLOW)Location: third_party/rocksdb/rocksdb-10.4.2.tar.gz$(NO_COLOR)"; \
+		ls -lh third_party/rocksdb/rocksdb-10.4.2.tar.gz; \
+	elif [ -d "third_party/rocksdb/src/v10.4.2" ]; then \
+		echo "$(YELLOW)RocksDB source exists, creating tarball...$(NO_COLOR)"; \
+		tar czf third_party/rocksdb/rocksdb-10.4.2.tar.gz -C third_party/rocksdb/src v10.4.2; \
+		echo "$(GREEN)Tarball created: third_party/rocksdb/rocksdb-10.4.2.tar.gz$(NO_COLOR)"; \
+		ls -lh third_party/rocksdb/rocksdb-10.4.2.tar.gz; \
 	else \
 		mkdir -p third_party/rocksdb/src; \
+		echo "$(YELLOW)Cloning RocksDB from GitHub...$(NO_COLOR)"; \
 		git clone --depth 1 --branch v10.4.2 https://github.com/facebook/rocksdb.git third_party/rocksdb/src/v10.4.2; \
 		rm -rf third_party/rocksdb/src/v10.4.2/.git; \
-		echo "$(GREEN)RocksDB source downloaded to: third_party/rocksdb/src/v10.4.2$(NO_COLOR)"; \
+		echo "$(YELLOW)Creating tarball for offline use...$(NO_COLOR)"; \
+		tar czf third_party/rocksdb/rocksdb-10.4.2.tar.gz -C third_party/rocksdb/src v10.4.2; \
+		echo "$(GREEN)RocksDB source downloaded and packaged$(NO_COLOR)"; \
+		echo "$(GREEN)Tarball: third_party/rocksdb/rocksdb-10.4.2.tar.gz$(NO_COLOR)"; \
+		ls -lh third_party/rocksdb/rocksdb-10.4.2.tar.gz; \
 	fi
 
 ## rocksdb: Build RocksDB and dependencies from local source
-rocksdb: rocksdb-clean
+rocksdb:
 	@# Check if libraries already exist
 	@if [ -f "$(ROCKSDB_DIR)/lib/librocksdb.a" ] && \
 	   [ -f "$(ROCKSDB_DIR)/lib/libzstd.a" ] && \
@@ -263,11 +274,18 @@ rocksdb: rocksdb-clean
 	fi
 	@echo "$(CYAN)Building RocksDB from source for $(OS_ARCH)...$(NO_COLOR)"
 	@echo "$(YELLOW)This will take 10-20 minutes...$(NO_COLOR)"
-	@# Check if source exists
+	@# Extract tarball if source doesn't exist
 	@if [ ! -d "third_party/rocksdb/src/v10.4.2" ]; then \
-		echo "$(YELLOW)RocksDB source not found!$(NO_COLOR)"; \
-		echo "$(YELLOW)Please run 'make rocksdb-download' first to download the source code$(NO_COLOR)"; \
-		exit 1; \
+		if [ -f "third_party/rocksdb/rocksdb-10.4.2.tar.gz" ]; then \
+			echo "$(YELLOW)Extracting RocksDB source from tarball...$(NO_COLOR)"; \
+			mkdir -p third_party/rocksdb/src; \
+			cd third_party/rocksdb/src && tar xzf ../rocksdb-10.4.2.tar.gz; \
+			echo "$(GREEN)Source extracted successfully$(NO_COLOR)"; \
+		else \
+			echo "$(YELLOW)RocksDB source not found!$(NO_COLOR)"; \
+			echo "$(YELLOW)Please run 'make rocksdb-download' first to download the source code$(NO_COLOR)"; \
+			exit 1; \
+		fi; \
 	fi
 	@mkdir -p $(ROCKSDB_DIR)/include
 	@mkdir -p $(ROCKSDB_DIR)/lib
