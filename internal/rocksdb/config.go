@@ -28,6 +28,15 @@ type OptimizationConfig struct {
 
 	// Tier 6C: Column Families (for future use)
 	ColumnFamilies ColumnFamilyConfig
+
+	// Performance tuning (configurable via config.yaml)
+	MaxBackgroundJobs    int    // Default 2 (lightweight)
+	WriteBufferSize      uint64 // Default 4MB (lightweight)
+	MaxWriteBufferNumber int    // Default 2 (lightweight)
+	TargetFileSizeBase   uint64 // Default 16MB (lightweight)
+
+	// Compression: "none", "snappy", "lz4", "zstd" (default: "lz4")
+	Compression string
 }
 
 // WALConfig configures Write-Ahead Log behavior
@@ -80,24 +89,31 @@ type ColumnFamilyConfig struct {
 	Families []string
 }
 
-// DefaultOptimizationConfig returns production-ready optimization settings
+// DefaultOptimizationConfig returns lightweight optimization settings
+// Optimized for low memory footprint (~10MB) while maintaining functionality
 func DefaultOptimizationConfig() OptimizationConfig {
 	return OptimizationConfig{
 		WAL: WALConfig{
-			Sync:         false,             // Async writes (Raft provides durability)
-			SizeLimitMB:  64,                // 64MB WAL file size limit
-			TTLSeconds:   0,                 // No TTL (managed by Raft snapshots)
-			MaxTotalSize: 512 * 1024 * 1024, // 512MB total WAL size
+			Sync:         false,            // Async writes (Raft provides durability)
+			SizeLimitMB:  16,               // 16MB WAL file size limit (reduced from 64MB)
+			TTLSeconds:   0,                // No TTL (managed by Raft snapshots)
+			MaxTotalSize: 32 * 1024 * 1024, // 32MB total WAL size (reduced from 512MB)
 		},
 		BlockCache: BlockCacheConfig{
-			Size:                  512 * 1024 * 1024, // 512MB cache
-			NumShardBits:          6,                 // 64 shards
-			HighPriorityPoolRatio: 0.5,               // 50% for metadata
+			Size:                  8 * 1024 * 1024, // 8MB cache (reduced from 512MB)
+			NumShardBits:          4,               // 16 shards (reduced from 64)
+			HighPriorityPoolRatio: 0.5,             // 50% for metadata
 		},
 		ColumnFamilies: ColumnFamilyConfig{
 			Enabled:  false, // Disabled for now (requires migration)
 			Families: []string{"kv", "lease", "meta"},
 		},
+		// Lightweight defaults for ~10MB memory footprint
+		MaxBackgroundJobs:    2,                 // Reduced from 4
+		WriteBufferSize:      4 * 1024 * 1024,   // 4MB (reduced from 64MB)
+		MaxWriteBufferNumber: 2,                 // 2 memtables (reduced from 3)
+		TargetFileSizeBase:   16 * 1024 * 1024,  // 16MB SST files (reduced from 64MB)
+		Compression:          "lz4",             // Default LZ4 for good speed/ratio balance
 	}
 }
 
@@ -108,14 +124,22 @@ func (c *OptimizationConfig) ApplyDBOptions(opts *grocksdb.Options) {
 		opts.SetMaxTotalWalSize(c.WAL.MaxTotalSize)
 	}
 
-	// Performance tuning
-	opts.SetMaxBackgroundJobs(4)            // Parallel compaction/flush
-	opts.SetWriteBufferSize(64 * 1024 * 1024) // 64MB write buffer
-	opts.SetMaxWriteBufferNumber(3)         // 3 memtables
-	opts.SetTargetFileSizeBase(64 * 1024 * 1024) // 64MB SST files
+	// Performance tuning (use configured values, defaults are lightweight)
+	if c.MaxBackgroundJobs > 0 {
+		opts.SetMaxBackgroundJobs(c.MaxBackgroundJobs)
+	}
+	if c.WriteBufferSize > 0 {
+		opts.SetWriteBufferSize(c.WriteBufferSize)
+	}
+	if c.MaxWriteBufferNumber > 0 {
+		opts.SetMaxWriteBufferNumber(c.MaxWriteBufferNumber)
+	}
+	if c.TargetFileSizeBase > 0 {
+		opts.SetTargetFileSizeBase(c.TargetFileSizeBase)
+	}
 
-	// Compression - use LZ4 for better performance
-	opts.SetCompression(grocksdb.LZ4Compression)
+	// Compression - configurable via config.yaml
+	opts.SetCompression(parseCompression(c.Compression))
 
 	// Bloom filter for faster point lookups
 	opts.SetBloomLocality(1)
@@ -166,4 +190,20 @@ func NewOptimizedDBOptions() *grocksdb.Options {
 	opts.SetCreateIfMissing(true)
 	config.ApplyDBOptions(opts)
 	return opts
+}
+
+// parseCompression converts compression string to grocksdb.CompressionType
+func parseCompression(compression string) grocksdb.CompressionType {
+	switch compression {
+	case "none":
+		return grocksdb.NoCompression
+	case "snappy":
+		return grocksdb.SnappyCompression
+	case "lz4":
+		return grocksdb.LZ4Compression
+	case "zstd":
+		return grocksdb.ZSTDCompression
+	default:
+		return grocksdb.LZ4Compression // Default to LZ4
+	}
 }

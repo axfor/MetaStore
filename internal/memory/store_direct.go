@@ -45,8 +45,8 @@ import (
 //   - prevKv: beforevalue (ifin)
 //   - error: incorrectinfo
 func (m *MemoryEtcd) putDirect(key, value string, leaseID int64) (int64, *kvstore.KeyValue, error) {
-	// 1. becomenew revision (atomic operation，nolock)
-	newRevision := m.revision.Add(1)
+	// 1. becomenew revision (Raft guarantees serialization)
+	newRevision := m.nextRevision()
 
 	// 2. getbeforevalue (ShardedMap internallock)
 	prevKv, exists := m.kvData.Get(key)
@@ -111,8 +111,8 @@ func (m *MemoryEtcd) deleteDirect(key, rangeEnd string) (int64, []*kvstore.KeyVa
 	if rangeEnd == "" {
 		// singlekeydelete
 		if kv, exists := m.kvData.Get(key); exists {
-			// becomenew revision
-			newRevision := m.revision.Add(1)
+			// becomenew revision (Raft guarantees serialization)
+			newRevision := m.nextRevision()
 
 			// deletekey (ShardedMap internallock)
 			m.kvData.Delete(key)
@@ -136,7 +136,7 @@ func (m *MemoryEtcd) deleteDirect(key, rangeEnd string) (int64, []*kvstore.KeyVa
 		}
 
 		// keydoes not exist
-		return 0, nil, m.revision.Load(), nil
+		return 0, nil, m.getRevision(), nil
 	}
 
 	// rangedelete
@@ -146,13 +146,14 @@ func (m *MemoryEtcd) deleteDirect(key, rangeEnd string) (int64, []*kvstore.KeyVa
 	keysToDelete := m.kvData.Range(key, rangeEnd, 0)
 
 	if len(keysToDelete) == 0 {
-		return 0, nil, m.revision.Load(), nil
+		return 0, nil, m.getRevision(), nil
 	}
 
 	//  deletekey
 	for _, kv := range keysToDelete {
 		// becomenew revision ( timedeleteallupdate revision)
-		m.revision.Add(1)
+		// Note: Raft guarantees serialization
+		m.nextRevision()
 
 		keyStr := string(kv.Key)
 
@@ -175,7 +176,7 @@ func (m *MemoryEtcd) deleteDirect(key, rangeEnd string) (int64, []*kvstore.KeyVa
 		prevKvs = append(prevKvs, kv)
 	}
 
-	return deleted, prevKvs, m.revision.Load(), nil
+	return deleted, prevKvs, m.getRevision(), nil
 }
 
 // applyTxnWithShardLocks usegloballockexecutetransaction
@@ -201,12 +202,8 @@ func (m *MemoryEtcd) deleteDirect(key, rangeEnd string) (int64, []*kvstore.KeyVa
 //   - *kvstore.TxnResponse: transactionresponse
 //   - error: incorrectinfo
 func (m *MemoryEtcd) applyTxnWithShardLocks(compares []kvstore.Compare, thenOps []kvstore.Op, elseOps []kvstore.Op) (*kvstore.TxnResponse, error) {
-	// useglobal txnMu lockcertifytransactionatomic
-	m.txnMu.Lock()
-	defer m.txnMu.Unlock()
-
-	// executetransaction
-	return m.txnUnlocked(compares, thenOps, elseOps)
+	// Raft guarantees serialization, no storage-level lock needed
+	return m.txnInternal(compares, thenOps, elseOps)
 }
 
 // applyLeaseOperationDirect execute lease operation，notusegloballock

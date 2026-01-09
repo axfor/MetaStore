@@ -245,20 +245,26 @@ type LeaseReadConfig struct {
 }
 
 // RocksDBConfig RocksDB performance configuration
+// Defaults are optimized for lightweight memory footprint (~10MB)
+// For high-performance scenarios, increase BlockCacheSize and WriteBufferSize
 type RocksDBConfig struct {
 	// Block Cache configuration (affects read performance)
-	BlockCacheSize uint64 `yaml:"block_cache_size"` // Default 256MB
+	BlockCacheSize uint64 `yaml:"block_cache_size"` // Default 8MB (lightweight), increase for better read performance
 
 	// Write Buffer configuration (affects write performance)
-	WriteBufferSize           uint64 `yaml:"write_buffer_size"`            // Default 64MB
-	MaxWriteBufferNumber      int    `yaml:"max_write_buffer_number"`      // Default 3
+	WriteBufferSize           uint64 `yaml:"write_buffer_size"`            // Default 4MB (lightweight)
+	MaxWriteBufferNumber      int    `yaml:"max_write_buffer_number"`      // Default 2 (lightweight)
 	MinWriteBufferNumberToMerge int  `yaml:"min_write_buffer_number_to_merge"` // Default 1
 
 	// Compaction configuration
-	MaxBackgroundJobs              int `yaml:"max_background_jobs"`                // Default 4
+	MaxBackgroundJobs              int `yaml:"max_background_jobs"`                // Default 2 (lightweight)
 	Level0FileNumCompactionTrigger int `yaml:"level0_file_num_compaction_trigger"` // Default 4
 	Level0SlowdownWritesTrigger    int `yaml:"level0_slowdown_writes_trigger"`     // Default 20
 	Level0StopWritesTrigger        int `yaml:"level0_stop_writes_trigger"`         // Default 36
+
+	// Compression configuration
+	// Options: "none", "snappy", "lz4", "zstd" (default: "lz4")
+	Compression string `yaml:"compression"` // Default "lz4" for good balance of speed and ratio
 
 	// Bloom Filter configuration
 	BloomFilterBitsPerKey      int  `yaml:"bloom_filter_bits_per_key"`       // Default 10
@@ -604,21 +610,21 @@ func (c *Config) SetDefaults() {
 		c.Server.Raft.LeaseRead.ReadTimeout = 5 * time.Second // Read timeout 5 seconds
 	}
 
-	// RocksDB defaults (based on RocksDB official recommendations)
+	// RocksDB defaults (lightweight config for ~10MB memory footprint)
 	if c.Server.RocksDB.BlockCacheSize == 0 {
-		c.Server.RocksDB.BlockCacheSize = 268435456 // 256MB
+		c.Server.RocksDB.BlockCacheSize = 8 * 1024 * 1024 // 8MB (reduced from 256MB)
 	}
 	if c.Server.RocksDB.WriteBufferSize == 0 {
-		c.Server.RocksDB.WriteBufferSize = 67108864 // 64MB
+		c.Server.RocksDB.WriteBufferSize = 4 * 1024 * 1024 // 4MB (reduced from 64MB)
 	}
 	if c.Server.RocksDB.MaxWriteBufferNumber == 0 {
-		c.Server.RocksDB.MaxWriteBufferNumber = 3
+		c.Server.RocksDB.MaxWriteBufferNumber = 2 // reduced from 3
 	}
 	if c.Server.RocksDB.MinWriteBufferNumberToMerge == 0 {
 		c.Server.RocksDB.MinWriteBufferNumberToMerge = 1
 	}
 	if c.Server.RocksDB.MaxBackgroundJobs == 0 {
-		c.Server.RocksDB.MaxBackgroundJobs = 4
+		c.Server.RocksDB.MaxBackgroundJobs = 2 // reduced from 4
 	}
 	if c.Server.RocksDB.Level0FileNumCompactionTrigger == 0 {
 		c.Server.RocksDB.Level0FileNumCompactionTrigger = 4
@@ -640,6 +646,9 @@ func (c *Config) SetDefaults() {
 	}
 	if c.Server.RocksDB.BytesPerSync == 0 {
 		c.Server.RocksDB.BytesPerSync = 1048576 // 1MB
+	}
+	if c.Server.RocksDB.Compression == "" {
+		c.Server.RocksDB.Compression = "lz4" // Default to LZ4 for good balance
 	}
 	// UseFsync defaults to false (no need to set)
 

@@ -64,7 +64,7 @@ func TestBatchApplyPut(t *testing.T) {
 
 	// verify revision correct
 	expectedRevision := int64(100)
-	actualRevision := m.MemoryEtcd.revision.Load()
+	actualRevision := m.MemoryEtcd.CurrentRevision()
 	if actualRevision != expectedRevision {
 		t.Errorf("Expected revision %d, got %d", expectedRevision, actualRevision)
 	}
@@ -245,9 +245,9 @@ func TestBatchApplyCorrectnessVsSingle(t *testing.T) {
 	}
 
 	// verify revision first
-	if m1.MemoryEtcd.revision.Load() != m2.MemoryEtcd.revision.Load() {
+	if m1.MemoryEtcd.CurrentRevision() != m2.MemoryEtcd.CurrentRevision() {
 		t.Errorf("Revision mismatch: single=%d, batch=%d",
-			m1.MemoryEtcd.revision.Load(), m2.MemoryEtcd.revision.Load())
+			m1.MemoryEtcd.CurrentRevision(), m2.MemoryEtcd.CurrentRevision())
 	}
 }
 
@@ -316,8 +316,8 @@ func TestBatchApplyEmptyOps(t *testing.T) {
 	m.applyBatch([]RaftOperation{})
 
 	// verifyno
-	if m.MemoryEtcd.revision.Load() != 0 {
-		t.Errorf("Expected revision 0, got %d", m.MemoryEtcd.revision.Load())
+	if m.MemoryEtcd.CurrentRevision() != 0 {
+		t.Errorf("Expected revision 0, got %d", m.MemoryEtcd.CurrentRevision())
 	}
 }
 
@@ -378,7 +378,7 @@ func TestBatchApplyStressTest(t *testing.T) {
 	t.Logf("Throughput: %.2f ops/sec", float64(numOps)/duration.Seconds())
 
 	// verifyfinalstatus
-	finalRevision := m.MemoryEtcd.revision.Load()
+	finalRevision := m.MemoryEtcd.CurrentRevision()
 	if finalRevision != int64(numOps) {
 		t.Errorf("Expected revision %d, got %d", numOps, finalRevision)
 	}

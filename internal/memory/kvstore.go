@@ -332,7 +332,7 @@ func (m *Memory) PutWithLease(ctx context.Context, key, value string, leaseID in
 	}
 
 	// readcurrent revision and prevKv(nolock，atomic + ShardedMap internallock)
-	currentRevision := m.MemoryEtcd.revision.Load()
+	currentRevision := m.MemoryEtcd.getRevision()
 	prevKv, _ := m.MemoryEtcd.kvData.Get(key)
 
 	return currentRevision, prevKv, nil
@@ -359,7 +359,7 @@ func (m *Memory) DeleteRange(ctx context.Context, key, rangeEnd string) (int64, 
 
 	// ifnone key needdelete，return
 	if deleted == 0 {
-		return 0, nil, m.MemoryEtcd.revision.Load(), nil
+		return 0, nil, m.MemoryEtcd.getRevision(), nil
 	}
 
 	// becomeuniquecolumn
@@ -413,7 +413,7 @@ func (m *Memory) DeleteRange(ctx context.Context, key, rangeEnd string) (int64, 
 		return 0, nil, 0, ctx.Err()
 	}
 
-	return deleted, prevKvs, m.MemoryEtcd.revision.Load(), nil
+	return deleted, prevKvs, m.MemoryEtcd.getRevision(), nil
 }
 
 // LeaseGrant createlease(via Raft)
@@ -630,7 +630,7 @@ func (m *Memory) GetSnapshot() ([]byte, error) {
 	m.MemoryEtcd.leaseMu.RUnlock()
 
 	// use Protobuf serialize(optimizeafter)
-	revision := m.MemoryEtcd.revision.Load()
+	revision := m.MemoryEtcd.getRevision()
 	return serializeSnapshot(revision, kvData, leases)
 }
 
@@ -652,8 +652,10 @@ func (m *Memory) recoverFromSnapshot(snapshotData []byte) error {
 		return err
 	}
 
-	// use atomic update revision
-	m.MemoryEtcd.revision.Store(snapshot.Revision)
+	// use revMu update revision
+	m.MemoryEtcd.revMu.Lock()
+	m.MemoryEtcd.revision = snapshot.Revision
+	m.MemoryEtcd.revMu.Unlock()
 
 	// use ShardedMap.SetAll() recoverydata(internallock)
 	m.MemoryEtcd.kvData.SetAll(snapshot.KVData)
