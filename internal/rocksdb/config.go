@@ -114,7 +114,7 @@ func (c *OptimizationConfig) ApplyDBOptions(opts *grocksdb.Options) {
 	opts.SetMaxWriteBufferNumber(3)         // 3 memtables
 	opts.SetTargetFileSizeBase(64 * 1024 * 1024) // 64MB SST files
 
-	// Compression
+	// Compression - use LZ4 for better performance
 	opts.SetCompression(grocksdb.LZ4Compression)
 
 	// Bloom filter for faster point lookups

@@ -32,7 +32,6 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/raft/v3/raftpb"
 )
 
@@ -128,10 +127,7 @@ func TestMySQLCrossProtocolMemory(t *testing.T) {
 	}()
 
 	// Create etcd client
-	etcdClient, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{etcdAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	etcdClient, err := NewEtcdClient([]string{etcdAddr}, 5*time.Second)
 	require.NoError(t, err)
 	defer etcdClient.Close()
 

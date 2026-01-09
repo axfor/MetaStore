@@ -685,8 +685,10 @@ func Open(path string, cfg ...*config.RocksDBConfig) (*grocksdb.DB, error) {
 		opts.SetBytesPerSync(rocksCfg.BytesPerSync)
 	}
 
-	// Compression
-	opts.SetCompression(grocksdb.SnappyCompression)
+	// Compression - disable compression to avoid linking issues
+	// The compression libraries are statically linked but RocksDB may have been
+	// built without proper compression support
+	opts.SetCompression(grocksdb.NoCompression)
 
 	db, err := grocksdb.OpenDb(opts, path)
 	if err != nil {

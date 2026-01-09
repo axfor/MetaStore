@@ -20,7 +20,6 @@ import (
 	"testing"
 	"time"
 
-	clientv3 "go.etcd.io/etcd/client/v3"
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"google.golang.org/grpc"
 )
@@ -100,10 +99,7 @@ func benchmarkMaintenanceHash(b *testing.B, storageType string) {
 	time.Sleep(2 * time.Second)
 
 	// Put some data first
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{clientAddr}, 5*time.Second)
 	if err != nil {
 		b.Fatalf("Failed to create client: %v", err)
 	}
@@ -164,10 +160,7 @@ func benchmarkMaintenanceHashKV(b *testing.B, storageType string) {
 	time.Sleep(2 * time.Second)
 
 	// Put some data first
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{clientAddr}, 5*time.Second)
 	if err != nil {
 		b.Fatalf("Failed to create client: %v", err)
 	}
@@ -286,10 +279,7 @@ func benchmarkMaintenanceSnapshot(b *testing.B, storageType string, numKeys int)
 	time.Sleep(2 * time.Second)
 
 	// Put test data
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{clientAddr}, 5*time.Second)
 	if err != nil {
 		b.Fatalf("Failed to create client: %v", err)
 	}
@@ -413,10 +403,7 @@ func benchmarkMaintenanceMixed(b *testing.B, storageType string) {
 	time.Sleep(2 * time.Second)
 
 	// Put some test data
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{clientAddr}, 5*time.Second)
 	if err != nil {
 		b.Fatalf("Failed to create client: %v", err)
 	}

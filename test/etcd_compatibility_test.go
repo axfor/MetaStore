@@ -60,10 +60,7 @@ func startTestServer(t *testing.T) (*etcdapi.Server, *clientv3.Client) {
 	time.Sleep(100 * time.Millisecond)
 
 	// createclient
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{server.Address()},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{server.Address()}, 5*time.Second)
 	require.NoError(t, err)
 
 	// clean upfunction
@@ -137,10 +134,7 @@ func startTestServerRocksDB(t *testing.T) (*etcdapi.Server, *clientv3.Client, fu
 	time.Sleep(3 * time.Second)
 
 	// createclient
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{server.Address()},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{server.Address()}, 5*time.Second)
 	require.NoError(t, err)
 
 	// clean upfunction - usesync.Onceduplicateclosechannel

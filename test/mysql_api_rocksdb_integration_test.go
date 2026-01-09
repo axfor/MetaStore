@@ -39,7 +39,11 @@ func TestMySQLRocksDBSingleNodeOperations(t *testing.T) {
 	os.RemoveAll(dbPath)
 	defer os.RemoveAll(dbPath)
 
-	cfg := NewTestConfig(1, 1, ":2381")
+	// Allocate dynamic port for Raft peer communication
+	peers, listeners := allocatePorts(1)
+	releaseListeners(listeners)
+
+	cfg := NewTestConfig(1, 1, peers[0])
 	db, err := rocksdb.Open(dbPath, &cfg.Server.RocksDB)
 	require.NoError(t, err, "Failed to open RocksDB")
 	defer db.Close()
@@ -49,8 +53,6 @@ func TestMySQLRocksDBSingleNodeOperations(t *testing.T) {
 	defer close(proposeC)
 	confChangeC := make(chan raftpb.ConfChange)
 	defer close(confChangeC)
-
-	peers := []string{"http://127.0.0.1:19998"}
 
 	var kvs *rocksdb.RocksDB
 	getSnapshot := func() ([]byte, error) {
@@ -92,8 +94,9 @@ func TestMySQLRocksDBSingleNodeOperations(t *testing.T) {
 	}()
 	defer mysqlServer.Stop()
 
-	// Wait for server to start
-	time.Sleep(500 * time.Millisecond)
+	// Wait for Raft cluster to stabilize and elect leader
+	// Single-node Raft needs more time for election and leader establishment
+	time.Sleep(5 * time.Second)
 
 	// Connect to MySQL server
 	dsn := fmt.Sprintf("root@tcp(127.0.0.1%s)/metastore", mysqlAddr)
