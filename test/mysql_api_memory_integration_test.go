@@ -34,8 +34,8 @@ import (
 func TestMySQLMemorySingleNodeOperations(t *testing.T) {
 	t.Parallel()
 
-	// Cleanup data directory
-	dataDir := "data/memory/mysql_test_1"
+	// Cleanup data directory for Raft node 1
+	dataDir := "data/memory/1"
 	os.RemoveAll(dataDir)
 	defer os.RemoveAll(dataDir)
 
@@ -45,10 +45,13 @@ func TestMySQLMemorySingleNodeOperations(t *testing.T) {
 	confChangeC := make(chan raftpb.ConfChange)
 	defer close(confChangeC)
 
-	peers := []string{"http://127.0.0.1:19999"}
+	// Allocate dynamic port for Raft peer communication
+	peers, listeners := allocatePorts(1)
+	releaseListeners(listeners)
+
 	getSnapshot := func() ([]byte, error) { return nil, nil }
 
-	commitC, errorC, snapshotterReady, _ := raft.NewNode(1, peers, false, getSnapshot, proposeC, confChangeC, "memory", NewTestConfig(1, 1, ":2379"))
+	commitC, errorC, snapshotterReady, _ := raft.NewNode(1, peers, false, getSnapshot, proposeC, confChangeC, "memory", NewTestConfig(1, 1, peers[0]))
 
 	// Create memory store
 	kvs := memory.NewMemory(<-snapshotterReady, proposeC, commitC, errorC)
@@ -78,8 +81,9 @@ func TestMySQLMemorySingleNodeOperations(t *testing.T) {
 	}()
 	defer mysqlServer.Stop()
 
-	// Wait for server to start
-	time.Sleep(500 * time.Millisecond)
+	// Wait for Raft cluster to stabilize and elect leader
+	// Single-node Raft needs more time for election and leader establishment
+	time.Sleep(5 * time.Second)
 
 	// Connect to MySQL server
 	dsn := fmt.Sprintf("root@tcp(127.0.0.1%s)/metastore", mysqlAddr)

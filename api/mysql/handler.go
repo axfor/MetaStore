@@ -69,7 +69,6 @@ func NewMySQLHandler(store kvstore.Store, authProvider *AuthProvider) *MySQLHand
 
 // UseDB handles USE database command
 func (h *MySQLHandler) UseDB(dbName string) error {
-	fmt.Printf("[DEBUG] UseDB called: dbName=%s\n", dbName)
 	log.Debug("USE database command",
 		zap.String("database", dbName),
 		zap.String("component", "mysql"))
@@ -83,7 +82,7 @@ func (h *MySQLHandler) HandleQuery(query string) (*mysql.Result, error) {
 	query = strings.TrimSpace(query)
 	queryUpper := strings.ToUpper(query)
 
-	log.Info("Handling query",
+	log.Debug("Handling query",
 		zap.String("query", query),
 		zap.String("query_upper", queryUpper),
 		zap.String("component", "mysql"))
@@ -132,7 +131,6 @@ func (h *MySQLHandler) HandleQuery(query string) (*mysql.Result, error) {
 
 // HandleFieldList handles field list command
 func (h *MySQLHandler) HandleFieldList(table string, fieldWildcard string) ([]*mysql.Field, error) {
-	fmt.Printf("[DEBUG] HandleFieldList called: table=%s wildcard=%s\n", table, fieldWildcard)
 	log.Debug("Field list command",
 		zap.String("table", table),
 		zap.String("wildcard", fieldWildcard),
@@ -187,8 +185,7 @@ func (h *MySQLHandler) HandleStmtClose(ctx interface{}) error {
 
 // HandleOtherCommand handles other MySQL commands
 func (h *MySQLHandler) HandleOtherCommand(cmd byte, data []byte) error {
-	fmt.Printf("[DEBUG] HandleOtherCommand called: cmd=%d name=%s data_len=%d\n", cmd, getCommandName(cmd), len(data))
-	log.Info("Other command received",
+	log.Debug("Other command received",
 		zap.Uint8("cmd", cmd),
 		zap.String("cmd_name", getCommandName(cmd)),
 		zap.Int("data_len", len(data)),
@@ -196,25 +193,20 @@ func (h *MySQLHandler) HandleOtherCommand(cmd byte, data []byte) error {
 
 	switch cmd {
 	case mysql.COM_QUIT:
-		fmt.Println("[DEBUG] COM_QUIT received")
-		log.Info("COM_QUIT received", zap.String("component", "mysql"))
+		log.Debug("COM_QUIT received", zap.String("component", "mysql"))
 		return nil
 	case mysql.COM_PING:
-		fmt.Println("[DEBUG] COM_PING received")
-		log.Info("COM_PING received", zap.String("component", "mysql"))
+		log.Debug("COM_PING received", zap.String("component", "mysql"))
 		return nil
 	case mysql.COM_INIT_DB:
-		fmt.Println("[DEBUG] COM_INIT_DB received")
 		// Already handled by UseDB
-		log.Info("COM_INIT_DB received", zap.String("component", "mysql"))
+		log.Debug("COM_INIT_DB received", zap.String("component", "mysql"))
 		return nil
 	case mysql.COM_SET_OPTION:
-		fmt.Println("[DEBUG] COM_SET_OPTION received")
 		log.Debug("COM_SET_OPTION received", zap.String("component", "mysql"))
 		// Accept SET OPTION command (used by mysql client for multi-statement settings)
 		return nil
 	default:
-		fmt.Printf("[DEBUG] Unknown command: %d\n", cmd)
 		log.Warn("Unknown command received",
 			zap.Uint8("cmd", cmd),
 			zap.String("component", "mysql"))

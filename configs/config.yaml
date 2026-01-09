@@ -187,20 +187,26 @@ server:
       read_timeout: 5s # 读超时时间（防止读请求永久挂起）
 
   # RocksDB 性能配置（仅在使用 RocksDB 存储引擎时生效）
+  # 默认配置针对轻量化优化（~10MB 内存占用）
+  # 如需高性能，可增大 block_cache_size 和 write_buffer_size
   rocksdb:
     # Block Cache 配置（影响读性能）
-    block_cache_size: 268435456 # 256MB（默认），建议设置为可用内存的 1/3
+    block_cache_size: 8388608 # 8MB（轻量默认），高性能建议 256MB-512MB
 
     # Write Buffer 配置（影响写性能）
-    write_buffer_size: 67108864 # 64MB（默认），单个 memtable 大小
-    max_write_buffer_number: 3 # 最大 write buffer 数量
+    write_buffer_size: 4194304 # 4MB（轻量默认），高性能建议 64MB
+    max_write_buffer_number: 2 # 2 个 memtable（轻量默认），高性能建议 3
     min_write_buffer_number_to_merge: 1 # 触发合并的最小 write buffer 数量
 
     # Compaction 配置
-    max_background_jobs: 4 # 后台 compaction/flush 线程数（建议设置为 CPU 核心数）
+    max_background_jobs: 2 # 后台线程数（轻量默认），高性能建议设为 CPU 核心数
     level0_file_num_compaction_trigger: 4 # Level 0 触发 compaction 的文件数
     level0_slowdown_writes_trigger: 20 # Level 0 减缓写入的文件数
     level0_stop_writes_trigger: 36 # Level 0 停止写入的文件数
+
+    # Compression 配置
+    # 可选值: "none", "snappy", "lz4", "zstd"
+    compression: "lz4" # LZ4 默认，速度和压缩比平衡好
 
     # Bloom Filter 配置（优化点查询性能）
     bloom_filter_bits_per_key: 10 # Bloom filter 每个 key 的 bit 数（10 bits ≈ 1% 误判率）

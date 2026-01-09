@@ -37,10 +37,7 @@ func TestRocksDBPerformance_LargeScaleLoad(t *testing.T) {
 	defer cleanup()
 
 	// Create etcd client
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{node.clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -141,10 +138,7 @@ func TestRocksDBPerformance_SustainedLoad(t *testing.T) {
 	node, cleanup := startRocksDBNode(t, 1)
 	defer cleanup()
 
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{node.clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -224,10 +218,7 @@ func TestRocksDBPerformance_MixedWorkload(t *testing.T) {
 	node, cleanup := startRocksDBNode(t, 1)
 	defer cleanup()
 
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{node.clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -376,10 +367,7 @@ func TestRocksDBPerformance_Compaction(t *testing.T) {
 	node, cleanup := startRocksDBNode(t, 1)
 	defer cleanup()
 
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{node.clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}

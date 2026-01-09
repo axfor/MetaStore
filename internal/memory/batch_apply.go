@@ -193,7 +193,7 @@ func (m *Memory) batchApplyPut(ops []RaftOperation) {
 //   - op: PUT operation
 func (m *Memory) batchApplyPutNoLock(shard *shard, op RaftOperation) {
 	// 1. becomenew revision
-	newRevision := m.MemoryEtcd.revision.Add(1)
+	newRevision := m.MemoryEtcd.nextRevision()
 
 	// 2. getbeforevalue
 	key := op.Key
@@ -316,7 +316,7 @@ func (m *Memory) batchApplyDeleteNoLock(shard *shard, op RaftOperation) {
 	}
 
 	// becomenew revision
-	m.MemoryEtcd.revision.Add(1)
+	m.MemoryEtcd.nextRevision()
 
 	// deletekey
 	delete(shard.data, key)

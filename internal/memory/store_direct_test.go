@@ -120,7 +120,7 @@ func TestPutDirectSameKeyConcurrent(t *testing.T) {
 
 	// verify revision correctincrease
 	expectedRevision := int64(concurrency)
-	actualRevision := m.revision.Load()
+	actualRevision := m.getRevision()
 
 	if actualRevision != expectedRevision {
 		t.Errorf("Expected revision %d, got %d", expectedRevision, actualRevision)

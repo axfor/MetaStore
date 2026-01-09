@@ -25,14 +25,16 @@ import (
 )
 
 // MemoryEtcd supported etcd memorystorage
+// Note: Write serialization is handled by Raft, not by storage layer locks.
+// This is consistent with etcd's design where writes are serialized through Raft consensus.
 type MemoryEtcd struct {
 	kvData       *ShardedMap                  // shard map，supportedhighconcurrency
-	revision     atomic.Int64                 // global revision count(nolock atomic operation)
+	revision     int64                        // global revision count (protected by revMu)
+	revMu        sync.RWMutex                 // protects revision reads/writes (like etcd)
 	leases       map[int64]*kvstore.Lease     // leaseID -> Lease
 	leaseMu      sync.RWMutex                 // protected leases map
 	watches      map[int64]*watchSubscription // watchID -> subscription
 	watchMu      sync.RWMutex                 // protected watches map
-	txnMu        sync.Mutex                   // protectedtransactionoperationatomic
 	nextWatchID  atomic.Int64
 }
 
@@ -57,17 +59,35 @@ type watchSubscription struct {
 // NewMemoryEtcd createsupported etcd memorystorage
 func NewMemoryEtcd() *MemoryEtcd {
 	m := &MemoryEtcd{
-		kvData:  NewShardedMap(),
-		leases:  make(map[int64]*kvstore.Lease),
-		watches: make(map[int64]*watchSubscription),
+		kvData:   NewShardedMap(),
+		leases:   make(map[int64]*kvstore.Lease),
+		watches:  make(map[int64]*watchSubscription),
+		revision: 0,
 	}
-	m.revision.Store(0)
 	return m
 }
 
 // CurrentRevision returncurrent revision
 func (m *MemoryEtcd) CurrentRevision() int64 {
-	return m.revision.Load()
+	m.revMu.RLock()
+	defer m.revMu.RUnlock()
+	return m.revision
+}
+
+// getRevision returns current revision with read lock (for internal use)
+func (m *MemoryEtcd) getRevision() int64 {
+	m.revMu.RLock()
+	defer m.revMu.RUnlock()
+	return m.revision
+}
+
+// nextRevision increments and returns new revision (Raft guarantees serialization)
+func (m *MemoryEtcd) nextRevision() int64 {
+	m.revMu.Lock()
+	m.revision++
+	rev := m.revision
+	m.revMu.Unlock()
+	return rev
 }
 
 // Range executerangequery
@@ -141,7 +161,7 @@ func (m *MemoryEtcd) RangeWithOptions(ctx context.Context, key, rangeEnd string,
 			Kvs:      nil,
 			More:     false,
 			Count:    count,
-			Revision: m.revision.Load(),
+			Revision: m.getRevision(),
 		}, nil
 	}
 
@@ -163,7 +183,7 @@ func (m *MemoryEtcd) RangeWithOptions(ctx context.Context, key, rangeEnd string,
 		Kvs:      kvs,
 		More:     more,
 		Count:    count,
-		Revision: m.revision.Load(),
+		Revision: m.getRevision(),
 	}, nil
 }
 
@@ -205,7 +225,7 @@ func (m *MemoryEtcd) sortKvs(kvs []*kvstore.KeyValue, target kvstore.SortTarget,
 
 // PutWithLease storagekey-value pair，optionalclose lease
 func (m *MemoryEtcd) PutWithLease(ctx context.Context, key, value string, leaseID int64) (int64, *kvstore.KeyValue, error) {
-	// verify lease(ifspecified)
+	// verify lease(ifspecified) - can check before acquiring write lock
 	if leaseID != 0 {
 		m.leaseMu.RLock()
 		lease, ok := m.leases[leaseID]
@@ -224,8 +244,8 @@ func (m *MemoryEtcd) PutWithLease(ctx context.Context, key, value string, leaseI
 	// getoldvalue(ShardedMap internallock)
 	prevKv, _ := m.kvData.Get(key)
 
-	// increase revision(atomic operation，nolock)
-	newRevision := m.revision.Add(1)
+	// increase revision (Raft guarantees serialization)
+	newRevision := m.nextRevision()
 
 	// createorupdate KeyValue
 	var version int64 = 1
@@ -259,7 +279,7 @@ func (m *MemoryEtcd) PutWithLease(ctx context.Context, key, value string, leaseI
 		m.leaseMu.Unlock()
 	}
 
-	// trigger watch event(noholding lock)
+	// trigger watch event
 	m.notifyWatches(kvstore.WatchEvent{
 		Type:     kvstore.EventTypePut,
 		Kv:       kv,
@@ -295,12 +315,12 @@ func (m *MemoryEtcd) DeleteRange(ctx context.Context, key, rangeEnd string) (int
 	}
 
 	if len(keysToDelete) == 0 {
-		currentRev := m.revision.Load()
+		currentRev := m.getRevision()
 		return 0, nil, currentRev, nil
 	}
 
-	// increase revision(atomic operation，nolock)
-	newRevision := m.revision.Add(1)
+	// increase revision (Raft guarantees serialization)
+	newRevision := m.nextRevision()
 
 	// Collect events to send after deletion
 	events := make([]kvstore.WatchEvent, 0, len(keysToDelete))
@@ -350,16 +370,13 @@ func (m *MemoryEtcd) DeleteRange(ctx context.Context, key, rangeEnd string) (int
 }
 
 // Txn executetransaction
+// Note: Raft guarantees serialization, no storage-level lock needed
 func (m *MemoryEtcd) Txn(ctx context.Context, cmps []kvstore.Compare, thenOps []kvstore.Op, elseOps []kvstore.Op) (*kvstore.TxnResponse, error) {
-	// use txnMu protectedtransactionatomic
-	m.txnMu.Lock()
-	defer m.txnMu.Unlock()
-
-	return m.txnUnlocked(cmps, thenOps, elseOps)
+	return m.txnInternal(cmps, thenOps, elseOps)
 }
 
-// txnUnlocked executetransaction(needholding lock)
-func (m *MemoryEtcd) txnUnlocked(cmps []kvstore.Compare, thenOps []kvstore.Op, elseOps []kvstore.Op) (*kvstore.TxnResponse, error) {
+// txnInternal executetransaction
+func (m *MemoryEtcd) txnInternal(cmps []kvstore.Compare, thenOps []kvstore.Op, elseOps []kvstore.Op) (*kvstore.TxnResponse, error) {
 	// all compare condition
 	succeeded := true
 	for _, cmp := range cmps {
@@ -421,7 +438,7 @@ func (m *MemoryEtcd) txnUnlocked(cmps []kvstore.Compare, thenOps []kvstore.Op, e
 	return &kvstore.TxnResponse{
 		Succeeded: succeeded,
 		Responses: responses,
-		Revision:  m.revision.Load(),
+		Revision:  m.getRevision(),
 	}, nil
 }
 
@@ -519,7 +536,7 @@ func (m *MemoryEtcd) rangeUnlocked(key, rangeEnd string, limit int64) (*kvstore.
 		Kvs:      kvs,
 		More:     more,
 		Count:    count,
-		Revision: m.revision.Load(),
+		Revision: m.getRevision(),
 	}, nil
 }
 
@@ -535,7 +552,8 @@ func (m *MemoryEtcd) putUnlocked(key, value string, leaseID int64) (int64, *kvst
 	}
 
 	prevKv, _ := m.kvData.Get(key)
-	newRevision := m.revision.Add(1)
+	// Note: Write serialization is guaranteed by Raft consensus
+	newRevision := m.nextRevision()
 
 	var version int64 = 1
 	var createRevision int64 = newRevision
@@ -593,10 +611,11 @@ func (m *MemoryEtcd) deleteUnlocked(key, rangeEnd string) (int64, []*kvstore.Key
 	}
 
 	if len(keysToDelete) == 0 {
-		return 0, nil, m.revision.Load(), nil
+		return 0, nil, m.getRevision(), nil
 	}
 
-	newRevision := m.revision.Add(1)
+	// Note: Write serialization is guaranteed by Raft consensus
+	newRevision := m.nextRevision()
 
 	for _, k := range keysToDelete {
 		prevKv, _ := m.kvData.Get(k)
@@ -661,13 +680,14 @@ func (m *MemoryEtcd) Compact(ctx context.Context, revision int64) error {
 // GetRaftStatus returns Raft status information
 // For standalone MemoryEtcd (no Raft), returns a simple status
 func (m *MemoryEtcd) GetRaftStatus() kvstore.RaftStatus {
+	rev := m.getRevision()
 	return kvstore.RaftStatus{
 		NodeID:   1,
 		Term:     1,
 		LeaderID: 1,
 		State:    "leader", // Standalone mode, always leader
-		Applied:  uint64(m.revision.Load()),
-		Commit:   uint64(m.revision.Load()),
+		Applied:  uint64(rev),
+		Commit:   uint64(rev),
 	}
 }
 

@@ -28,10 +28,7 @@ func BenchmarkPut(b *testing.B) {
 	node, cleanup := startMemoryNode(b, 1)
 	defer cleanup()
 
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{node.clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
 	if err != nil {
 		b.Fatalf("Failed to create client: %v", err)
 	}
@@ -54,10 +51,7 @@ func BenchmarkGet(b *testing.B) {
 	node, cleanup := startMemoryNode(b, 1)
 	defer cleanup()
 
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{node.clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
 	if err != nil {
 		b.Fatalf("Failed to create client: %v", err)
 	}
@@ -90,10 +84,7 @@ func BenchmarkDelete(b *testing.B) {
 	node, cleanup := startMemoryNode(b, 1)
 	defer cleanup()
 
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{node.clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
 	if err != nil {
 		b.Fatalf("Failed to create client: %v", err)
 	}
@@ -126,10 +117,7 @@ func BenchmarkRange(b *testing.B) {
 	node, cleanup := startMemoryNode(b, 1)
 	defer cleanup()
 
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{node.clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
 	if err != nil {
 		b.Fatalf("Failed to create client: %v", err)
 	}
@@ -161,10 +149,7 @@ func BenchmarkTransaction(b *testing.B) {
 	node, cleanup := startMemoryNode(b, 1)
 	defer cleanup()
 
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{node.clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
 	if err != nil {
 		b.Fatalf("Failed to create client: %v", err)
 	}
@@ -192,10 +177,7 @@ func BenchmarkPutParallel(b *testing.B) {
 	node, cleanup := startMemoryNode(b, 1)
 	defer cleanup()
 
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{node.clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
 	if err != nil {
 		b.Fatalf("Failed to create client: %v", err)
 	}
@@ -222,10 +204,7 @@ func BenchmarkGetParallel(b *testing.B) {
 	node, cleanup := startMemoryNode(b, 1)
 	defer cleanup()
 
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{node.clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
 	if err != nil {
 		b.Fatalf("Failed to create client: %v", err)
 	}
@@ -262,10 +241,7 @@ func BenchmarkWatch(b *testing.B) {
 	node, cleanup := startMemoryNode(b, 1)
 	defer cleanup()
 
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{node.clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
 	if err != nil {
 		b.Fatalf("Failed to create client: %v", err)
 	}
@@ -303,10 +279,7 @@ func BenchmarkLease(b *testing.B) {
 	node, cleanup := startMemoryNode(b, 1)
 	defer cleanup()
 
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{node.clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
 	if err != nil {
 		b.Fatalf("Failed to create client: %v", err)
 	}
@@ -342,10 +315,7 @@ func BenchmarkSmallValue(b *testing.B) {
 	node, cleanup := startMemoryNode(b, 1)
 	defer cleanup()
 
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{node.clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
 	if err != nil {
 		b.Fatalf("Failed to create client: %v", err)
 	}
@@ -369,10 +339,7 @@ func BenchmarkLargeValue(b *testing.B) {
 	node, cleanup := startMemoryNode(b, 1)
 	defer cleanup()
 
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{node.clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
 	if err != nil {
 		b.Fatalf("Failed to create client: %v", err)
 	}
@@ -396,10 +363,7 @@ func BenchmarkMixedOperations(b *testing.B) {
 	node, cleanup := startMemoryNode(b, 1)
 	defer cleanup()
 
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{node.clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
 	if err != nil {
 		b.Fatalf("Failed to create client: %v", err)
 	}
@@ -444,10 +408,7 @@ func BenchmarkBatchWrites(b *testing.B) {
 	node, cleanup := startMemoryNode(b, 1)
 	defer cleanup()
 
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{node.clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
 	if err != nil {
 		b.Fatalf("Failed to create client: %v", err)
 	}
@@ -475,10 +436,7 @@ func BenchmarkHighConcurrency(b *testing.B) {
 	node, cleanup := startMemoryNode(b, 1)
 	defer cleanup()
 
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{node.clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
 	if err != nil {
 		b.Fatalf("Failed to create client: %v", err)
 	}
@@ -520,10 +478,7 @@ func BenchmarkRocksDBPut(b *testing.B) {
 	node, cleanup := startRocksDBNode(b, 1)
 	defer cleanup()
 
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{node.clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
 	if err != nil {
 		b.Fatalf("Failed to create client: %v", err)
 	}
@@ -546,10 +501,7 @@ func BenchmarkRocksDBPutParallel(b *testing.B) {
 	node, cleanup := startRocksDBNode(b, 1)
 	defer cleanup()
 
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{node.clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
 	if err != nil {
 		b.Fatalf("Failed to create client: %v", err)
 	}
@@ -576,10 +528,7 @@ func BenchmarkRocksDBMixedOperations(b *testing.B) {
 	node, cleanup := startRocksDBNode(b, 1)
 	defer cleanup()
 
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{node.clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
 	if err != nil {
 		b.Fatalf("Failed to create client: %v", err)
 	}

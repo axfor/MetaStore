@@ -37,10 +37,7 @@ func TestMemoryPerformance_LargeScaleLoad(t *testing.T) {
 	defer cleanup()
 
 	// Create etcd client
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{node.clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -141,10 +138,7 @@ func TestMemoryPerformance_SustainedLoad(t *testing.T) {
 	node, cleanup := startMemoryNode(t, 1)
 	defer cleanup()
 
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{node.clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -225,10 +219,7 @@ func TestMemoryPerformance_MixedWorkload(t *testing.T) {
 	node, cleanup := startMemoryNode(t, 1)
 	defer cleanup()
 
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{node.clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -377,10 +368,7 @@ func TestMemoryPerformance_TransactionThroughput(t *testing.T) {
 	node, cleanup := startMemoryNode(t, 1)
 	defer cleanup()
 
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{node.clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}

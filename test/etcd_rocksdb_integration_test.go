@@ -136,10 +136,7 @@ func newEtcdRocksDBCluster(t *testing.T, n int) *etcdRocksDBCluster {
 		}(server)
 
 		// Create client
-		cli, err := clientv3.New(clientv3.Config{
-			Endpoints:   []string{addr},
-			DialTimeout: 5 * time.Second,
-		})
+		cli, err := NewEtcdClient([]string{addr}, 5*time.Second)
 		require.NoError(t, err)
 		clus.clients[i] = cli
 	}

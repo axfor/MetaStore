@@ -20,7 +20,6 @@ import (
 	"testing"
 	"time"
 
-	clientv3 "go.etcd.io/etcd/client/v3"
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"google.golang.org/grpc"
 )
@@ -53,10 +52,7 @@ func testMoveLeader3Node(t *testing.T, storageType string) {
 	var followerNodes []*testNode
 
 	for _, node := range cluster {
-		cli, err := clientv3.New(clientv3.Config{
-			Endpoints:   []string{node.clientAddr},
-			DialTimeout: 2 * time.Second,
-		})
+		cli, err := NewEtcdClient([]string{node.clientAddr}, 2*time.Second)
 		if err != nil {
 			continue
 		}
@@ -258,10 +254,7 @@ func TestMaintenance_Concurrent(t *testing.T) {
 	}
 	defer conn.Close()
 
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{node.clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}

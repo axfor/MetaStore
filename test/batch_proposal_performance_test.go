@@ -21,8 +21,6 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-
-	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
 // TestBatchProposal_LowLoad tests batch proposal performance under low load
@@ -175,10 +173,7 @@ func TestBatchProposal_TrafficSurge(t *testing.T) {
 	node, cleanup := startMemoryNode(t, 1, WithBatchProposal(1, 256, 5*time.Millisecond, 20*time.Millisecond, 0.7))
 	defer cleanup()
 
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{node.clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -366,10 +361,7 @@ func runLoadTestRocksDB(t *testing.T, testName string, numClients, opsPerClient 
 
 // executeLoadTest executes the actual load test
 func executeLoadTest(t *testing.T, endpoint, testName string, numClients, opsPerClient int) loadTestResult {
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{endpoint},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{endpoint}, 5*time.Second)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}

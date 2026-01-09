@@ -41,17 +41,14 @@ import (
 func startRocksDBLockTestServer(t *testing.T) (*clientv3.Client, func()) {
 	node, cleanup := startRocksDBNode(t, 1)
 
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{node.clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
 	require.NoError(t, err)
 
 	return cli, func() {
-		// closekey：to Session clean uptime， "connection is closing" incorrect
-		time.Sleep(500 * time.Millisecond)
-		cleanup() // closeserver
-		cli.Close() // closeclient
+		// Close client first, then server to avoid shutdown timeout
+		cli.Close()
+		time.Sleep(100 * time.Millisecond)
+		cleanup()
 	}
 }
 

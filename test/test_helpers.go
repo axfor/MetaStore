@@ -15,6 +15,7 @@
 package test
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -29,9 +30,32 @@ import (
 	etcdapi "metaStore/api/etcd"
 
 	"github.com/linxGnu/grocksdb"
+	"go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/server/v3/etcdserver/api/snap"
 	"go.etcd.io/raft/v3/raftpb"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
+
+// quietEtcdLogger creates a zap logger that suppresses lease keep-alive warnings
+// These warnings are normal during test cleanup when connections are closed
+func quietEtcdLogger() *zap.Logger {
+	config := zap.NewProductionConfig()
+	config.Level = zap.NewAtomicLevelAt(zapcore.ErrorLevel) // Only show errors
+	logger, _ := config.Build()
+	return logger
+}
+
+// NewEtcdClient creates an etcd client with suppressed lease keep-alive warnings
+// This prevents test output from being flooded with connection closing messages
+func NewEtcdClient(endpoints []string, dialTimeout time.Duration) (*clientv3.Client, error) {
+	return clientv3.New(clientv3.Config{
+		Endpoints:   endpoints,
+		DialTimeout: dialTimeout,
+		Logger:      quietEtcdLogger(),
+		Context:     context.Background(),
+	})
+}
 
 // allocatePorts allocates n dynamic ports and returns them as Raft peer URLs
 // This avoids port conflicts when running tests in parallel

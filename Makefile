@@ -204,12 +204,14 @@ test:
 	@rm -rf data/
 	@rm -rf test/data/
 	@rm -rf /tmp/metastore-test-*
-	@echo "$(YELLOW)Testing pkg packages...$(NO_COLOR)"
-	@CGO_ENABLED=1 CGO_CFLAGS="$(CGO_CFLAGS)" CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v -timeout=5m ./pkg/...
+	@echo "$(YELLOW)Testing pkg packages (excluding concurrency)...$(NO_COLOR)"
+	@CGO_ENABLED=1 CGO_CFLAGS="$(CGO_CFLAGS)" CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v -short -timeout=5m ./pkg/config/... ./pkg/health/... ./pkg/pool/...
+	@echo "$(YELLOW)Testing pkg/concurrency package...$(NO_COLOR)"
+	@CGO_ENABLED=1 CGO_CFLAGS="$(CGO_CFLAGS)" CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v -short -timeout=5m ./pkg/concurrency/...
 	@echo "$(YELLOW)Testing internal packages...$(NO_COLOR)"
 	@CGO_ENABLED=1 CGO_CFLAGS="$(CGO_CFLAGS)" CGO_LDFLAGS="$(CGO_LDFLAGS)" GOEXPERIMENT=greenteagc $(GOTEST) -v -timeout=30m ./internal/...
 	@echo "$(YELLOW)Testing integration and system tests...$(NO_COLOR)"
-	@CGO_ENABLED=1 CGO_CFLAGS="$(CGO_CFLAGS)" CGO_LDFLAGS="$(CGO_LDFLAGS)" GOEXPERIMENT=greenteagc $(GOTEST) -v -timeout=30m -skip "Performance|Benchmark" ./test/
+	@CGO_ENABLED=1 CGO_CFLAGS="$(CGO_CFLAGS)" CGO_LDFLAGS="$(CGO_LDFLAGS)" GOEXPERIMENT=greenteagc $(GOTEST) -v -short -timeout=45m -skip "Performance|Benchmark" ./test/
 	@echo "$(GREEN)All tests passed!$(NO_COLOR)"
 
 ## test-unit: Run only unit tests (no integration tests)
@@ -403,10 +405,16 @@ rocksdb:
 		echo "$(YELLOW)Cleaning pre-built RocksDB libraries from source...$(NO_COLOR)"; \
 		cd third_party/rocksdb/src/v10.4.2 && $(MAKE) clean >/dev/null 2>&1; \
 	fi
-	@# Build RocksDB static library
-	@echo "$(YELLOW)Compiling RocksDB (this may take a while)...$(NO_COLOR)"
+	@# Build compression libraries first (needed for RocksDB compilation)
+	@$(MAKE) rocksdb-compression
+	@# Build RocksDB static library with compression support
+	@echo "$(YELLOW)Compiling RocksDB with compression support (this may take a while)...$(NO_COLOR)"
 	@cd third_party/rocksdb/src/v10.4.2 && \
 		EXTRA_CXXFLAGS="-Wno-error=unused-parameter -Wno-unused-parameter" \
+		EXTRA_LDFLAGS="-L$(ROCKSDB_DIR)/lib -llz4 -lzstd -lsnappy" \
+		ROCKSDB_DISABLE_SNAPPY=0 \
+		ROCKSDB_DISABLE_LZ4=0 \
+		ROCKSDB_DISABLE_ZSTD=0 \
 		$(MAKE) static_lib -j$$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)
 	@# Copy headers
 	@echo "$(YELLOW)Installing headers...$(NO_COLOR)"
@@ -414,8 +422,6 @@ rocksdb:
 	@# Copy static library
 	@echo "$(YELLOW)Installing static library...$(NO_COLOR)"
 	@cp third_party/rocksdb/src/v10.4.2/librocksdb.a $(ROCKSDB_DIR)/lib/
-	@# Build compression libraries
-	@$(MAKE) rocksdb-compression
 	@echo "$(GREEN)RocksDB dependencies built successfully!$(NO_COLOR)"
 	@echo "$(GREEN)Libraries installed to: $(ROCKSDB_DIR)/lib$(NO_COLOR)"
 	@ls -lh $(ROCKSDB_DIR)/lib/

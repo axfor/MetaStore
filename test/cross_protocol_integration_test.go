@@ -175,10 +175,7 @@ func TestCrossProtocolMemoryDataInteroperability(t *testing.T) {
 	time.Sleep(3 * time.Second)
 
 	// Create etcd client
-	etcdClient, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{etcdAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	etcdClient, err := NewEtcdClient([]string{etcdAddr}, 5*time.Second)
 	require.NoError(t, err)
 	defer etcdClient.Close()
 
@@ -574,10 +571,7 @@ func TestCrossProtocolRocksDBDataInteroperability(t *testing.T) {
 	time.Sleep(3 * time.Second)
 
 	// Create etcd client
-	etcdClient, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{etcdAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	etcdClient, err := NewEtcdClient([]string{etcdAddr}, 5*time.Second)
 	require.NoError(t, err)
 	defer etcdClient.Close()
 

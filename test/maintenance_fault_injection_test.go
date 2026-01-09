@@ -77,10 +77,7 @@ func testSnapshotInterrupted(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	// Put some data
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{node.clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -151,10 +148,7 @@ func TestMaintenance_FaultInjection_HighLoad(t *testing.T) {
 	// Create multiple clients
 	clients := make([]*clientv3.Client, 10)
 	for i := 0; i < 10; i++ {
-		cli, err := clientv3.New(clientv3.Config{
-			Endpoints:   []string{node.clientAddr},
-			DialTimeout: 5 * time.Second,
-		})
+		cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
 		if err != nil {
 			t.Fatalf("Failed to create client %d: %v", i, err)
 		}
@@ -391,10 +385,7 @@ func TestMaintenance_FaultInjection_ConcurrentCrashes(t *testing.T) {
 	defer conn.Close()
 
 	// Put some data
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{node.clientAddr},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}

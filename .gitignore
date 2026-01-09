@@ -19,3 +19,5 @@ third_party/rocksdb/darwin-x86_64/
 third_party/rocksdb/linux-x86_64/
 third_party/rocksdb/linux-aarch64/
 
+etcd-3.6.7/
+

@@ -23,7 +23,6 @@ import (
 	"testing"
 	"time"
 
-	"metaStore/internal/memory"
 	"metaStore/internal/raft"
 	"metaStore/internal/rocksdb"
 	etcdapi "metaStore/api/etcd"
@@ -35,44 +34,22 @@ import (
 	"go.etcd.io/raft/v3/raftpb"
 )
 
-// startTestServer starttestserver
+// startTestServer starttestserver using real Raft mode
 func startTestServer(t *testing.T) (*etcdapi.Server, *clientv3.Client) {
-	// creatememorystorage
-	store := memory.NewMemoryEtcd()
-
-	// create etcd compatibleserver(randomport)
-	server, err := etcdapi.NewServer(etcdapi.ServerConfig{
-		Store:     store,
-		Address:   "127.0.0.1:0", // userandomport
-		ClusterID: 1,
-		MemberID:  1,
-	})
-	require.NoError(t, err)
-
-	// startserver
-	go func() {
-		if err := server.Start(); err != nil {
-			t.Logf("Server error: %v", err)
-		}
-	}()
-
-	// waitserverstart
-	time.Sleep(100 * time.Millisecond)
+	// Use real Raft mode for proper serialization (same as production)
+	node, cleanup := startMemoryNode(t, 1)
 
 	// createclient
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{server.Address()},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
 	require.NoError(t, err)
 
 	// clean upfunction
 	t.Cleanup(func() {
 		cli.Close()
-		server.Stop()
+		cleanup()
 	})
 
-	return server, cli
+	return node.server, cli
 }
 
 // startTestServerRocksDB start RocksDB testserver(singlenode Raft)
@@ -137,10 +114,7 @@ func startTestServerRocksDB(t *testing.T) (*etcdapi.Server, *clientv3.Client, fu
 	time.Sleep(3 * time.Second)
 
 	// createclient
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{server.Address()},
-		DialTimeout: 5 * time.Second,
-	})
+	cli, err := NewEtcdClient([]string{server.Address()}, 5*time.Second)
 	require.NoError(t, err)
 
 	// clean upfunction - usesync.Onceduplicateclosechannel

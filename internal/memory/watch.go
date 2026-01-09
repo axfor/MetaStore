@@ -70,7 +70,7 @@ func (m *MemoryEtcd) WatchWithOptions(key, rangeEnd string, startRevision int64,
 
 	// If startRevision > 0, send historical events
 	// Note: Current implementation is simplified, uses current data as initial snapshot
-	if startRevision > 0 && startRevision < m.revision.Load() {
+	if startRevision > 0 && startRevision < m.getRevision() {
 		// Asynchronously send all matching keys as PUT events
 		go m.sendHistoricalEvents(sub, key, rangeEnd)
 	}
@@ -82,7 +82,7 @@ func (m *MemoryEtcd) WatchWithOptions(key, rangeEnd string, startRevision int64,
 func (m *MemoryEtcd) sendHistoricalEvents(sub *watchSubscription, key, rangeEnd string) {
 	// Use ShardedMap.GetAll() to get all data (internally locked)
 	allData := m.kvData.GetAll()
-	currentRev := m.revision.Load() // Capture current revision
+	currentRev := m.getRevision() // Capture current revision
 
 	foundAny := false
 	// Get all matching keys
@@ -310,7 +310,7 @@ func (m *MemoryEtcd) LeaseRevoke(ctx context.Context, id int64) error {
 	for key := range lease.Keys {
 		if kv, exists := m.kvData.Get(key); exists {
 			// Increase revision
-			newRevision := m.revision.Add(1)
+			newRevision := m.nextRevision()
 
 			// Delete key (ShardedMap has internal lock)
 			m.kvData.Delete(key)

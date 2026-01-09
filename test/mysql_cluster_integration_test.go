@@ -31,7 +31,6 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/require"
-	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/server/v3/etcdserver/api/snap"
 	"go.etcd.io/raft/v3/raftpb"
 )
@@ -248,10 +247,7 @@ func TestMySQLClusterConsistency(t *testing.T) {
 		value := "etcd_cluster_value"
 
 		// Connect etcd client to node 3
-		etcdClient, err := clientv3.New(clientv3.Config{
-			Endpoints:   []string{nodes[2].etcdAddr},
-			DialTimeout: 5 * time.Second,
-		})
+		etcdClient, err := NewEtcdClient([]string{nodes[2].etcdAddr}, 5*time.Second)
 		require.NoError(t, err)
 		defer etcdClient.Close()
 
