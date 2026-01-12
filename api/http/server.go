@@ -33,13 +33,15 @@ type Server struct {
 	store       kvstore.Store
 	confChangeC chan<- raftpb.ConfChange
 	httpServer  *http.Server
+	etcdGateway http.Handler
 }
 
 // Config HTTP API configuration
 type Config struct {
-	Store       kvstore.Store
-	Port        int
-	ConfChangeC chan<- raftpb.ConfChange
+	Store              kvstore.Store
+	Port               int
+	ConfChangeC        chan<- raftpb.ConfChange
+	EtcdGatewayHandler http.Handler
 }
 
 // NewServer creates a new HTTP API server
@@ -47,6 +49,7 @@ func NewServer(cfg Config) *Server {
 	s := &Server{
 		store:       cfg.Store,
 		confChangeC: cfg.ConfChangeC,
+		etcdGateway: cfg.EtcdGatewayHandler,
 	}
 
 	mux := http.NewServeMux()
@@ -80,6 +83,12 @@ func (s *Server) Stop() error {
 
 // ServeHTTP handles HTTP requests
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// etcd v3 grpc-gateway routes take precedence when enabled.
+	if s.etcdGateway != nil && strings.HasPrefix(r.URL.Path, "/v3/") {
+		s.etcdGateway.ServeHTTP(w, r)
+		return
+	}
+
 	log.Info("HTTP request received",
 		zap.String("method", r.Method),
 		zap.String("uri", r.RequestURI),

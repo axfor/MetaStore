@@ -31,13 +31,14 @@ type Config struct {
 // ServerConfig server configuration
 type ServerConfig struct {
 	// Cluster configuration
-	ClusterID     uint64 `yaml:"cluster_id"`
-	MemberID      uint64 `yaml:"member_id"`
+	ClusterID uint64 `yaml:"cluster_id"`
+	MemberID  uint64 `yaml:"member_id"`
 
 	// Protocol configurations
-	Etcd  EtcdConfig  `yaml:"etcd"`  // etcd gRPC protocol configuration
-	HTTP  HTTPConfig  `yaml:"http"`  // HTTP REST API configuration
-	MySQL MySQLConfig `yaml:"mysql"` // MySQL protocol configuration
+	Etcd        EtcdConfig        `yaml:"etcd"`         // etcd gRPC protocol configuration
+	EtcdGateway EtcdGatewayConfig `yaml:"etcd_gateway"` // Optional etcd HTTP/JSON grpc-gateway
+	HTTP        HTTPConfig        `yaml:"http"`         // HTTP REST API configuration
+	MySQL       MySQLConfig       `yaml:"mysql"`        // MySQL protocol configuration
 
 	// Sub-configurations
 	GRPC        GRPCConfig        `yaml:"grpc"`
@@ -59,6 +60,13 @@ type EtcdConfig struct {
 	Address string `yaml:"address"` // Listen address for etcd gRPC, default ":2379"
 }
 
+// EtcdGatewayConfig configures the optional etcd v3 HTTP/JSON grpc-gateway.
+// When enabled, HTTP requests under /v3/** will be proxied to the etcd gRPC endpoint.
+type EtcdGatewayConfig struct {
+	Enable   bool   `yaml:"enable"`
+	Endpoint string `yaml:"endpoint"` // gRPC dial endpoint; default derived from etcd.address
+}
+
 // HTTPConfig HTTP REST API configuration
 type HTTPConfig struct {
 	Address string `yaml:"address"` // Listen address for HTTP API, default ":9121"
@@ -74,25 +82,25 @@ type MySQLConfig struct {
 // GRPCConfig gRPC configuration
 type GRPCConfig struct {
 	// Message size limits
-	MaxRecvMsgSize        int           `yaml:"max_recv_msg_size"`         // Default 1.5MB
-	MaxSendMsgSize        int           `yaml:"max_send_msg_size"`         // Default 1.5MB
-	MaxConcurrentStreams  uint32        `yaml:"max_concurrent_streams"`    // Default 1000
+	MaxRecvMsgSize       int    `yaml:"max_recv_msg_size"`      // Default 1.5MB
+	MaxSendMsgSize       int    `yaml:"max_send_msg_size"`      // Default 1.5MB
+	MaxConcurrentStreams uint32 `yaml:"max_concurrent_streams"` // Default 1000
 
 	// Flow control window
-	InitialWindowSize     int32         `yaml:"initial_window_size"`       // Default 1MB
-	InitialConnWindowSize int32         `yaml:"initial_conn_window_size"`  // Default 1MB
+	InitialWindowSize     int32 `yaml:"initial_window_size"`      // Default 1MB
+	InitialConnWindowSize int32 `yaml:"initial_conn_window_size"` // Default 1MB
 
 	// Keepalive configuration
-	KeepaliveTime         time.Duration `yaml:"keepalive_time"`            // Default 5s
-	KeepaliveTimeout      time.Duration `yaml:"keepalive_timeout"`         // Default 1s
-	MaxConnectionIdle     time.Duration `yaml:"max_connection_idle"`       // Default 15s
-	MaxConnectionAge      time.Duration `yaml:"max_connection_age"`        // Default 10m
-	MaxConnectionAgeGrace time.Duration `yaml:"max_connection_age_grace"`  // Default 5s
+	KeepaliveTime         time.Duration `yaml:"keepalive_time"`           // Default 5s
+	KeepaliveTimeout      time.Duration `yaml:"keepalive_timeout"`        // Default 1s
+	MaxConnectionIdle     time.Duration `yaml:"max_connection_idle"`      // Default 15s
+	MaxConnectionAge      time.Duration `yaml:"max_connection_age"`       // Default 10m
+	MaxConnectionAgeGrace time.Duration `yaml:"max_connection_age_grace"` // Default 5s
 
 	// Rate limiting configuration
-	EnableRateLimit       bool          `yaml:"enable_rate_limit"`         // Whether to enable rate limiting, default false
-	RateLimitQPS          int           `yaml:"rate_limit_qps"`            // Requests per second limit, default 0 (no limit)
-	RateLimitBurst        int           `yaml:"rate_limit_burst"`          // Burst request token bucket size, default 0 (no limit)
+	EnableRateLimit bool `yaml:"enable_rate_limit"` // Whether to enable rate limiting, default false
+	RateLimitQPS    int  `yaml:"rate_limit_qps"`    // Requests per second limit, default 0 (no limit)
+	RateLimitBurst  int  `yaml:"rate_limit_burst"`  // Burst request token bucket size, default 0 (no limit)
 }
 
 // LimitsConfig resource limits configuration
@@ -175,20 +183,20 @@ type RaftConfig struct {
 	Witness  WitnessConfig `yaml:"witness"`   // Witness node specific configuration
 
 	// Tick configuration (affects Raft processing speed)
-	TickInterval  time.Duration `yaml:"tick_interval"`   // Raft tick interval, default 100ms
-	ElectionTick  int           `yaml:"election_tick"`   // Election timeout tick count, default 10 (= 1s)
-	HeartbeatTick int           `yaml:"heartbeat_tick"`  // Heartbeat interval tick count, default 1 (= 100ms)
+	TickInterval  time.Duration `yaml:"tick_interval"`  // Raft tick interval, default 100ms
+	ElectionTick  int           `yaml:"election_tick"`  // Election timeout tick count, default 10 (= 1s)
+	HeartbeatTick int           `yaml:"heartbeat_tick"` // Heartbeat interval tick count, default 1 (= 100ms)
 
 	// Message size configuration
 	MaxSizePerMsg uint64 `yaml:"max_size_per_msg"` // Maximum size per message, default 4MB
 
 	// Flow control configuration (affects throughput)
-	MaxInflightMsgs           int    `yaml:"max_inflight_msgs"`             // Maximum inflight messages, default 512
-	MaxUncommittedEntriesSize uint64 `yaml:"max_uncommitted_entries_size"`  // Maximum uncommitted entries size, default 1GB
+	MaxInflightMsgs           int    `yaml:"max_inflight_msgs"`            // Maximum inflight messages, default 512
+	MaxUncommittedEntriesSize uint64 `yaml:"max_uncommitted_entries_size"` // Maximum uncommitted entries size, default 1GB
 
 	// Optimization switches
-	PreVote     bool `yaml:"pre_vote"`      // Enable PreVote, default true
-	CheckQuorum bool `yaml:"check_quorum"`  // Enable CheckQuorum, default true
+	PreVote     bool `yaml:"pre_vote"`     // Enable PreVote, default true
+	CheckQuorum bool `yaml:"check_quorum"` // Enable CheckQuorum, default true
 
 	// Batch proposal configuration (dynamic batch optimization, reference: TiKV)
 	Batch RaftBatchConfig `yaml:"batch"` // Batch proposal configuration
@@ -225,12 +233,12 @@ func (r *RaftConfig) IsDataNode() bool {
 // Low load: small batch + short timeout = low latency
 // High load: large batch + long timeout = high throughput
 type RaftBatchConfig struct {
-	Enable        bool          `yaml:"enable"`          // Whether to enable batch proposals, default true
-	MinBatchSize  int           `yaml:"min_batch_size"`  // Minimum batch size (low load), default 1
-	MaxBatchSize  int           `yaml:"max_batch_size"`  // Maximum batch size (high load), default 256
-	MinTimeout    time.Duration `yaml:"min_timeout"`     // Minimum timeout (low load), default 5ms
-	MaxTimeout    time.Duration `yaml:"max_timeout"`     // Maximum timeout (high load), default 20ms
-	LoadThreshold float64       `yaml:"load_threshold"`  // Load threshold (0.0-1.0), default 0.7
+	Enable        bool          `yaml:"enable"`         // Whether to enable batch proposals, default true
+	MinBatchSize  int           `yaml:"min_batch_size"` // Minimum batch size (low load), default 1
+	MaxBatchSize  int           `yaml:"max_batch_size"` // Maximum batch size (high load), default 256
+	MinTimeout    time.Duration `yaml:"min_timeout"`    // Minimum timeout (low load), default 5ms
+	MaxTimeout    time.Duration `yaml:"max_timeout"`    // Maximum timeout (high load), default 20ms
+	LoadThreshold float64       `yaml:"load_threshold"` // Load threshold (0.0-1.0), default 0.7
 }
 
 // LeaseReadConfig Lease Read configuration
@@ -238,9 +246,9 @@ type RaftBatchConfig struct {
 // Performance improvement: 10-100x (read operations), especially suitable for read-heavy scenarios
 // Lease Duration calculation: min(electionTimeout/2, heartbeatTick*3) - clockDrift
 type LeaseReadConfig struct {
-	Enable      bool          `yaml:"enable"`       // Whether to enable Lease Read, default true
-	ClockDrift  time.Duration `yaml:"clock_drift"`  // Clock drift tolerance, default 100ms (same datacenter)
-	                                                 // Cross-region deployment recommendation: 200ms; Cross-continent: 500ms
+	Enable     bool          `yaml:"enable"`      // Whether to enable Lease Read, default true
+	ClockDrift time.Duration `yaml:"clock_drift"` // Clock drift tolerance, default 100ms (same datacenter)
+	// Cross-region deployment recommendation: 200ms; Cross-continent: 500ms
 	ReadTimeout time.Duration `yaml:"read_timeout"` // Read timeout, default 5s
 }
 
@@ -267,13 +275,13 @@ type RocksDBConfig struct {
 	Compression string `yaml:"compression"` // Default "lz4" for good balance of speed and ratio
 
 	// Bloom Filter configuration
-	BloomFilterBitsPerKey      int  `yaml:"bloom_filter_bits_per_key"`       // Default 10
-	BlockBasedTableBloomFilter bool `yaml:"block_based_table_bloom_filter"`  // Default true
+	BloomFilterBitsPerKey      int  `yaml:"bloom_filter_bits_per_key"`      // Default 10
+	BlockBasedTableBloomFilter bool `yaml:"block_based_table_bloom_filter"` // Default true
 
 	// Other optimizations
-	MaxOpenFiles  int    `yaml:"max_open_files"`   // Default 10000
-	UseFsync      bool   `yaml:"use_fsync"`        // Default false (use fdatasync)
-	BytesPerSync  uint64 `yaml:"bytes_per_sync"`   // Default 1MB
+	MaxOpenFiles int    `yaml:"max_open_files"` // Default 10000
+	UseFsync     bool   `yaml:"use_fsync"`      // Default false (use fdatasync)
+	BytesPerSync uint64 `yaml:"bytes_per_sync"` // Default 1MB
 }
 
 // MVCCConfig MVCC (Multi-Version Concurrency Control) configuration
@@ -405,6 +413,9 @@ func (c *Config) SetDefaults() {
 	if c.Server.Etcd.Address == "" {
 		c.Server.Etcd.Address = ":2379"
 	}
+	if c.Server.EtcdGateway.Endpoint == "" {
+		c.Server.EtcdGateway.Endpoint = c.Server.Etcd.Address
+	}
 	if c.Server.HTTP.Address == "" {
 		c.Server.HTTP.Address = ":9121"
 	}
@@ -533,9 +544,9 @@ func (c *Config) SetDefaults() {
 
 	// Performance defaults (all Protobuf optimizations enabled by default)
 	// If not explicitly set in config, enable all optimizations
-	c.Server.Performance.EnableProtobuf = true          // Raft operations Protobuf (3-5x improvement)
-	c.Server.Performance.EnableSnapshotProtobuf = true  // Snapshot Protobuf (1.69x improvement)
-	c.Server.Performance.EnableLeaseProtobuf = true     // Lease Protobuf (20.6x improvement)
+	c.Server.Performance.EnableProtobuf = true         // Raft operations Protobuf (3-5x improvement)
+	c.Server.Performance.EnableSnapshotProtobuf = true // Snapshot Protobuf (1.69x improvement)
+	c.Server.Performance.EnableLeaseProtobuf = true    // Lease Protobuf (20.6x improvement)
 
 	// Raft defaults (production standard config, industry best practices)
 	// Node role defaults to "data" (full data node)
@@ -693,6 +704,14 @@ func (c *Config) OverrideFromEnv() {
 	if etcdAddr := os.Getenv("METASTORE_ETCD_ADDRESS"); etcdAddr != "" {
 		c.Server.Etcd.Address = etcdAddr
 	}
+	if gwEnable := os.Getenv("METASTORE_ETCD_GATEWAY_ENABLE"); gwEnable != "" {
+		if v, err := strconv.ParseBool(gwEnable); err == nil {
+			c.Server.EtcdGateway.Enable = v
+		}
+	}
+	if gwEndpoint := os.Getenv("METASTORE_ETCD_GATEWAY_ENDPOINT"); gwEndpoint != "" {
+		c.Server.EtcdGateway.Endpoint = gwEndpoint
+	}
 
 	// Log configuration
 	if logLevel := os.Getenv("METASTORE_LOG_LEVEL"); logLevel != "" {
@@ -716,6 +735,9 @@ func (c *Config) Validate() error {
 	// Validate protocol addresses
 	if c.Server.Etcd.Address == "" {
 		return fmt.Errorf("etcd.address is required")
+	}
+	if c.Server.EtcdGateway.Enable && c.Server.EtcdGateway.Endpoint == "" {
+		return fmt.Errorf("etcd_gateway.endpoint is required when etcd_gateway.enable is true")
 	}
 
 	// Validate gRPC configuration
