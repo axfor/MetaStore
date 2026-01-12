@@ -16,7 +16,13 @@ server:
 
   # etcd gRPC 协议配置
   etcd:
-    address: ":2379" # etcd gRPC 监听地址
+    address: ":22379" # etcd gRPC 监听地址
+
+  # etcd v3 HTTP/JSON grpc-gateway（可选）
+  # 当启用时，HTTP 请求 `/v3/**` 将被代理到 etcd gRPC 服务
+  etcd_gateway:
+    enable: true
+    endpoint: ":22379" # gRPC dial 目标地址（通常与 etcd.address 一致）
 
   # HTTP REST API 配置
   http:

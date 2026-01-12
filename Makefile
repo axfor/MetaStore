@@ -472,4 +472,3 @@ rocksdb-clean:
 		cd third_party/rocksdb/src/v10.4.2 && $(MAKE) clean; \
 	fi
 	@echo "$(GREEN)Clean complete$(NO_COLOR)"
-

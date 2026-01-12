@@ -15,9 +15,11 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"net"
+	nethttp "net/http"
 	"os"
 	"strings"
 
@@ -25,6 +27,7 @@ import (
 
 	// "metaStore/internal/batch" // 已禁用 BatchProposer
 	"metaStore/api/etcd"
+	"metaStore/api/etcdgateway"
 	"metaStore/api/http"
 	"metaStore/api/mysql"
 	"metaStore/internal/memory"
@@ -37,6 +40,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.etcd.io/raft/v3/raftpb"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	// "time" // disabled BatchProposer，no longer needed
 )
 
@@ -204,14 +209,34 @@ func main() {
 		}
 
 		m := cmux.New(l)
-		grpcL := m.Match(cmux.HTTP2HeaderField("content-type", "application/grpc"))
+		grpcL := m.Match(cmux.HTTP2())
 		httpL := m.Match(cmux.HTTP1Fast())
 
 		// Start HTTP API server
+		var etcdGatewayHandler nethttp.Handler
+		if cfg.Server.EtcdGateway.Enable {
+			dialOpts := []grpc.DialOption{
+				grpc.WithTransportCredentials(insecure.NewCredentials()),
+				grpc.WithDefaultCallOptions(
+					grpc.MaxCallRecvMsgSize(cfg.Server.GRPC.MaxRecvMsgSize),
+					grpc.MaxCallSendMsgSize(cfg.Server.GRPC.MaxSendMsgSize),
+				),
+			}
+			h, err := etcdgateway.NewHandler(context.Background(), cfg.Server.EtcdGateway.Endpoint, dialOpts)
+			if err != nil {
+				log.Fatalf("Failed to create etcd grpc-gateway handler: %v", err)
+				os.Exit(-1)
+				return
+			}
+			etcdGatewayHandler = etcdgateway.WithLogging(h)
+			log.Info("etcd grpc-gateway enabled", zap.String("endpoint", cfg.Server.EtcdGateway.Endpoint), zap.String("component", "main"))
+		}
+
 		httpServer := http.NewServer(http.Config{
-			Store:       kvs,
-			Port:        *kvport, // Configured port (mostly for display/struct init)
-			ConfChangeC: confChangeC,
+			Store:              kvs,
+			Port:               *kvport, // Configured port (mostly for display/struct init)
+			ConfChangeC:        confChangeC,
+			EtcdGatewayHandler: etcdGatewayHandler,
 		})
 
 		go func() {
@@ -304,14 +329,34 @@ func main() {
 		}
 
 		m := cmux.New(l)
-		grpcL := m.Match(cmux.HTTP2HeaderField("content-type", "application/grpc"))
+		grpcL := m.Match(cmux.HTTP2())
 		httpL := m.Match(cmux.HTTP1Fast())
 
 		// Start HTTP API server
+		var etcdGatewayHandler nethttp.Handler
+		if cfg.Server.EtcdGateway.Enable {
+			dialOpts := []grpc.DialOption{
+				grpc.WithTransportCredentials(insecure.NewCredentials()),
+				grpc.WithDefaultCallOptions(
+					grpc.MaxCallRecvMsgSize(cfg.Server.GRPC.MaxRecvMsgSize),
+					grpc.MaxCallSendMsgSize(cfg.Server.GRPC.MaxSendMsgSize),
+				),
+			}
+			h, err := etcdgateway.NewHandler(context.Background(), cfg.Server.EtcdGateway.Endpoint, dialOpts)
+			if err != nil {
+				log.Fatalf("Failed to create etcd grpc-gateway handler: %v", err)
+				os.Exit(-1)
+				return
+			}
+			etcdGatewayHandler = etcdgateway.WithLogging(h)
+			log.Info("etcd grpc-gateway enabled", zap.String("endpoint", cfg.Server.EtcdGateway.Endpoint), zap.String("component", "main"))
+		}
+
 		httpServer := http.NewServer(http.Config{
-			Store:       kvs,
-			Port:        *kvport,
-			ConfChangeC: confChangeC,
+			Store:              kvs,
+			Port:               *kvport,
+			ConfChangeC:        confChangeC,
+			EtcdGatewayHandler: etcdGatewayHandler,
 		})
 
 		go func() {
