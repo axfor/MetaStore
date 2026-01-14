@@ -23,6 +23,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"metaStore/internal/batch"
@@ -93,11 +94,34 @@ type raftNode struct {
 	leaseManager     *lease.LeaseManager     // leasemanager(ifenabled)
 	readIndexManager *lease.ReadIndexManager // ReadIndex manager(ifenabled)
 
+	// ConfChange callback for ClusterManager synchronization
+	confChangeCallback func(cc raftpb.ConfChange, confState raftpb.ConfState)
+	confChangeMu       sync.RWMutex
+
 	logger *zap.Logger
 	cfg    *config.Config // Raft configuration
 }
 
 var defaultSnapshotCount uint64 = 10000
+
+// SetConfChangeCallback sets a callback function that will be invoked
+// after each ConfChange is applied. This is used to synchronize the
+// ClusterManager with committed configuration changes from Raft.
+func (rc *raftNode) SetConfChangeCallback(fn func(cc raftpb.ConfChange, confState raftpb.ConfState)) {
+	rc.confChangeMu.Lock()
+	defer rc.confChangeMu.Unlock()
+	rc.confChangeCallback = fn
+}
+
+// notifyConfChange invokes the registered callback (if any) after applying a ConfChange
+func (rc *raftNode) notifyConfChange(cc raftpb.ConfChange) {
+	rc.confChangeMu.RLock()
+	fn := rc.confChangeCallback
+	rc.confChangeMu.RUnlock()
+	if fn != nil {
+		fn(cc, rc.confState)
+	}
+}
 
 // isWitness returns true if this node is configured as a witness node
 // Witness nodes participate in Raft voting but don't store data
@@ -246,6 +270,8 @@ func (rc *raftNode) publishEntries(ents []raftpb.Entry) (<-chan struct{}, bool) 
 				}
 				rc.transport.RemovePeer(types.ID(cc.NodeID))
 			}
+			// Notify ClusterManager about this committed ConfChange
+			rc.notifyConfChange(cc)
 		}
 	}
 
@@ -308,6 +334,8 @@ func (rc *raftNode) publishEntriesAsWitness(ents []raftpb.Entry) (<-chan struct{
 					zap.Uint64("node_id", cc.NodeID),
 					zap.String("component", "raft-memory-witness"))
 			}
+			// Notify ClusterManager about this committed ConfChange
+			rc.notifyConfChange(cc)
 		}
 	}
 
@@ -666,7 +694,13 @@ func (rc *raftNode) serveChannels() {
 					} else {
 						confChangeCount++
 						cc.ID = confChangeCount
-						rc.node.ProposeConfChange(context.TODO(), cc)
+						if err := rc.node.ProposeConfChange(context.TODO(), cc); err != nil {
+							rc.logger.Warn("failed to propose conf change",
+								zap.Error(err),
+								zap.Uint64("node_id", cc.NodeID),
+								zap.String("cc_type", fmt.Sprintf("%v", cc.Type)),
+								zap.String("component", "raft-memory"))
+						}
 					}
 				}
 			}
@@ -688,7 +722,13 @@ func (rc *raftNode) serveChannels() {
 					} else {
 						confChangeCount++
 						cc.ID = confChangeCount
-						rc.node.ProposeConfChange(context.TODO(), cc)
+						if err := rc.node.ProposeConfChange(context.TODO(), cc); err != nil {
+							rc.logger.Warn("failed to propose conf change",
+								zap.Error(err),
+								zap.Uint64("node_id", cc.NodeID),
+								zap.String("cc_type", fmt.Sprintf("%v", cc.Type)),
+								zap.String("component", "raft-memory"))
+						}
 					}
 				}
 			}

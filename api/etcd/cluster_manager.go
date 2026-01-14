@@ -17,6 +17,7 @@ package etcd
 import (
 	"crypto/rand"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"sync"
 
@@ -77,11 +78,12 @@ func (cm *ClusterManager) AddMember(peerURLs []string, isLearner bool) (*MemberI
 		ccType = raftpb.ConfChangeAddNode
 	}
 
-	//  Context(PeerURLs)
-	context := []byte{}
-	if len(peerURLs) > 0 {
-		context = []byte(peerURLs[0]) // usefirst PeerURL
+	//  Context(PeerURLs & ClientURLs as JSON)
+	ctxData := MemberContext{
+		PeerURLs:   peerURLs,
+		ClientURLs: []string{}, // Empty initially; node will self-publish its configured URLs
 	}
+	context, _ := json.Marshal(ctxData)
 
 	cc := raftpb.ConfChange{
 		Type:    ccType,
@@ -128,10 +130,11 @@ func (cm *ClusterManager) AddWitnessMember(peerURLs []string) (*MemberInfo, erro
 
 	// 3. Create ConfChange - Witness nodes are added as regular voters
 	// The witness behavior is controlled by the node's configuration, not Raft
-	context := []byte{}
-	if len(peerURLs) > 0 {
-		context = []byte(peerURLs[0])
+	ctxData := MemberContext{
+		PeerURLs:   peerURLs,
+		ClientURLs: []string{},
 	}
+	context, _ := json.Marshal(ctxData)
 
 	cc := raftpb.ConfChange{
 		Type:    raftpb.ConfChangeAddNode, // Witness is a voter
@@ -190,6 +193,11 @@ func (cm *ClusterManager) RemoveMember(id uint64) error {
 
 // UpdateMember updatememberinfo
 func (cm *ClusterManager) UpdateMember(id uint64, peerURLs []string) error {
+	return cm.UpdateMemberWithClientURLs(id, peerURLs, nil)
+}
+
+// UpdateMemberWithClientURLs updates member info including ClientURLs
+func (cm *ClusterManager) UpdateMemberWithClientURLs(id uint64, peerURLs []string, clientURLs []string) error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
@@ -199,14 +207,23 @@ func (cm *ClusterManager) UpdateMember(id uint64, peerURLs []string) error {
 		return fmt.Errorf("member %d not found", id)
 	}
 
-	// 2. update PeerURLs
-	member.PeerURLs = peerURLs
-
-	// 3. create ConfChange(etcd  UpdateMember willtrigger ConfChange)
-	context := []byte{}
-	if len(peerURLs) > 0 {
-		context = []byte(peerURLs[0])
+	// 2. compute desired URLs (do NOT mutate local state here)
+	// Local member list should reflect committed Raft state only.
+	newPeerURLs := member.PeerURLs
+	newClientURLs := member.ClientURLs
+	if peerURLs != nil {
+		newPeerURLs = peerURLs
 	}
+	if clientURLs != nil {
+		newClientURLs = clientURLs
+	}
+
+	// 3. create ConfChange with JSON context
+	ctxData := MemberContext{
+		PeerURLs:   newPeerURLs,
+		ClientURLs: newClientURLs,
+	}
+	context, _ := json.Marshal(ctxData)
 
 	cc := raftpb.ConfChange{
 		Type:    raftpb.ConfChangeUpdateNode,
@@ -269,6 +286,9 @@ func (cm *ClusterManager) ApplyConfChange(cc raftpb.ConfChange, confState raftpb
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
+	// Parse context: try JSON first, fallback to legacy string
+	ctx := parseMemberContext(cc.Context)
+
 	// root ConfChange typeupdate members map
 	switch cc.Type {
 	case raftpb.ConfChangeAddNode:
@@ -276,32 +296,31 @@ func (cm *ClusterManager) ApplyConfChange(cc raftpb.ConfChange, confState raftpb
 		if member, exists := cm.members[cc.NodeID]; exists {
 			// exists，isoperation
 			member.IsLearner = false
+			// Update URLs if provided
+			if len(ctx.PeerURLs) > 0 {
+				member.PeerURLs = ctx.PeerURLs
+			}
+			if len(ctx.ClientURLs) > 0 {
+				member.ClientURLs = ctx.ClientURLs
+			}
 		} else {
 			// newincreasemember
-			peerURL := ""
-			if len(cc.Context) > 0 {
-				peerURL = string(cc.Context)
-			}
 			cm.members[cc.NodeID] = &MemberInfo{
 				ID:         cc.NodeID,
 				Name:       fmt.Sprintf("node-%d", cc.NodeID),
-				PeerURLs:   []string{peerURL},
-				ClientURLs: []string{},
+				PeerURLs:   ctx.PeerURLs,
+				ClientURLs: ctx.ClientURLs,
 				IsLearner:  false,
 			}
 		}
 
 	case raftpb.ConfChangeAddLearnerNode:
 		// add learner member
-		peerURL := ""
-		if len(cc.Context) > 0 {
-			peerURL = string(cc.Context)
-		}
 		cm.members[cc.NodeID] = &MemberInfo{
 			ID:         cc.NodeID,
 			Name:       fmt.Sprintf("node-%d", cc.NodeID),
-			PeerURLs:   []string{peerURL},
-			ClientURLs: []string{},
+			PeerURLs:   ctx.PeerURLs,
+			ClientURLs: ctx.ClientURLs,
 			IsLearner:  true,
 		}
 
@@ -312,10 +331,29 @@ func (cm *ClusterManager) ApplyConfChange(cc raftpb.ConfChange, confState raftpb
 	case raftpb.ConfChangeUpdateNode:
 		// updatemember
 		if member, exists := cm.members[cc.NodeID]; exists {
-			if len(cc.Context) > 0 {
-				member.PeerURLs = []string{string(cc.Context)}
+			if len(ctx.PeerURLs) > 0 {
+				member.PeerURLs = ctx.PeerURLs
+			}
+			if len(ctx.ClientURLs) > 0 {
+				member.ClientURLs = ctx.ClientURLs
 			}
 		}
+	}
+}
+
+// parseMemberContext parses ConfChange.Context with JSON/legacy fallback
+func parseMemberContext(data []byte) MemberContext {
+	if len(data) == 0 {
+		return MemberContext{}
+	}
+	var ctx MemberContext
+	if err := json.Unmarshal(data, &ctx); err == nil && (len(ctx.PeerURLs) > 0 || len(ctx.ClientURLs) > 0) {
+		return ctx
+	}
+	// Legacy fallback: treat as single PeerURL string
+	return MemberContext{
+		PeerURLs:   []string{string(data)},
+		ClientURLs: []string{},
 	}
 }
 
