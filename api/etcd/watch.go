@@ -15,6 +15,7 @@
 package etcd
 
 import (
+	"io"
 	"metaStore/internal/kvstore"
 	"metaStore/pkg/log"
 
@@ -46,6 +47,13 @@ func (s *WatchServer) Watch(stream pb.Watch_WatchServer) error {
 	for {
 		req, err := stream.Recv()
 		if err != nil {
+			// grpc-gateway (and some HTTP clients) may send a single create_request and
+			// then close the request body, which manifests as io.EOF on the server side.
+			// etcd keeps the watch alive until the transport is closed; mirror that.
+			if err == io.EOF {
+				<-stream.Context().Done()
+				return stream.Context().Err()
+			}
 			return err
 		}
 
@@ -99,10 +107,10 @@ func (s *WatchServer) handleCreateWatch(stream pb.Watch_WatchServer, req *pb.Wat
 	if watchID < 0 {
 		// Creation failed, send error response
 		err := stream.Send(&pb.WatchResponse{
-			Header:  s.server.getResponseHeader(),
-			WatchId: -1,
-			Created: false,
-			Canceled: true,
+			Header:       s.server.getResponseHeader(),
+			WatchId:      -1,
+			Created:      false,
+			Canceled:     true,
 			CancelReason: "failed to create watch",
 		})
 		return -1, err
