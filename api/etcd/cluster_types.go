@@ -23,3 +23,10 @@ type MemberInfo struct {
 	IsLearner  bool     `json:"is_learner"`
 	IsWitness  bool     `json:"is_witness"` // Witness node flag (votes but doesn't store data)
 }
+
+// MemberContext is the JSON payload for ConfChange.Context
+// Used to propagate both PeerURLs and ClientURLs via Raft
+type MemberContext struct {
+	PeerURLs   []string `json:"peer_urls"`
+	ClientURLs []string `json:"client_urls"`
+}

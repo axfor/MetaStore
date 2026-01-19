@@ -62,6 +62,7 @@ func main() {
 	memberID := flag.Int("member-id", 1, "node ID")
 	kvport := flag.Int("port", 9121, "http server port")
 	grpcAddr := flag.String("grpc-addr", ":2379", "gRPC server address for etcd compatibility")
+	clientURLs := flag.String("client-urls", "", "comma separated advertised client URLs")
 	join := flag.Bool("join", false, "join an existing cluster")
 	storageEngine := flag.String("storage", "memory", "storage engine: memory or rocksdb")
 
@@ -75,7 +76,12 @@ func main() {
 		os.Exit(-1)
 	}
 
-	// initialize log system（must be initialized before other components）
+	// Override ClientURLs from CLI if provided
+	if *clientURLs != "" {
+		cfg.Server.ClientURLs = strings.Split(*clientURLs, ",")
+	}
+
+	// 初始化日志系统（必须在其他组件之前初始化）
 	if err := log.InitFromConfig(&cfg.Server.Log); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
 		os.Exit(-1)
@@ -166,7 +172,7 @@ func main() {
 		// Create RocksDB-backed KV store
 		var kvs *rocksdb.RocksDB
 		getSnapshot := func() ([]byte, error) { return kvs.GetSnapshot() }
-		commitC, errorC, snapshotterReady, raftNode := raft.NewNodeRocksDB(*memberID, strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC, db, dbPath, cfg)
+		commitC, errorC, snapshotterReady, raftNode := raft.NewNodeRocksDB(int(cfg.Server.MemberID), strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC, db, dbPath, cfg)
 
 		// use original constructor function（not using BatchProposer）
 		kvs = rocksdb.NewRocksDB(db, <-snapshotterReady, proposeC, commitC, errorC)
@@ -212,8 +218,8 @@ func main() {
 		grpcL := m.Match(cmux.HTTP2())
 		httpL := m.Match(cmux.HTTP1Fast())
 
-		// Start HTTP API server
-		var etcdGatewayHandler nethttp.Handler
+		// Setup etcd gateway handler if enabled
+		var gatewayHandler nethttp.Handler
 		if cfg.Server.EtcdGateway.Enable {
 			dialOpts := []grpc.DialOption{
 				grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -222,21 +228,26 @@ func main() {
 					grpc.MaxCallSendMsgSize(cfg.Server.GRPC.MaxSendMsgSize),
 				),
 			}
-			h, err := etcdgateway.NewHandler(context.Background(), cfg.Server.EtcdGateway.Endpoint, dialOpts)
-			if err != nil {
-				log.Fatalf("Failed to create etcd grpc-gateway handler: %v", err)
-				os.Exit(-1)
-				return
+			endpoint := cfg.Server.EtcdGateway.Endpoint
+			if endpoint == "" {
+				endpoint = cfg.Server.Etcd.Address
 			}
-			etcdGatewayHandler = etcdgateway.WithLogging(h)
-			log.Info("etcd grpc-gateway enabled", zap.String("endpoint", cfg.Server.EtcdGateway.Endpoint), zap.String("component", "main"))
+
+			var err error
+			gatewayHandler, err = etcdgateway.NewHandler(context.Background(), endpoint, dialOpts)
+			if err != nil {
+				log.Error("Failed to create etcd gateway handler", zap.Error(err), zap.String("component", "main"))
+			} else {
+				log.Info("etcd gateway enabled", zap.String("endpoint", endpoint), zap.String("component", "main"))
+			}
 		}
 
+		// Start HTTP API server
 		httpServer := http.NewServer(http.Config{
 			Store:              kvs,
 			Port:               *kvport, // Configured port (mostly for display/struct init)
 			ConfChangeC:        confChangeC,
-			EtcdGatewayHandler: etcdGatewayHandler,
+			EtcdGatewayHandler: gatewayHandler,
 		})
 
 		go func() {
@@ -258,6 +269,7 @@ func main() {
 			ClusterID:    cfg.Server.ClusterID,
 			MemberID:     cfg.Server.MemberID,
 			ClusterPeers: strings.Split(*cluster, ","),
+			ClientURLs:   cfg.Server.ClientURLs,
 			ConfChangeC:  confChangeC,
 			Config:       cfg,
 			Listener:     grpcL, // Inject matched listener
@@ -267,6 +279,10 @@ func main() {
 			os.Exit(-1)
 			return
 		}
+
+		// Wire Raft ConfChange callback to ClusterManager
+		// This ensures all nodes receive committed ConfChanges and update their member lists
+		raftNode.SetConfChangeCallback(etcdServer.GetClusterManager().ApplyConfChange)
 
 		go func() {
 			if err := etcdServer.Start(); err != nil {
@@ -287,7 +303,7 @@ func main() {
 		log.Info("Starting with memory + WAL storage and etcd gRPC support", zap.String("component", "main"))
 		var kvs *memory.Memory
 		getSnapshot := func() ([]byte, error) { return kvs.GetSnapshot() }
-		commitC, errorC, snapshotterReady, raftNode := raft.NewNode(*memberID, strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC, "memory", cfg)
+		commitC, errorC, snapshotterReady, raftNode := raft.NewNode(int(cfg.Server.MemberID), strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC, "memory", cfg)
 
 		// use original constructor function（not using BatchProposer）
 		kvs = memory.NewMemory(<-snapshotterReady, proposeC, commitC, errorC)
@@ -332,8 +348,8 @@ func main() {
 		grpcL := m.Match(cmux.HTTP2())
 		httpL := m.Match(cmux.HTTP1Fast())
 
-		// Start HTTP API server
-		var etcdGatewayHandler nethttp.Handler
+		// Setup etcd gateway handler if enabled
+		var gatewayHandler nethttp.Handler
 		if cfg.Server.EtcdGateway.Enable {
 			dialOpts := []grpc.DialOption{
 				grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -342,21 +358,26 @@ func main() {
 					grpc.MaxCallSendMsgSize(cfg.Server.GRPC.MaxSendMsgSize),
 				),
 			}
-			h, err := etcdgateway.NewHandler(context.Background(), cfg.Server.EtcdGateway.Endpoint, dialOpts)
-			if err != nil {
-				log.Fatalf("Failed to create etcd grpc-gateway handler: %v", err)
-				os.Exit(-1)
-				return
+			endpoint := cfg.Server.EtcdGateway.Endpoint
+			if endpoint == "" {
+				endpoint = cfg.Server.Etcd.Address
 			}
-			etcdGatewayHandler = etcdgateway.WithLogging(h)
-			log.Info("etcd grpc-gateway enabled", zap.String("endpoint", cfg.Server.EtcdGateway.Endpoint), zap.String("component", "main"))
+
+			var err error
+			gatewayHandler, err = etcdgateway.NewHandler(context.Background(), endpoint, dialOpts)
+			if err != nil {
+				log.Error("Failed to create etcd gateway handler", zap.Error(err), zap.String("component", "main"))
+			} else {
+				log.Info("etcd gateway enabled", zap.String("endpoint", endpoint), zap.String("component", "main"))
+			}
 		}
 
+		// Start HTTP API server
 		httpServer := http.NewServer(http.Config{
 			Store:              kvs,
 			Port:               *kvport,
 			ConfChangeC:        confChangeC,
-			EtcdGatewayHandler: etcdGatewayHandler,
+			EtcdGatewayHandler: gatewayHandler,
 		})
 
 		go func() {
@@ -378,6 +399,7 @@ func main() {
 			ClusterID:    cfg.Server.ClusterID,
 			MemberID:     cfg.Server.MemberID,
 			ClusterPeers: strings.Split(*cluster, ","),
+			ClientURLs:   cfg.Server.ClientURLs,
 			ConfChangeC:  confChangeC,
 			Config:       cfg,
 			Listener:     grpcL, // Inject matched listener
@@ -387,6 +409,10 @@ func main() {
 			os.Exit(-1)
 			return
 		}
+
+		// Wire Raft ConfChange callback to ClusterManager
+		// This ensures all nodes receive committed ConfChanges and update their member lists
+		raftNode.SetConfChangeCallback(etcdServer.GetClusterManager().ApplyConfChange)
 
 		go func() {
 			if err := etcdServer.Start(); err != nil {
