@@ -45,14 +45,8 @@ type LeaseManager struct {
 	leaseIDCounter atomic.Int64
 }
 
-// NewLeaseManager creates a new Lease manager
-// Parameters: store, leaseConfig (optional), limitsConfig (optional)
-func NewLeaseManager(store kvstore.Store, leaseCfg *config.LeaseConfig, limitsCfg *config.LimitsConfig) *LeaseManager {
-	return NewLeaseManagerWithNodeID(store, leaseCfg, limitsCfg, 1)
-}
-
 // NewLeaseManagerWithNodeID creates a new Lease manager (with node ID for cluster)
-func NewLeaseManagerWithNodeID(store kvstore.Store, leaseCfg *config.LeaseConfig, limitsCfg *config.LimitsConfig, nodeID uint64) *LeaseManager {
+func NewLeaseManagerWithMemberID(store kvstore.Store, leaseCfg *config.LeaseConfig, limitsCfg *config.LimitsConfig, raftCfg *config.RaftConfig, nodeID uint64) *LeaseManager {
 	// Use configuration or defaults
 	if leaseCfg == nil {
 		defaultCfg := config.DefaultConfig(1, 1, ":2379")

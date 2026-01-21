@@ -34,7 +34,7 @@ func (s *LeaseServer) LeaseGrant(ctx context.Context, req *pb.LeaseGrantRequest)
 
 	// ifnonespecified ID，becomeunique ID
 	if id == 0 {
-		id = s.server.leaseMgr.GenerateLeaseID()
+		id = int64(s.server.idGen.Next())
 	}
 
 	// create lease
