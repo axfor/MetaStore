@@ -36,9 +36,10 @@ import (
 // Server etcd-compatible gRPC server
 type Server struct {
 	mu       sync.RWMutex
-	store    kvstore.Store // Underlying storage
-	grpcSrv  *grpc.Server  // gRPC server
-	listener net.Listener  // Network listener
+	store    kvstore.Store     // Underlying storage
+	grpcSrv  *grpc.Server      // gRPC server
+	listener net.Listener      // Network listener
+	idGen    *idutil.Generator // ID generator
 
 	// Management components
 	watchMgr   *WatchManager   // Watch manager
@@ -156,9 +157,9 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	// Create LeaseManager (using configuration)
 	var leaseMgr *LeaseManager
 	if cfg.Config != nil {
-		leaseMgr = NewLeaseManager(cfg.Store, &cfg.Config.Server.Lease, &cfg.Config.Server.Limits)
+		leaseMgr = NewLeaseManagerWithMemberID(cfg.Store, &cfg.Config.Server.Lease, &cfg.Config.Server.Limits)
 	} else {
-		leaseMgr = NewLeaseManager(cfg.Store, nil, nil)
+		leaseMgr = NewLeaseManagerWithMemberID(cfg.Store, nil, nil, nil, 1)
 	}
 
 	// Create WatchManager (using configuration)
