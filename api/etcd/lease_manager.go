@@ -82,16 +82,6 @@ func (lm *LeaseManager) Stop() {
 	close(lm.stopCh)
 }
 
-// GenerateLeaseID generates a cluster-unique Lease ID
-// ID format: upper 16 bits for node ID, lower 48 bits for counter
-// This allows each node to independently generate non-conflicting IDs
-func (lm *LeaseManager) GenerateLeaseID() int64 {
-	counter := lm.leaseIDCounter.Add(1)
-	// Upper 16 bits: nodeID, lower 48 bits: counter
-	// Supports up to 65535 nodes, each with 2^48 leases
-	return int64(lm.nodeID<<48) | (counter & 0x0000FFFFFFFFFFFF)
-}
-
 // Grant creates a new lease
 func (lm *LeaseManager) Grant(id int64, ttl int64) (*kvstore.Lease, error) {
 	if lm.stopped.Load() {
