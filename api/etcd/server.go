@@ -17,10 +17,6 @@ package etcd
 import (
 	"context"
 	"fmt"
-	"metaStore/internal/kvstore"
-	"metaStore/pkg/config"
-	"metaStore/pkg/log"
-	"metaStore/pkg/reliability"
 	"net"
 	"sync"
 	"time"
@@ -31,6 +27,12 @@ import (
 	"google.golang.org/grpc"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/keepalive"
+
+	"metaStore/internal/kvstore"
+	"metaStore/pkg/config"
+	idutil "metaStore/pkg/idutils"
+	"metaStore/pkg/log"
+	"metaStore/pkg/reliability"
 )
 
 // Server etcd-compatible gRPC server
@@ -157,7 +159,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	// Create LeaseManager (using configuration)
 	var leaseMgr *LeaseManager
 	if cfg.Config != nil {
-		leaseMgr = NewLeaseManagerWithMemberID(cfg.Store, &cfg.Config.Server.Lease, &cfg.Config.Server.Limits)
+		leaseMgr = NewLeaseManagerWithMemberID(cfg.Store, &cfg.Config.Server.Lease, &cfg.Config.Server.Limits, &cfg.Config.Server.Raft, cfg.MemberID)
 	} else {
 		leaseMgr = NewLeaseManagerWithMemberID(cfg.Store, nil, nil, nil, 1)
 	}
