@@ -283,6 +283,14 @@ func main() {
 		// Wire Raft ConfChange callback to ClusterManager
 		// This ensures all nodes receive committed ConfChanges and update their member lists
 		raftNode.SetConfChangeCallback(etcdServer.GetClusterManager().ApplyConfChange)
+		leaseManager := etcdServer.GetLeaseManager()
+		if leaseManager != nil {
+			go func() {
+				for status := range raftNode.LeaderChangeC() {
+					leaseManager.OnLeaderChange(status)
+				}
+			}()
+		}
 
 		go func() {
 			if err := etcdServer.Start(); err != nil {
@@ -413,6 +421,14 @@ func main() {
 		// Wire Raft ConfChange callback to ClusterManager
 		// This ensures all nodes receive committed ConfChanges and update their member lists
 		raftNode.SetConfChangeCallback(etcdServer.GetClusterManager().ApplyConfChange)
+		leaseManager := etcdServer.GetLeaseManager()
+		if leaseManager != nil {
+			go func() {
+				for status := range raftNode.LeaderChangeC() {
+					leaseManager.OnLeaderChange(status)
+				}
+			}()
+		}
 
 		go func() {
 			if err := etcdServer.Start(); err != nil {

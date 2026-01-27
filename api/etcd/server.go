@@ -184,6 +184,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	s := &Server{
 		store:         cfg.Store,
 		listener:      listener,
+		idGen:         idutil.NewGenerator(uint16(cfg.MemberID), time.Now()),
 		watchMgr:      watchMgr,
 		leaseMgr:      leaseMgr,
 		authMgr:       authMgr,
@@ -485,6 +486,11 @@ func (s *Server) Address() string {
 // GetClusterManager returns the cluster manager for external wiring (e.g., Raft callback)
 func (s *Server) GetClusterManager() *ClusterManager {
 	return s.clusterMgr
+}
+
+// GetLeaseManager returns the lease manager for external wiring (e.g., Raft callbacks)
+func (s *Server) GetLeaseManager() *LeaseManager {
+	return s.leaseMgr
 }
 
 // getResponseHeader creates a standard response header

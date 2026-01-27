@@ -98,6 +98,9 @@ type raftNode struct {
 	confChangeCallback func(cc raftpb.ConfChange, confState raftpb.ConfState)
 	confChangeMu       sync.RWMutex
 
+	// Leader change notifications
+	leaderChangeC chan kvstore.RaftStatus
+
 	logger *zap.Logger
 	cfg    *config.Config // Raft configuration
 }
@@ -120,6 +123,26 @@ func (rc *raftNode) notifyConfChange(cc raftpb.ConfChange) {
 	rc.confChangeMu.RUnlock()
 	if fn != nil {
 		fn(cc, rc.confState)
+	}
+}
+
+func (rc *raftNode) notifyLeaderChange() {
+	if rc.leaderChangeC == nil {
+		return
+	}
+	status := rc.node.Status()
+	raftStatus := kvstore.RaftStatus{
+		NodeID:   status.ID,
+		Term:     status.Term,
+		LeaderID: status.Lead,
+		State:    status.RaftState.String(),
+		Applied:  status.Applied,
+		Commit:   status.Commit,
+	}
+
+	select {
+	case rc.leaderChangeC <- raftStatus:
+	default:
 	}
 }
 
@@ -166,6 +189,7 @@ func NewNode(id int, peers []string, join bool, getSnapshot func() ([]byte, erro
 		cfg:    cfg, // Store config reference
 
 		snapshotterReady: make(chan *snap.Snapshotter, 1),
+		leaderChangeC:    make(chan kvstore.RaftStatus, 1),
 		// rest of structure populated after WAL replay
 	}
 	go rc.startRaft()
@@ -581,6 +605,9 @@ func (rc *raftNode) stop() {
 		rc.batcher.Stop()
 	}
 
+	if rc.leaderChangeC != nil {
+		close(rc.leaderChangeC)
+	}
 	close(rc.commitC)
 	close(rc.errorC)
 	rc.node.Stop()
@@ -775,6 +802,9 @@ func (rc *raftNode) serveChannels() {
 					}
 				}
 			}
+			if rd.SoftState != nil {
+				rc.notifyLeaderChange()
+			}
 
 			// Must save the snapshot file and WAL snapshot entry before saving any other entries
 			// or hardstate to ensure that recovery after a snapshot restore is possible.
@@ -878,6 +908,11 @@ func (rc *raftNode) Status() kvstore.RaftStatus {
 func (rc *raftNode) TransferLeadership(targetID uint64) error {
 	rc.node.TransferLeadership(context.TODO(), 0, targetID)
 	return nil
+}
+
+// LeaderChangeC exposes leader change notifications
+func (rc *raftNode) LeaderChangeC() <-chan kvstore.RaftStatus {
+	return rc.leaderChangeC
 }
 
 // LeaseManager returnleasemanager(for test)

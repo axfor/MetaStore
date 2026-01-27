@@ -15,8 +15,8 @@
 package memory
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"encoding/gob"
 	"errors"
 	"fmt"
@@ -38,21 +38,22 @@ type RaftNode interface {
 	TransferLeadership(targetID uint64) error
 	LeaseManager() *lease.LeaseManager
 	ReadIndexManager() *lease.ReadIndexManager
+	LeaderChangeC() <-chan kvstore.RaftStatus
 }
 
 // Memory collectbecome Raft  etcd compatiblestorage
 type Memory struct {
 	*MemoryEtcd //  etcd implement
 
-	proposeC      chan<- string           // send Raft (aftercompatible)
-	snapshotter   *snap.Snapshotter
-	mu            sync.Mutex              // protected pending operation
+	proposeC    chan<- string // send Raft (aftercompatible)
+	snapshotter *snap.Snapshotter
+	mu          sync.Mutex // protected pending operation
 
 	// for synchronouswait Raft commit single
-	pendingMu    sync.RWMutex
-	pendingOps   map[string]chan struct{}          // key -> wait channel
+	pendingMu         sync.RWMutex
+	pendingOps        map[string]chan struct{}        // key -> wait channel
 	pendingTxnResults map[string]*kvstore.TxnResponse // seqNum -> txn result
-	seqNum       int64
+	seqNum            int64
 
 	// Raft nodereference(used to getstatus info)
 	raftNode RaftNode
@@ -61,20 +62,20 @@ type Memory struct {
 
 // RaftOperation indicatesvia Raft commitoperation
 type RaftOperation struct {
-	Type     string `json:"type"`      // "PUT", "DELETE", "LEASE_GRANT", "LEASE_REVOKE", "TXN"
+	Type     string `json:"type"` // "PUT", "DELETE", "LEASE_GRANT", "LEASE_REVOKE", "TXN"
 	Key      string `json:"key"`
 	Value    string `json:"value"`
 	LeaseID  int64  `json:"lease_id"`
 	RangeEnd string `json:"range_end"`
-	SeqNum   string `json:"seq_num"`   // for synchronouswaitcolumn
+	SeqNum   string `json:"seq_num"` // for synchronouswaitcolumn
 
 	// Lease operation
 	TTL int64 `json:"ttl"`
 
 	// Transaction operation
-	Compares   []kvstore.Compare `json:"compares,omitempty"`
-	ThenOps    []kvstore.Op      `json:"then_ops,omitempty"`
-	ElseOps    []kvstore.Op      `json:"else_ops,omitempty"`
+	Compares []kvstore.Compare `json:"compares,omitempty"`
+	ThenOps  []kvstore.Op      `json:"then_ops,omitempty"`
+	ElseOps  []kvstore.Op      `json:"else_ops,omitempty"`
 }
 
 // NewMemory createcollectbecome Raft  etcd compatiblestorage
@@ -126,10 +127,12 @@ func (m *Memory) propose(ctx context.Context, data string) error {
 // ✅ performanceoptimize (Phase 2):  Apply
 //
 // Before (Phase 1):
-//   for op in ops { applyOperation(op) }  // N  timelockoperation
+//
+//	for op in ops { applyOperation(op) }  // N  timelockoperation
 //
 // After (Phase 2):
-//   applyBatch(ops)  // shardseparategroup，eachshard 1  timelock
+//
+//	applyBatch(ops)  // shardseparategroup，eachshard 1  timelock
 //
 // : 5-10x (lockopendecreasefew 100x)
 func (m *Memory) readCommits(commitC <-chan *kvstore.Commit, errorC <-chan error) {
@@ -186,11 +189,13 @@ func (m *Memory) readCommits(commitC <-chan *kvstore.Commit, errorC <-chan error
 // ✅ performanceoptimize (Phase 1): goglobal txnMu lock
 //
 // Before (serial):
-//   txnMu.Lock() → alloperation → concurrency = 1
+//
+//	txnMu.Lock() → alloperation → concurrency = 1
 //
 // After (parallelism):
-//   singlekeyoperation → ShardedMap shardlock → concurrency = 512
-//   transactionoperation → fine-grainedshardlock → concurrency = 512 / andshard
+//
+//	singlekeyoperation → ShardedMap shardlock → concurrency = 512
+//	transactionoperation → fine-grainedshardlock → concurrency = 512 / andshard
 //
 // : 10-50x throughput (getatconcurrencyandoperationtype)
 func (m *Memory) applyOperation(op RaftOperation) {
