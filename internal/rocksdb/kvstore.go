@@ -15,8 +15,8 @@
 package rocksdb
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/gob"
 	"fmt"
@@ -49,6 +49,7 @@ type RaftNode interface {
 	TransferLeadership(targetID uint64) error
 	LeaseManager() *lease.LeaseManager
 	ReadIndexManager() *lease.ReadIndexManager
+	LeaderChangeC() <-chan kvstore.RaftStatus
 }
 
 // RocksDB integrates Raft consensus with etcd-compatible RocksDB storage
@@ -72,7 +73,6 @@ type RocksDB struct {
 
 	// Performance optimization: cached revision (atomic for lock-free access)
 	cachedRevision atomic.Int64
-
 
 	// Raft nodereference(used to getstatus info)
 	raftNode RaftNode

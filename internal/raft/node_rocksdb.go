@@ -90,6 +90,9 @@ type raftNodeRocks struct {
 	confChangeCallback func(cc raftpb.ConfChange, confState raftpb.ConfState)
 	confChangeMu       sync.RWMutex
 
+	// Leader change notifications
+	leaderChangeC chan kvstore.RaftStatus
+
 	logger *zap.Logger
 	cfg    *config.Config // Raft configuration
 }
@@ -122,6 +125,7 @@ func NewNodeRocksDB(id int, peers []string, join bool, getSnapshot func() ([]byt
 		cfg:    cfg, // Store config reference
 
 		snapshotterReady: make(chan *snap.Snapshotter, 1),
+		leaderChangeC:    make(chan kvstore.RaftStatus, 1),
 	}
 	go rc.startRaft()
 	return commitC, errorC, rc.snapshotterReady, rc
@@ -152,6 +156,26 @@ func (rc *raftNodeRocks) notifyConfChange(cc raftpb.ConfChange) {
 	rc.confChangeMu.RUnlock()
 	if fn != nil {
 		fn(cc, rc.confState)
+	}
+}
+
+func (rc *raftNodeRocks) notifyLeaderChange() {
+	if rc.leaderChangeC == nil {
+		return
+	}
+	status := rc.node.Status()
+	raftStatus := kvstore.RaftStatus{
+		NodeID:   status.ID,
+		Term:     status.Term,
+		LeaderID: status.Lead,
+		State:    status.RaftState.String(),
+		Applied:  status.Applied,
+		Commit:   status.Commit,
+	}
+
+	select {
+	case rc.leaderChangeC <- raftStatus:
+	default:
 	}
 }
 
@@ -551,6 +575,9 @@ func (rc *raftNodeRocks) stop() {
 		rc.batcher.Stop()
 	}
 
+	if rc.leaderChangeC != nil {
+		close(rc.leaderChangeC)
+	}
 	close(rc.commitC)
 	close(rc.errorC)
 	rc.node.Stop()
@@ -751,6 +778,9 @@ func (rc *raftNodeRocks) serveChannels() {
 					}
 				}
 			}
+			if rd.SoftState != nil {
+				rc.notifyLeaderChange()
+			}
 
 			// Save hard state to RocksDB
 			if !raft.IsEmptyHardState(rd.HardState) {
@@ -867,6 +897,11 @@ func (rc *raftNodeRocks) Status() kvstore.RaftStatus {
 func (rc *raftNodeRocks) TransferLeadership(targetID uint64) error {
 	rc.node.TransferLeadership(context.TODO(), 0, targetID)
 	return nil
+}
+
+// LeaderChangeC exposes leader change notifications
+func (rc *raftNodeRocks) LeaderChangeC() <-chan kvstore.RaftStatus {
+	return rc.leaderChangeC
 }
 
 // LeaseManager returnleasemanager(for test)
