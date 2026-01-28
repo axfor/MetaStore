@@ -19,16 +19,17 @@ import (
 	"flag"
 	"fmt"
 	"net"
-	nethttp "net/http"
+	"net/http"
 	"os"
 	"strings"
 
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/soheilhy/cmux"
 
 	// "metaStore/internal/batch" // 已禁用 BatchProposer
 	"metaStore/api/etcd"
 	"metaStore/api/etcdgateway"
-	"metaStore/api/http"
+	etcdhttp "metaStore/api/etcdhttp"
 	"metaStore/api/mysql"
 	"metaStore/internal/memory"
 	"metaStore/internal/raft"
@@ -60,7 +61,6 @@ func main() {
 	cluster := flag.String("cluster", "http://127.0.0.1:9021", "comma separated cluster peers")
 	clusterID := flag.Uint64("cluster-id", 1, "cluster ID")
 	memberID := flag.Int("member-id", 1, "node ID")
-	kvport := flag.Int("port", 9121, "http server port")
 	grpcAddr := flag.String("grpc-addr", ":2379", "gRPC server address for etcd compatibility")
 	clientURLs := flag.String("client-urls", "", "comma separated advertised client URLs")
 	join := flag.Bool("join", false, "join an existing cluster")
@@ -215,11 +215,8 @@ func main() {
 		}
 
 		m := cmux.New(l)
-		grpcL := m.Match(cmux.HTTP2())
-		httpL := m.Match(cmux.HTTP1Fast())
-
-		// Setup etcd gateway handler if enabled
-		var gatewayHandler nethttp.Handler
+		mux := http.NewServeMux()
+		etcdhttp.HandleVersion(mux)
 		if cfg.Server.EtcdGateway.Enable {
 			dialOpts := []grpc.DialOption{
 				grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -233,29 +230,21 @@ func main() {
 				endpoint = cfg.Server.Etcd.Address
 			}
 
-			var err error
-			gatewayHandler, err = etcdgateway.NewHandler(context.Background(), endpoint, dialOpts)
+			gwmux, err := etcdgateway.NewHandler(context.Background(), endpoint, dialOpts)
 			if err != nil {
 				log.Error("Failed to create etcd gateway handler", zap.Error(err), zap.String("component", "main"))
 			} else {
 				log.Info("etcd gateway enabled", zap.String("endpoint", endpoint), zap.String("component", "main"))
 			}
-		}
 
-		// Start HTTP API server
-		httpServer := http.NewServer(http.Config{
-			Store:              kvs,
-			Port:               *kvport, // Configured port (mostly for display/struct init)
-			ConfChangeC:        confChangeC,
-			EtcdGatewayHandler: gatewayHandler,
-		})
-
-		go func() {
-			log.Info("Starting HTTP API on multiplexed listener", zap.String("component", "main"))
-			if err := httpServer.Serve(httpL); err != nil {
-				log.Error("HTTP API server failed", zap.Error(err), zap.String("component", "main"))
+			httpMux := createMux(gwmux, mux)
+			srv := &http.Server{
+				Handler: httpMux,
 			}
-		}()
+			httpl := m.Match(cmux.HTTP1())
+			go srv.Serve(httpl)
+		}
+		grpcl := m.Match(cmux.HTTP2())
 
 		// Start etcd gRPC server
 		log.Info("Starting etcd gRPC server",
@@ -272,7 +261,7 @@ func main() {
 			ClientURLs:   cfg.Server.ClientURLs,
 			ConfChangeC:  confChangeC,
 			Config:       cfg,
-			Listener:     grpcL, // Inject matched listener
+			Listener:     grpcl, // Inject matched listener
 		})
 		if err != nil {
 			log.Fatalf("Failed to create etcd server: %v", err)
@@ -351,13 +340,10 @@ func main() {
 			log.Fatalf("Failed to listen on %s: %v", cfg.Server.Etcd.Address, err)
 			os.Exit(-1)
 		}
-
 		m := cmux.New(l)
-		grpcL := m.Match(cmux.HTTP2())
-		httpL := m.Match(cmux.HTTP1Fast())
+		mux := http.NewServeMux()
+		etcdhttp.HandleVersion(mux)
 
-		// Setup etcd gateway handler if enabled
-		var gatewayHandler nethttp.Handler
 		if cfg.Server.EtcdGateway.Enable {
 			dialOpts := []grpc.DialOption{
 				grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -371,30 +357,20 @@ func main() {
 				endpoint = cfg.Server.Etcd.Address
 			}
 
-			var err error
-			gatewayHandler, err = etcdgateway.NewHandler(context.Background(), endpoint, dialOpts)
+			gwmux, err := etcdgateway.NewHandler(context.Background(), endpoint, dialOpts)
 			if err != nil {
 				log.Error("Failed to create etcd gateway handler", zap.Error(err), zap.String("component", "main"))
 			} else {
 				log.Info("etcd gateway enabled", zap.String("endpoint", endpoint), zap.String("component", "main"))
 			}
-		}
-
-		// Start HTTP API server
-		httpServer := http.NewServer(http.Config{
-			Store:              kvs,
-			Port:               *kvport,
-			ConfChangeC:        confChangeC,
-			EtcdGatewayHandler: gatewayHandler,
-		})
-
-		go func() {
-			log.Info("Starting HTTP API on multiplexed listener", zap.String("component", "main"))
-			if err := httpServer.Serve(httpL); err != nil {
-				log.Error("HTTP API server failed", zap.Error(err), zap.String("component", "main"))
+			httpMux := createMux(gwmux, mux)
+			srv := &http.Server{
+				Handler: httpMux,
 			}
-		}()
-
+			httpl := m.Match(cmux.HTTP1())
+			go srv.Serve(httpl)
+		}
+		grpcL := m.Match(cmux.HTTP2())
 		// Start etcd gRPC server
 		log.Info("Starting etcd gRPC server",
 			zap.String("address", cfg.Server.Etcd.Address),
@@ -449,4 +425,12 @@ func main() {
 		os.Exit(-1)
 		return
 	}
+}
+
+func createMux(gwmux *runtime.ServeMux, handler http.Handler) *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.Handle("/v3/", gwmux)
+	mux.Handle("/", handler)
+
+	return mux
 }
