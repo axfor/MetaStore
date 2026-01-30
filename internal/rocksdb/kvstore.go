@@ -1329,6 +1329,7 @@ func (r *RocksDB) LeaseRevoke(ctx context.Context, id int64) error {
 
 	// Use BatchProposer for improved throughput (firstuse propose auxiliarymethod)
 	if err := r.propose(ctx, data); err != nil {
+		log.Errorf("failed to propose revoke lease: %v", err)
 		cleanup()
 		return err
 	}

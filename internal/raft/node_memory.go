@@ -18,7 +18,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -30,6 +29,7 @@ import (
 	"metaStore/internal/kvstore"
 	"metaStore/internal/lease"
 	"metaStore/pkg/config"
+	"metaStore/pkg/log"
 
 	"go.etcd.io/etcd/client/pkg/v3/fileutil"
 	"go.etcd.io/etcd/client/pkg/v3/types"
@@ -42,7 +42,6 @@ import (
 	"go.etcd.io/raft/v3/raftpb"
 
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
 
 type commit = kvstore.Commit
@@ -185,7 +184,7 @@ func NewNode(id int, peers []string, join bool, getSnapshot func() ([]byte, erro
 		httpstopc:   make(chan struct{}),
 		httpdonec:   make(chan struct{}),
 
-		logger: newLogger(),
+		logger: log.ZapLogger(),
 		cfg:    cfg, // Store config reference
 
 		snapshotterReady: make(chan *snap.Snapshotter, 1),
@@ -197,16 +196,7 @@ func NewNode(id int, peers []string, join bool, getSnapshot func() ([]byte, erro
 }
 
 func newLogger(options ...zap.Option) *zap.Logger {
-	encoderCfg := zapcore.EncoderConfig{
-		MessageKey:     "msg",
-		LevelKey:       "level",
-		NameKey:        "logger",
-		EncodeLevel:    zapcore.LowercaseLevelEncoder,
-		EncodeTime:     zapcore.ISO8601TimeEncoder,
-		EncodeDuration: zapcore.StringDurationEncoder,
-	}
-	core := zapcore.NewCore(zapcore.NewJSONEncoder(encoderCfg), os.Stdout, zap.InfoLevel)
-	return zap.New(core).WithOptions(options...)
+	return log.ZapLogger(options...)
 }
 
 func (rc *raftNode) saveSnap(snap raftpb.Snapshot) error {
@@ -289,7 +279,7 @@ func (rc *raftNode) publishEntries(ents []raftpb.Entry) (<-chan struct{}, bool) 
 				}
 			case raftpb.ConfChangeRemoveNode:
 				if cc.NodeID == uint64(rc.id) {
-					log.Println("I've been removed from the cluster! Shutting down.")
+					log.Info("I've been removed from the cluster! Shutting down.")
 					return nil, false
 				}
 				rc.transport.RemovePeer(types.ID(cc.NodeID))
@@ -463,6 +453,7 @@ func (rc *raftNode) startRaft() {
 		ID:            uint64(rc.id),
 		ElectionTick:  rc.cfg.Server.Raft.ElectionTick,  // fromconfigread
 		HeartbeatTick: rc.cfg.Server.Raft.HeartbeatTick, // fromconfigread
+		Logger:        newRaftLogger("raft-memory"),
 
 		Storage: rc.raftStorage,
 
@@ -491,7 +482,7 @@ func (rc *raftNode) startRaft() {
 		ClusterID:   0x1000,
 		Raft:        rc,
 		ServerStats: stats.NewServerStats("", ""),
-		LeaderStats: stats.NewLeaderStats(newLogger(), strconv.Itoa(rc.id)),
+		LeaderStats: stats.NewLeaderStats(log.ZapLogger(), strconv.Itoa(rc.id)),
 		ErrorC:      make(chan error),
 	}
 
@@ -659,7 +650,10 @@ func (rc *raftNode) maybeTriggerSnapshot(applyDoneC <-chan struct{}) {
 		zap.String("component", "raft-memory"))
 	data, err := rc.getSnapshot()
 	if err != nil {
-		log.Panic(err)
+		log.Error("raft: failed to get snapshot data",
+			zap.Error(err),
+			zap.String("component", "raft-memory"))
+		panic(err)
 	}
 	snap, err := rc.raftStorage.CreateSnapshot(rc.appliedIndex, &rc.confState, data)
 	if err != nil {

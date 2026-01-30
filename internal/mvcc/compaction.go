@@ -16,10 +16,11 @@ package mvcc
 
 import (
 	"context"
-	"log"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"metaStore/pkg/log"
 )
 
 // CompactionMode defines the auto-compaction mode.
@@ -57,7 +58,7 @@ type CompactorConfig struct {
 	BatchInterval time.Duration
 
 	// Logger is the logger for compaction events.
-	// If nil, log.Printf is used.
+	// If nil, log.Infof is used.
 	Logger func(format string, args ...interface{})
 }
 
@@ -70,7 +71,7 @@ func DefaultCompactorConfig() CompactorConfig {
 		Period:        time.Hour,
 		BatchSize:     1000,
 		BatchInterval: 10 * time.Millisecond,
-		Logger:        log.Printf,
+		Logger:        log.Infof,
 	}
 }
 
@@ -108,7 +109,7 @@ func NewCompactor(store Store, config CompactorConfig) *Compactor {
 		config.BatchInterval = 10 * time.Millisecond
 	}
 	if config.Logger == nil {
-		config.Logger = log.Printf
+		config.Logger = log.Infof
 	}
 
 	return &Compactor{
