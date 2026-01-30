@@ -214,6 +214,9 @@ func InitGlobalLogger(cfg *Config) error {
 	var err error
 	once.Do(func() {
 		globalLogger, err = NewLogger(cfg)
+		if globalLogger != nil {
+			zap.ReplaceGlobals(globalLogger.zap)
+		}
 	})
 	return err
 }
@@ -274,6 +277,16 @@ func (l *Logger) Named(name string) *Logger {
 		sugar:  l.sugar.Named(name),
 		config: l.config,
 	}
+}
+
+// Zap exposes the underlying zap.Logger.
+func (l *Logger) Zap() *zap.Logger {
+	return l.zap
+}
+
+// Sugar exposes the underlying zap.SugaredLogger.
+func (l *Logger) Sugar() *zap.SugaredLogger {
+	return l.sugar
 }
 
 // Debug levellog
@@ -432,4 +445,13 @@ func Sync() error {
 		return globalLogger.Sync()
 	}
 	return nil
+}
+
+// ZapLogger returns the global zap.Logger with optional options applied.
+func ZapLogger(options ...zap.Option) *zap.Logger {
+	logger := GetLogger().Zap()
+	if len(options) == 0 {
+		return logger
+	}
+	return logger.WithOptions(options...)
 }

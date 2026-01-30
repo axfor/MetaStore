@@ -215,8 +215,7 @@ func (s *serverStarter) startEtcd(store kvstore.Store, raftNode raftNodeHook, mu
 
 	go func() {
 		if err := etcdServer.Start(); err != nil {
-			log.Fatalf("etcd server failed: %v", err)
-			os.Exit(-1)
+			log.Fatal("etcd server failed", zap.Error(err), zap.String("component", "main"))
 		}
 	}()
 
@@ -281,8 +280,7 @@ func main() {
 		prometheusRegistry.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
 
 		go func() {
-			// use zap global logger
-			metricsServer := metrics.NewMetricsServer(prometheusAddr, prometheusRegistry, zap.L())
+			metricsServer := metrics.NewMetricsServer(prometheusAddr, prometheusRegistry, log.ZapLogger())
 			log.Info("Starting Prometheus metrics server",
 				zap.String("address", prometheusAddr),
 				zap.String("component", "metrics"))
@@ -329,48 +327,42 @@ func main() {
 	case "memory":
 		log.Info("Starting with memory + WAL storage and etcd gRPC support", zap.String("component", "main"))
 	default:
-		log.Fatalf("Unknown storage engine: %s. Supported engines: memory, rocksdb", *storageEngine)
-		os.Exit(-1)
-		return
+		log.Fatal("Unknown storage engine",
+			zap.String("storage_engine", *storageEngine),
+			zap.String("component", "main"))
 	}
 
 	store, raftNode, closeStore, err := starter.buildStore(*storageEngine)
 	if err != nil {
 		if *storageEngine == "rocksdb" {
-			log.Fatalf("Failed to open RocksDB: %v", err)
+			log.Fatal("Failed to open RocksDB", zap.Error(err), zap.String("component", "main"))
 		} else {
-			log.Fatalf("Failed to build store: %v", err)
+			log.Fatal("Failed to build store", zap.Error(err), zap.String("component", "main"))
 		}
-		os.Exit(-1)
-		return
 	}
 	defer closeStore()
 
 	if _, err := starter.startMySQL(store); err != nil {
-		log.Fatalf("Failed to create MySQL server: %v", err)
-		os.Exit(-1)
-		return
+		log.Fatal("Failed to create MySQL server", zap.Error(err), zap.String("component", "main"))
 	}
 
 	_, m, mux, closeListener, err := starter.startMux()
 	if err != nil {
-		log.Fatalf("Failed to listen on %s: %v", cfg.Server.Etcd.Address, err)
-		os.Exit(-1)
-		return
+		log.Fatal("Failed to listen",
+			zap.String("address", cfg.Server.Etcd.Address),
+			zap.Error(err),
+			zap.String("component", "main"))
 	}
 	defer closeListener()
 
 	_ = starter.startGateway(m, mux)
 	if _, err := starter.startEtcd(store, raftNode, m); err != nil {
-		log.Fatalf("Failed to create etcd server: %v", err)
-		os.Exit(-1)
-		return
+		log.Fatal("Failed to create etcd server", zap.Error(err), zap.String("component", "main"))
 	}
 
 	log.Info("Starting cmux multiplexing", zap.String("address", cfg.Server.Etcd.Address), zap.String("component", "main"))
 	if err := m.Serve(); err != nil {
-		log.Fatalf("cmux failed: %v", err)
-		os.Exit(-1)
+		log.Fatal("cmux failed", zap.Error(err), zap.String("component", "main"))
 	}
 }
 
