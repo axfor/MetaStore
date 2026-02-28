@@ -16,6 +16,7 @@ package etcd
 
 import (
 	"context"
+	"fmt"
 	"metaStore/internal/kvstore"
 	"metaStore/pkg/config"
 	"metaStore/pkg/log"
@@ -77,7 +78,52 @@ func NewLeaseManagerWithNodeID(store kvstore.Store, leaseCfg *config.LeaseConfig
 
 // Start starts the Lease manager (begins expiry checking)
 func (lm *LeaseManager) Start() {
+	// Load persisted leases from store before starting expiry checker
+	if err := lm.LoadLeases(); err != nil {
+		log.Error("Failed to load persisted leases, continuing with empty state",
+			zap.Error(err),
+			zap.String("component", "lease-manager"))
+	}
 	go lm.expiryChecker()
+}
+
+// LoadLeases loads all persisted leases from the store into the in-memory map.
+// This must be called during startup to recover leases that existed before a server restart.
+func (lm *LeaseManager) LoadLeases() error {
+	leases, err := lm.store.Leases(context.Background())
+	if err != nil {
+		return fmt.Errorf("failed to load leases from store: %w", err)
+	}
+
+	if len(leases) == 0 {
+		return nil
+	}
+
+	lm.mu.Lock()
+	defer lm.mu.Unlock()
+
+	var maxCounter int64
+	for _, lease := range leases {
+		lm.leases[lease.ID] = lease
+
+		// Extract the counter portion (lower 48 bits) to prevent ID collisions
+		counter := lease.ID & 0x0000FFFFFFFFFFFF
+		if counter > maxCounter {
+			maxCounter = counter
+		}
+	}
+
+	// Set counter to max existing value so next generated ID won't collide
+	if maxCounter > 0 {
+		lm.leaseIDCounter.Store(maxCounter)
+	}
+
+	log.Info("Loaded persisted leases",
+		zap.Int("count", len(leases)),
+		zap.Int64("max_counter", maxCounter),
+		zap.String("component", "lease-manager"))
+
+	return nil
 }
 
 // Stop stops the Lease manager
