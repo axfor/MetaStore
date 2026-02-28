@@ -26,7 +26,7 @@ import (
 	"metaStore/internal/memory"
 	"metaStore/internal/raft"
 	etcdapi "metaStore/api/etcd"
-	httpapi "metaStore/api/http"
+	httpapi "metaStore/internal/http"
 	myapi "metaStore/api/mysql"
 
 	_ "github.com/go-sql-driver/mysql"
