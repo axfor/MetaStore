@@ -21,7 +21,7 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 )
 
-// LeaseServer implement etcd Lease 
+// LeaseServer implement etcd Lease
 type LeaseServer struct {
 	pb.UnimplementedLeaseServer
 	server *Server
@@ -34,7 +34,7 @@ func (s *LeaseServer) LeaseGrant(ctx context.Context, req *pb.LeaseGrantRequest)
 
 	// ifnonespecified ID，becomeunique ID
 	if id == 0 {
-		id = s.server.leaseMgr.GenerateLeaseID()
+		id = int64(s.server.idGen.Next())
 	}
 
 	// create lease
@@ -131,7 +131,7 @@ func (s *LeaseServer) LeaseTimeToLive(ctx context.Context, req *pb.LeaseTimeToLi
 }
 
 // Leases listalllease
-func (s *LeaseServer) Leases(ctx context.Context, req *pb.LeaseLeasesRequest) (*pb.LeaseLeasesResponse, error) {
+func (s *LeaseServer) LeaseLeases(ctx context.Context, req *pb.LeaseLeasesRequest) (*pb.LeaseLeasesResponse, error) {
 	leases, err := s.server.leaseMgr.Leases()
 	if err != nil {
 		return nil, toGRPCError(err)

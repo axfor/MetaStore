@@ -18,11 +18,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"metaStore/internal/batch"
@@ -30,6 +30,7 @@ import (
 	"metaStore/internal/lease"
 	"metaStore/internal/rocksdb"
 	"metaStore/pkg/config"
+	"metaStore/pkg/log"
 
 	"github.com/linxGnu/grocksdb"
 
@@ -85,6 +86,13 @@ type raftNodeRocks struct {
 	leaseManager     *lease.LeaseManager     // leasemanager(ifenabled)
 	readIndexManager *lease.ReadIndexManager // ReadIndex manager(ifenabled)
 
+	// ConfChange callback for ClusterManager synchronization
+	confChangeCallback func(cc raftpb.ConfChange, confState raftpb.ConfState)
+	confChangeMu       sync.RWMutex
+
+	// Leader change notifications
+	leaderChangeC chan kvstore.RaftStatus
+
 	logger *zap.Logger
 	cfg    *config.Config // Raft configuration
 }
@@ -113,10 +121,11 @@ func NewNodeRocksDB(id int, peers []string, join bool, getSnapshot func() ([]byt
 		httpdonec:   make(chan struct{}),
 		rocksDB:     rocksDB,
 
-		logger: newLogger(),
+		logger: log.ZapLogger(),
 		cfg:    cfg, // Store config reference
 
 		snapshotterReady: make(chan *snap.Snapshotter, 1),
+		leaderChangeC:    make(chan kvstore.RaftStatus, 1),
 	}
 	go rc.startRaft()
 	return commitC, errorC, rc.snapshotterReady, rc
@@ -131,6 +140,45 @@ func (rc *raftNodeRocks) saveSnap(snap raftpb.Snapshot) error {
 	return nil
 }
 
+// SetConfChangeCallback sets a callback function that will be invoked
+// after each ConfChange is applied. This is used to synchronize the
+// ClusterManager with committed configuration changes from Raft.
+func (rc *raftNodeRocks) SetConfChangeCallback(fn func(cc raftpb.ConfChange, confState raftpb.ConfState)) {
+	rc.confChangeMu.Lock()
+	defer rc.confChangeMu.Unlock()
+	rc.confChangeCallback = fn
+}
+
+// notifyConfChange invokes the registered callback (if any) after applying a ConfChange
+func (rc *raftNodeRocks) notifyConfChange(cc raftpb.ConfChange) {
+	rc.confChangeMu.RLock()
+	fn := rc.confChangeCallback
+	rc.confChangeMu.RUnlock()
+	if fn != nil {
+		fn(cc, rc.confState)
+	}
+}
+
+func (rc *raftNodeRocks) notifyLeaderChange() {
+	if rc.leaderChangeC == nil {
+		return
+	}
+	status := rc.node.Status()
+	raftStatus := kvstore.RaftStatus{
+		NodeID:   status.ID,
+		Term:     status.Term,
+		LeaderID: status.Lead,
+		State:    status.RaftState.String(),
+		Applied:  status.Applied,
+		Commit:   status.Commit,
+	}
+
+	select {
+	case rc.leaderChangeC <- raftStatus:
+	default:
+	}
+}
+
 // isWitness returns true if this node is configured as a witness node
 // Witness nodes participate in Raft voting but don't store data
 func (rc *raftNodeRocks) isWitness() bool {
@@ -143,7 +191,10 @@ func (rc *raftNodeRocks) entriesToApply(ents []raftpb.Entry) (nents []raftpb.Ent
 	}
 	firstIdx := ents[0].Index
 	if firstIdx > rc.appliedIndex+1 {
-		log.Fatalf("first index of committed entry[%d] should <= progress.appliedIndex[%d]+1", firstIdx, rc.appliedIndex)
+		log.Fatal("raft: invalid committed entry index",
+			zap.Uint64("first_index", firstIdx),
+			zap.Uint64("applied_index", rc.appliedIndex),
+			zap.String("component", "raft-rocks"))
 	}
 	if rc.appliedIndex-firstIdx+1 < uint64(len(ents)) {
 		nents = ents[rc.appliedIndex-firstIdx+1:]
@@ -198,11 +249,13 @@ func (rc *raftNodeRocks) publishEntries(ents []raftpb.Entry) (<-chan struct{}, b
 				}
 			case raftpb.ConfChangeRemoveNode:
 				if cc.NodeID == uint64(rc.id) {
-					log.Println("I've been removed from the cluster! Shutting down.")
+					log.Info("I've been removed from the cluster! Shutting down.")
 					return nil, false
 				}
 				rc.transport.RemovePeer(types.ID(cc.NodeID))
 			}
+			// Notify ClusterManager about this committed ConfChange
+			rc.notifyConfChange(cc)
 		}
 	}
 
@@ -265,6 +318,8 @@ func (rc *raftNodeRocks) publishEntriesAsWitness(ents []raftpb.Entry) (<-chan st
 					zap.Uint64("node_id", cc.NodeID),
 					zap.String("component", "raft-rocks-witness"))
 			}
+			// Notify ClusterManager about this committed ConfChange
+			rc.notifyConfChange(cc)
 		}
 	}
 
@@ -277,7 +332,9 @@ func (rc *raftNodeRocks) publishEntriesAsWitness(ents []raftpb.Entry) (<-chan st
 func (rc *raftNodeRocks) loadSnapshot() *raftpb.Snapshot {
 	snapshot, err := rc.snapshotter.Load()
 	if err != nil && !errors.Is(err, snap.ErrNoSnapshot) {
-		log.Fatalf("store: error loading snapshot (%v)", err)
+		log.Fatal("store: error loading snapshot",
+			zap.Error(err),
+			zap.String("component", "raft-rocks"))
 	}
 	if snapshot != nil {
 		return snapshot
@@ -320,20 +377,27 @@ func (rc *raftNodeRocks) writeError(err error) {
 func (rc *raftNodeRocks) startRaft() {
 	if !fileutil.Exist(rc.snapdir) {
 		if err := os.Mkdir(rc.snapdir, 0o750); err != nil {
-			log.Fatalf("store: cannot create dir for snapshot (%v)", err)
+			log.Fatal("store: cannot create dir for snapshot",
+				zap.Error(err),
+				zap.String("path", rc.snapdir),
+				zap.String("component", "raft-rocks"))
 		}
 	}
-	rc.snapshotter = snap.New(newLogger(), rc.snapdir)
+	rc.snapshotter = snap.New(log.ZapLogger(), rc.snapdir)
 
 	// Initialize RocksDB storage
 	if err := rc.initRocksDBStorage(); err != nil {
-		log.Fatalf("store: failed to initialize RocksDB storage (%v)", err)
+		log.Fatal("store: failed to initialize RocksDB storage",
+			zap.Error(err),
+			zap.String("component", "raft-rocks"))
 	}
 
 	// Check if we're restarting an existing node
 	hardState, confState, err := rc.raftStorage.InitialState()
 	if err != nil {
-		log.Fatalf("store: failed to get initial state (%v)", err)
+		log.Fatal("store: failed to get initial state",
+			zap.Error(err),
+			zap.String("component", "raft-rocks"))
 	}
 
 	// Update conf state
@@ -355,6 +419,7 @@ func (rc *raftNodeRocks) startRaft() {
 		ID:            uint64(rc.id),
 		ElectionTick:  rc.cfg.Server.Raft.ElectionTick,  // fromconfigread
 		HeartbeatTick: rc.cfg.Server.Raft.HeartbeatTick, // fromconfigread
+		Logger:        newRaftLogger("raft-rocks"),
 
 		Storage: rc.raftStorage,
 
@@ -383,7 +448,7 @@ func (rc *raftNodeRocks) startRaft() {
 		ClusterID:   0x1000,
 		Raft:        rc,
 		ServerStats: stats.NewServerStats("", ""),
-		LeaderStats: stats.NewLeaderStats(newLogger(), strconv.Itoa(rc.id)),
+		LeaderStats: stats.NewLeaderStats(log.ZapLogger(), strconv.Itoa(rc.id)),
 		ErrorC:      make(chan error),
 	}
 
@@ -523,6 +588,9 @@ func (rc *raftNodeRocks) stop() {
 		rc.batcher.Stop()
 	}
 
+	if rc.leaderChangeC != nil {
+		close(rc.leaderChangeC)
+	}
 	close(rc.commitC)
 	close(rc.errorC)
 	rc.node.Stop()
@@ -548,7 +616,10 @@ func (rc *raftNodeRocks) publishSnapshot(snapshotToSave raftpb.Snapshot) {
 	defer rc.logger.Info("finished publishing snapshot", zap.Uint64("index", rc.snapshotIndex), zap.String("component", "raft-rocks"))
 
 	if snapshotToSave.Metadata.Index <= rc.appliedIndex {
-		log.Fatalf("snapshot index [%d] should > progress.appliedIndex [%d]", snapshotToSave.Metadata.Index, rc.appliedIndex)
+		log.Fatal("snapshot index should be greater than applied index",
+			zap.Uint64("snapshot_index", snapshotToSave.Metadata.Index),
+			zap.Uint64("applied_index", rc.appliedIndex),
+			zap.String("component", "raft-rocks"))
 	}
 	rc.commitC <- nil // trigger kvstore to load snapshot
 
@@ -577,7 +648,10 @@ func (rc *raftNodeRocks) maybeTriggerSnapshot(applyDoneC <-chan struct{}) {
 		zap.String("component", "raft-rocks"))
 	data, err := rc.getSnapshot()
 	if err != nil {
-		log.Panic(err)
+		log.Error("raft: failed to get snapshot data",
+			zap.Error(err),
+			zap.String("component", "raft-rocks"))
+		panic(err)
 	}
 
 	// Create snapshot using RocksDB storage
@@ -642,7 +716,13 @@ func (rc *raftNodeRocks) serveChannels() {
 					} else {
 						confChangeCount++
 						cc.ID = confChangeCount
-						rc.node.ProposeConfChange(context.TODO(), cc)
+						if err := rc.node.ProposeConfChange(context.TODO(), cc); err != nil {
+							rc.logger.Warn("failed to propose conf change",
+								zap.Error(err),
+								zap.Uint64("node_id", cc.NodeID),
+								zap.String("cc_type", fmt.Sprintf("%v", cc.Type)),
+								zap.String("component", "raft-rocks"))
+						}
 					}
 				}
 			}
@@ -664,7 +744,13 @@ func (rc *raftNodeRocks) serveChannels() {
 					} else {
 						confChangeCount++
 						cc.ID = confChangeCount
-						rc.node.ProposeConfChange(context.TODO(), cc)
+						if err := rc.node.ProposeConfChange(context.TODO(), cc); err != nil {
+							rc.logger.Warn("failed to propose conf change",
+								zap.Error(err),
+								zap.Uint64("node_id", cc.NodeID),
+								zap.String("cc_type", fmt.Sprintf("%v", cc.Type)),
+								zap.String("component", "raft-rocks"))
+						}
 					}
 				}
 			}
@@ -711,21 +797,30 @@ func (rc *raftNodeRocks) serveChannels() {
 					}
 				}
 			}
+			if rd.SoftState != nil {
+				rc.notifyLeaderChange()
+			}
 
 			// Save hard state to RocksDB
 			if !raft.IsEmptyHardState(rd.HardState) {
 				if err := rc.raftStorage.SetHardState(rd.HardState); err != nil {
-					log.Fatalf("failed to save hard state: %v", err)
+					log.Fatal("failed to save hard state",
+						zap.Error(err),
+						zap.String("component", "raft-rocks"))
 				}
 			}
 
 			// Handle snapshot
 			if !raft.IsEmptySnap(rd.Snapshot) {
 				if err := rc.raftStorage.ApplySnapshot(rd.Snapshot); err != nil {
-					log.Fatalf("failed to apply snapshot: %v", err)
+					log.Fatal("failed to apply snapshot",
+						zap.Error(err),
+						zap.String("component", "raft-rocks"))
 				}
 				if err := rc.saveSnap(rd.Snapshot); err != nil {
-					log.Fatalf("failed to save snapshot: %v", err)
+					log.Fatal("failed to save snapshot",
+						zap.Error(err),
+						zap.String("component", "raft-rocks"))
 				}
 				rc.publishSnapshot(rd.Snapshot)
 			}
@@ -733,7 +828,9 @@ func (rc *raftNodeRocks) serveChannels() {
 			// Append entries to RocksDB
 			if len(rd.Entries) > 0 {
 				if err := rc.raftStorage.Append(rd.Entries); err != nil {
-					log.Fatalf("failed to append entries: %v", err)
+					log.Fatal("failed to append entries",
+						zap.Error(err),
+						zap.String("component", "raft-rocks"))
 				}
 			}
 
@@ -781,19 +878,25 @@ func (rc *raftNodeRocks) processMessages(ms []raftpb.Message) []raftpb.Message {
 func (rc *raftNodeRocks) serveRaft() {
 	url, err := url.Parse(rc.peers[rc.id-1])
 	if err != nil {
-		log.Fatalf("store: Failed parsing URL (%v)", err)
+		log.Fatal("store: failed parsing URL",
+			zap.Error(err),
+			zap.String("component", "raft-rocks"))
 	}
 
 	ln, err := NewStoppableListener(url.Host, rc.httpstopc)
 	if err != nil {
-		log.Fatalf("store: Failed to listen rafthttp (%v)", err)
+		log.Fatal("store: failed to listen rafthttp",
+			zap.Error(err),
+			zap.String("component", "raft-rocks"))
 	}
 
 	err = (&http.Server{Handler: rc.transport.Handler()}).Serve(ln)
 	select {
 	case <-rc.httpstopc:
 	default:
-		log.Fatalf("store: Failed to serve rafthttp (%v)", err)
+		log.Fatal("store: failed to serve rafthttp",
+			zap.Error(err),
+			zap.String("component", "raft-rocks"))
 	}
 	close(rc.httpdonec)
 }
@@ -827,6 +930,11 @@ func (rc *raftNodeRocks) Status() kvstore.RaftStatus {
 func (rc *raftNodeRocks) TransferLeadership(targetID uint64) error {
 	rc.node.TransferLeadership(context.TODO(), 0, targetID)
 	return nil
+}
+
+// LeaderChangeC exposes leader change notifications
+func (rc *raftNodeRocks) LeaderChangeC() <-chan kvstore.RaftStatus {
+	return rc.leaderChangeC
 }
 
 // LeaseManager returnleasemanager(for test)

@@ -19,17 +19,19 @@ import (
 	"flag"
 	"fmt"
 	"net"
-	nethttp "net/http"
+	"net/http"
 	"os"
 	"strings"
 
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/soheilhy/cmux"
 
 	// "metaStore/internal/batch" // 已禁用 BatchProposer
 	"metaStore/api/etcd"
 	"metaStore/api/etcdgateway"
-	"metaStore/api/http"
+	etcdhttp "metaStore/api/etcdhttp"
 	"metaStore/api/mysql"
+	"metaStore/internal/kvstore"
 	"metaStore/internal/memory"
 	"metaStore/internal/raft"
 	"metaStore/internal/rocksdb"
@@ -52,6 +54,174 @@ const (
 	proposeChanBufferSize = 10000
 )
 
+type serverStarter struct {
+	cfg          *config.Config
+	clusterPeers []string
+	join         bool
+	proposeC     chan string
+	confChangeC  chan raftpb.ConfChange
+}
+
+type raftNodeHook interface {
+	SetConfChangeCallback(func(cc raftpb.ConfChange, confState raftpb.ConfState))
+	LeaderChangeC() <-chan kvstore.RaftStatus
+}
+
+func (s *serverStarter) buildStore(engine string) (kvstore.Store, raftNodeHook, func(), error) {
+	switch engine {
+	case "memory":
+		var kvs *memory.Memory
+		getSnapshot := func() ([]byte, error) { return kvs.GetSnapshot() }
+		commitC, errorC, snapshotterReady, raftNode := raft.NewNode(int(s.cfg.Server.MemberID), s.clusterPeers, s.join, getSnapshot, s.proposeC, s.confChangeC, "memory", s.cfg)
+		kvs = memory.NewMemory(<-snapshotterReady, s.proposeC, commitC, errorC)
+		kvs.SetRaftNode(raftNode, s.cfg.Server.MemberID)
+		return kvs, raftNode, func() {}, nil
+	case "rocksdb":
+		dbPath := fmt.Sprintf("data/rocksdb/%d", s.cfg.Server.MemberID)
+		db, err := rocksdb.Open(dbPath, &s.cfg.Server.RocksDB)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		log.Info("RocksDB configuration applied",
+			zap.Uint64("block_cache_size", s.cfg.Server.RocksDB.BlockCacheSize),
+			zap.Uint64("write_buffer_size", s.cfg.Server.RocksDB.WriteBufferSize),
+			zap.Int("max_background_jobs", s.cfg.Server.RocksDB.MaxBackgroundJobs),
+			zap.Int("max_open_files", s.cfg.Server.RocksDB.MaxOpenFiles),
+			zap.Bool("bloom_filter_enabled", s.cfg.Server.RocksDB.BlockBasedTableBloomFilter),
+			zap.String("component", "rocksdb"))
+
+		var kvs *rocksdb.RocksDB
+		getSnapshot := func() ([]byte, error) { return kvs.GetSnapshot() }
+		commitC, errorC, snapshotterReady, raftNode := raft.NewNodeRocksDB(int(s.cfg.Server.MemberID), s.clusterPeers, s.join, getSnapshot, s.proposeC, s.confChangeC, db, dbPath, s.cfg)
+		kvs = rocksdb.NewRocksDB(db, <-snapshotterReady, s.proposeC, commitC, errorC)
+		kvs.SetRaftNode(raftNode, s.cfg.Server.MemberID)
+		closeFunc := func() {
+			kvs.Close()
+			db.Close()
+		}
+		return kvs, raftNode, closeFunc, nil
+	default:
+		return nil, nil, nil, fmt.Errorf("Unknown storage engine: %s. Supported engines: memory, rocksdb", engine)
+	}
+}
+
+func (s *serverStarter) startMySQL(store kvstore.Store) (*mysql.Server, error) {
+	mysqlServer, err := mysql.NewServer(mysql.ServerConfig{
+		Store:    store,
+		Address:  s.cfg.Server.MySQL.Address,
+		Username: s.cfg.Server.MySQL.Username,
+		Password: s.cfg.Server.MySQL.Password,
+		Config:   s.cfg,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	go func() {
+		log.Info("Starting MySQL protocol server",
+			zap.String("address", s.cfg.Server.MySQL.Address),
+			zap.String("component", "main"))
+		if err := mysqlServer.Start(); err != nil {
+			log.Error("MySQL server failed",
+				zap.Error(err),
+				zap.String("component", "main"))
+		}
+	}()
+
+	return mysqlServer, nil
+}
+
+func (s *serverStarter) startMux() (net.Listener, cmux.CMux, *http.ServeMux, func(), error) {
+	log.Info("Starting unified listener", zap.String("address", s.cfg.Server.Etcd.Address), zap.String("component", "main"))
+	l, err := net.Listen("tcp", s.cfg.Server.Etcd.Address)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+
+	m := cmux.New(l)
+	mux := http.NewServeMux()
+	etcdhttp.HandleVersion(mux)
+	closeFunc := func() {
+		_ = l.Close()
+	}
+	return l, m, mux, closeFunc, nil
+}
+
+func (s *serverStarter) startGateway(m cmux.CMux, mux *http.ServeMux) error {
+	if !s.cfg.Server.EtcdGateway.Enable {
+		return nil
+	}
+
+	dialOpts := []grpc.DialOption{
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(s.cfg.Server.GRPC.MaxRecvMsgSize),
+			grpc.MaxCallSendMsgSize(s.cfg.Server.GRPC.MaxSendMsgSize),
+		),
+	}
+	endpoint := s.cfg.Server.EtcdGateway.Endpoint
+	if endpoint == "" {
+		endpoint = s.cfg.Server.Etcd.Address
+	}
+
+	gwmux, err := etcdgateway.NewHandler(context.Background(), endpoint, dialOpts)
+	if err != nil {
+		log.Error("Failed to create etcd gateway handler", zap.Error(err), zap.String("component", "main"))
+	} else {
+		log.Info("etcd gateway enabled", zap.String("endpoint", endpoint), zap.String("component", "main"))
+	}
+
+	httpMux := createMux(gwmux, mux)
+	srv := &http.Server{
+		Handler: httpMux,
+	}
+	httpl := m.Match(cmux.HTTP1())
+	go srv.Serve(httpl)
+	return err
+}
+
+func (s *serverStarter) startEtcd(store kvstore.Store, raftNode raftNodeHook, mux cmux.CMux) (*etcd.Server, error) {
+	grpcL := mux.Match(cmux.HTTP2())
+	log.Info("Starting etcd gRPC server",
+		zap.String("address", s.cfg.Server.Etcd.Address),
+		zap.Uint64("cluster_id", s.cfg.Server.ClusterID),
+		zap.Uint64("member_id", s.cfg.Server.MemberID),
+		zap.String("component", "main"))
+	etcdServer, err := etcd.NewServer(etcd.ServerConfig{
+		Store:        store,
+		Address:      s.cfg.Server.Etcd.Address,
+		ClusterID:    s.cfg.Server.ClusterID,
+		MemberID:     s.cfg.Server.MemberID,
+		ClusterPeers: s.clusterPeers,
+		ClientURLs:   s.cfg.Server.ClientURLs,
+		ConfChangeC:  s.confChangeC,
+		Config:       s.cfg,
+		Listener:     grpcL,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	raftNode.SetConfChangeCallback(etcdServer.GetClusterManager().ApplyConfChange)
+	leaseManager := etcdServer.GetLeaseManager()
+	if leaseManager != nil {
+		go func() {
+			for status := range raftNode.LeaderChangeC() {
+				leaseManager.OnLeaderChange(status)
+			}
+		}()
+	}
+
+	go func() {
+		if err := etcdServer.Start(); err != nil {
+			log.Fatal("etcd server failed", zap.Error(err), zap.String("component", "main"))
+		}
+	}()
+
+	return etcdServer, nil
+}
+
 func main() {
 	// configfilepath（optional）
 	configFile := flag.String("config", "", "path to config file (optional, uses defaults if not provided)")
@@ -60,8 +230,8 @@ func main() {
 	cluster := flag.String("cluster", "http://127.0.0.1:9021", "comma separated cluster peers")
 	clusterID := flag.Uint64("cluster-id", 1, "cluster ID")
 	memberID := flag.Int("member-id", 1, "node ID")
-	kvport := flag.Int("port", 9121, "http server port")
 	grpcAddr := flag.String("grpc-addr", ":2379", "gRPC server address for etcd compatibility")
+	clientURLs := flag.String("client-urls", "", "comma separated advertised client URLs")
 	join := flag.Bool("join", false, "join an existing cluster")
 	storageEngine := flag.String("storage", "memory", "storage engine: memory or rocksdb")
 
@@ -75,7 +245,12 @@ func main() {
 		os.Exit(-1)
 	}
 
-	// initialize log system（must be initialized before other components）
+	// Override ClientURLs from CLI if provided
+	if *clientURLs != "" {
+		cfg.Server.ClientURLs = strings.Split(*clientURLs, ",")
+	}
+
+	// 初始化日志系统（必须在其他组件之前初始化）
 	if err := log.InitFromConfig(&cfg.Server.Log); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
 		os.Exit(-1)
@@ -105,8 +280,7 @@ func main() {
 		prometheusRegistry.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
 
 		go func() {
-			// use zap global logger
-			metricsServer := metrics.NewMetricsServer(prometheusAddr, prometheusRegistry, zap.L())
+			metricsServer := metrics.NewMetricsServer(prometheusAddr, prometheusRegistry, log.ZapLogger())
 			log.Info("Starting Prometheus metrics server",
 				zap.String("address", prometheusAddr),
 				zap.String("component", "metrics"))
@@ -139,272 +313,65 @@ func main() {
 	confChangeC := make(chan raftpb.ConfChange)
 	defer close(confChangeC)
 
+	starter := serverStarter{
+		cfg:          cfg,
+		clusterPeers: strings.Split(*cluster, ","),
+		join:         *join,
+		proposeC:     proposeC,
+		confChangeC:  confChangeC,
+	}
+
 	switch *storageEngine {
 	case "rocksdb":
-		// RocksDB mode - persistent storage
 		log.Info("Starting with RocksDB persistent storage", zap.String("component", "main"))
-		dbPath := fmt.Sprintf("data/rocksdb/%d", cfg.Server.MemberID)
-
-		// use RocksDB config from config file RocksDB config
-		db, err := rocksdb.Open(dbPath, &cfg.Server.RocksDB)
-		if err != nil {
-			log.Fatalf("Failed to open RocksDB: %v", err)
-			os.Exit(-1)
-			return
-		}
-		defer db.Close()
-
-		// record RocksDB config
-		log.Info("RocksDB configuration applied",
-			zap.Uint64("block_cache_size", cfg.Server.RocksDB.BlockCacheSize),
-			zap.Uint64("write_buffer_size", cfg.Server.RocksDB.WriteBufferSize),
-			zap.Int("max_background_jobs", cfg.Server.RocksDB.MaxBackgroundJobs),
-			zap.Int("max_open_files", cfg.Server.RocksDB.MaxOpenFiles),
-			zap.Bool("bloom_filter_enabled", cfg.Server.RocksDB.BlockBasedTableBloomFilter),
-			zap.String("component", "rocksdb"))
-
-		// Create RocksDB-backed KV store
-		var kvs *rocksdb.RocksDB
-		getSnapshot := func() ([]byte, error) { return kvs.GetSnapshot() }
-		commitC, errorC, snapshotterReady, raftNode := raft.NewNodeRocksDB(*memberID, strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC, db, dbPath, cfg)
-
-		// use original constructor function（not using BatchProposer）
-		kvs = rocksdb.NewRocksDB(db, <-snapshotterReady, proposeC, commitC, errorC)
-		defer kvs.Close()
-
-		// inject raft node reference，used to getstatus info
-		kvs.SetRaftNode(raftNode, cfg.Server.MemberID)
-
-		// Start MySQL protocol server
-		mysqlServer, err := mysql.NewServer(mysql.ServerConfig{
-			Store:    kvs,
-			Address:  cfg.Server.MySQL.Address,
-			Username: cfg.Server.MySQL.Username,
-			Password: cfg.Server.MySQL.Password,
-			Config:   cfg,
-		})
-		if err != nil {
-			log.Fatalf("Failed to create MySQL server: %v", err)
-			os.Exit(-1)
-			return
-		}
-
-		go func() {
-			log.Info("Starting MySQL protocol server",
-				zap.String("address", cfg.Server.MySQL.Address),
-				zap.String("component", "main"))
-			if err := mysqlServer.Start(); err != nil {
-				log.Error("MySQL server failed",
-					zap.Error(err),
-					zap.String("component", "main"))
-			}
-		}()
-
-		// Start unified listener (cmux)
-		log.Info("Starting unified listener", zap.String("address", cfg.Server.Etcd.Address), zap.String("component", "main"))
-		l, err := net.Listen("tcp", cfg.Server.Etcd.Address)
-		if err != nil {
-			log.Fatalf("Failed to listen on %s: %v", cfg.Server.Etcd.Address, err)
-			os.Exit(-1)
-		}
-
-		m := cmux.New(l)
-		grpcL := m.Match(cmux.HTTP2())
-		httpL := m.Match(cmux.HTTP1Fast())
-
-		// Start HTTP API server
-		var etcdGatewayHandler nethttp.Handler
-		if cfg.Server.EtcdGateway.Enable {
-			dialOpts := []grpc.DialOption{
-				grpc.WithTransportCredentials(insecure.NewCredentials()),
-				grpc.WithDefaultCallOptions(
-					grpc.MaxCallRecvMsgSize(cfg.Server.GRPC.MaxRecvMsgSize),
-					grpc.MaxCallSendMsgSize(cfg.Server.GRPC.MaxSendMsgSize),
-				),
-			}
-			h, err := etcdgateway.NewHandler(context.Background(), cfg.Server.EtcdGateway.Endpoint, dialOpts)
-			if err != nil {
-				log.Fatalf("Failed to create etcd grpc-gateway handler: %v", err)
-				os.Exit(-1)
-				return
-			}
-			etcdGatewayHandler = etcdgateway.WithLogging(h)
-			log.Info("etcd grpc-gateway enabled", zap.String("endpoint", cfg.Server.EtcdGateway.Endpoint), zap.String("component", "main"))
-		}
-
-		httpServer := http.NewServer(http.Config{
-			Store:              kvs,
-			Port:               *kvport, // Configured port (mostly for display/struct init)
-			ConfChangeC:        confChangeC,
-			EtcdGatewayHandler: etcdGatewayHandler,
-		})
-
-		go func() {
-			log.Info("Starting HTTP API on multiplexed listener", zap.String("component", "main"))
-			if err := httpServer.Serve(httpL); err != nil {
-				log.Error("HTTP API server failed", zap.Error(err), zap.String("component", "main"))
-			}
-		}()
-
-		// Start etcd gRPC server
-		log.Info("Starting etcd gRPC server",
-			zap.String("address", cfg.Server.Etcd.Address),
-			zap.Uint64("cluster_id", cfg.Server.ClusterID),
-			zap.Uint64("member_id", cfg.Server.MemberID),
-			zap.String("component", "main"))
-		etcdServer, err := etcd.NewServer(etcd.ServerConfig{
-			Store:        kvs,
-			Address:      cfg.Server.Etcd.Address,
-			ClusterID:    cfg.Server.ClusterID,
-			MemberID:     cfg.Server.MemberID,
-			ClusterPeers: strings.Split(*cluster, ","),
-			ConfChangeC:  confChangeC,
-			Config:       cfg,
-			Listener:     grpcL, // Inject matched listener
-		})
-		if err != nil {
-			log.Fatalf("Failed to create etcd server: %v", err)
-			os.Exit(-1)
-			return
-		}
-
-		go func() {
-			if err := etcdServer.Start(); err != nil {
-				log.Fatalf("etcd server failed: %v", err)
-				os.Exit(-1)
-			}
-		}()
-
-		// Block on cmux serving
-		log.Info("Starting cmux multiplexing", zap.String("address", cfg.Server.Etcd.Address), zap.String("component", "main"))
-		if err := m.Serve(); err != nil {
-			log.Fatalf("cmux failed: %v", err)
-			os.Exit(-1)
-		}
-
 	case "memory":
-		// Memory + WAL mode with etcd compatibility
 		log.Info("Starting with memory + WAL storage and etcd gRPC support", zap.String("component", "main"))
-		var kvs *memory.Memory
-		getSnapshot := func() ([]byte, error) { return kvs.GetSnapshot() }
-		commitC, errorC, snapshotterReady, raftNode := raft.NewNode(*memberID, strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC, "memory", cfg)
-
-		// use original constructor function（not using BatchProposer）
-		kvs = memory.NewMemory(<-snapshotterReady, proposeC, commitC, errorC)
-
-		// inject raft node reference，used to getstatus info
-		kvs.SetRaftNode(raftNode, cfg.Server.MemberID)
-
-		// Start MySQL protocol server
-		mysqlServer, err := mysql.NewServer(mysql.ServerConfig{
-			Store:    kvs,
-			Address:  cfg.Server.MySQL.Address,
-			Username: cfg.Server.MySQL.Username,
-			Password: cfg.Server.MySQL.Password,
-			Config:   cfg,
-		})
-		if err != nil {
-			log.Fatalf("Failed to create MySQL server: %v", err)
-			os.Exit(-1)
-			return
-		}
-
-		go func() {
-			log.Info("Starting MySQL protocol server",
-				zap.String("address", cfg.Server.MySQL.Address),
-				zap.String("component", "main"))
-			if err := mysqlServer.Start(); err != nil {
-				log.Error("MySQL server failed",
-					zap.Error(err),
-					zap.String("component", "main"))
-			}
-		}()
-
-		// Start unified listener (cmux)
-		log.Info("Starting unified listener", zap.String("address", cfg.Server.Etcd.Address), zap.String("component", "main"))
-		l, err := net.Listen("tcp", cfg.Server.Etcd.Address)
-		if err != nil {
-			log.Fatalf("Failed to listen on %s: %v", cfg.Server.Etcd.Address, err)
-			os.Exit(-1)
-		}
-
-		m := cmux.New(l)
-		grpcL := m.Match(cmux.HTTP2())
-		httpL := m.Match(cmux.HTTP1Fast())
-
-		// Start HTTP API server
-		var etcdGatewayHandler nethttp.Handler
-		if cfg.Server.EtcdGateway.Enable {
-			dialOpts := []grpc.DialOption{
-				grpc.WithTransportCredentials(insecure.NewCredentials()),
-				grpc.WithDefaultCallOptions(
-					grpc.MaxCallRecvMsgSize(cfg.Server.GRPC.MaxRecvMsgSize),
-					grpc.MaxCallSendMsgSize(cfg.Server.GRPC.MaxSendMsgSize),
-				),
-			}
-			h, err := etcdgateway.NewHandler(context.Background(), cfg.Server.EtcdGateway.Endpoint, dialOpts)
-			if err != nil {
-				log.Fatalf("Failed to create etcd grpc-gateway handler: %v", err)
-				os.Exit(-1)
-				return
-			}
-			etcdGatewayHandler = etcdgateway.WithLogging(h)
-			log.Info("etcd grpc-gateway enabled", zap.String("endpoint", cfg.Server.EtcdGateway.Endpoint), zap.String("component", "main"))
-		}
-
-		httpServer := http.NewServer(http.Config{
-			Store:              kvs,
-			Port:               *kvport,
-			ConfChangeC:        confChangeC,
-			EtcdGatewayHandler: etcdGatewayHandler,
-		})
-
-		go func() {
-			log.Info("Starting HTTP API on multiplexed listener", zap.String("component", "main"))
-			if err := httpServer.Serve(httpL); err != nil {
-				log.Error("HTTP API server failed", zap.Error(err), zap.String("component", "main"))
-			}
-		}()
-
-		// Start etcd gRPC server
-		log.Info("Starting etcd gRPC server",
-			zap.String("address", cfg.Server.Etcd.Address),
-			zap.Uint64("cluster_id", cfg.Server.ClusterID),
-			zap.Uint64("member_id", cfg.Server.MemberID),
-			zap.String("component", "main"))
-		etcdServer, err := etcd.NewServer(etcd.ServerConfig{
-			Store:        kvs,
-			Address:      cfg.Server.Etcd.Address,
-			ClusterID:    cfg.Server.ClusterID,
-			MemberID:     cfg.Server.MemberID,
-			ClusterPeers: strings.Split(*cluster, ","),
-			ConfChangeC:  confChangeC,
-			Config:       cfg,
-			Listener:     grpcL, // Inject matched listener
-		})
-		if err != nil {
-			log.Fatalf("Failed to create etcd server: %v", err)
-			os.Exit(-1)
-			return
-		}
-
-		go func() {
-			if err := etcdServer.Start(); err != nil {
-				log.Fatalf("etcd server failed: %v", err)
-				os.Exit(-1)
-			}
-		}()
-
-		// Block on cmux serving
-		log.Info("Starting cmux multiplexing", zap.String("address", cfg.Server.Etcd.Address), zap.String("component", "main"))
-		if err := m.Serve(); err != nil {
-			log.Fatalf("cmux failed: %v", err)
-			os.Exit(-1)
-		}
-
 	default:
-		log.Fatalf("Unknown storage engine: %s. Supported engines: memory, rocksdb", *storageEngine)
-		os.Exit(-1)
-		return
+		log.Fatal("Unknown storage engine",
+			zap.String("storage_engine", *storageEngine),
+			zap.String("component", "main"))
 	}
+
+	store, raftNode, closeStore, err := starter.buildStore(*storageEngine)
+	if err != nil {
+		if *storageEngine == "rocksdb" {
+			log.Fatal("Failed to open RocksDB", zap.Error(err), zap.String("component", "main"))
+		} else {
+			log.Fatal("Failed to build store", zap.Error(err), zap.String("component", "main"))
+		}
+	}
+	defer closeStore()
+
+	if _, err := starter.startMySQL(store); err != nil {
+		log.Fatal("Failed to create MySQL server", zap.Error(err), zap.String("component", "main"))
+	}
+
+	_, m, mux, closeListener, err := starter.startMux()
+	if err != nil {
+		log.Fatal("Failed to listen",
+			zap.String("address", cfg.Server.Etcd.Address),
+			zap.Error(err),
+			zap.String("component", "main"))
+	}
+	defer closeListener()
+
+	_ = starter.startGateway(m, mux)
+	if _, err := starter.startEtcd(store, raftNode, m); err != nil {
+		log.Fatal("Failed to create etcd server", zap.Error(err), zap.String("component", "main"))
+	}
+
+	log.Info("Starting cmux multiplexing", zap.String("address", cfg.Server.Etcd.Address), zap.String("component", "main"))
+	if err := m.Serve(); err != nil {
+		log.Fatal("cmux failed", zap.Error(err), zap.String("component", "main"))
+	}
+}
+
+func createMux(gwmux *runtime.ServeMux, handler http.Handler) *http.ServeMux {
+	mux := http.NewServeMux()
+	if gwmux != nil {
+		mux.Handle("/v3/", gwmux)
+	}
+	mux.Handle("/", handler)
+
+	return mux
 }

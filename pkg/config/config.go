@@ -31,8 +31,9 @@ type Config struct {
 // ServerConfig server configuration
 type ServerConfig struct {
 	// Cluster configuration
-	ClusterID uint64 `yaml:"cluster_id"`
-	MemberID  uint64 `yaml:"member_id"`
+	ClusterID  uint64   `yaml:"cluster_id"`
+	MemberID   uint64   `yaml:"member_id"`
+	ClientURLs []string `yaml:"client_urls"` // Advertised client URLs for MemberList
 
 	// Protocol configurations
 	Etcd        EtcdConfig        `yaml:"etcd"`         // etcd gRPC protocol configuration
@@ -260,9 +261,9 @@ type RocksDBConfig struct {
 	BlockCacheSize uint64 `yaml:"block_cache_size"` // Default 8MB (lightweight), increase for better read performance
 
 	// Write Buffer configuration (affects write performance)
-	WriteBufferSize           uint64 `yaml:"write_buffer_size"`            // Default 4MB (lightweight)
-	MaxWriteBufferNumber      int    `yaml:"max_write_buffer_number"`      // Default 2 (lightweight)
-	MinWriteBufferNumberToMerge int  `yaml:"min_write_buffer_number_to_merge"` // Default 1
+	WriteBufferSize             uint64 `yaml:"write_buffer_size"`                // Default 4MB (lightweight)
+	MaxWriteBufferNumber        int    `yaml:"max_write_buffer_number"`          // Default 2 (lightweight)
+	MinWriteBufferNumberToMerge int    `yaml:"min_write_buffer_number_to_merge"` // Default 1
 
 	// Compaction configuration
 	MaxBackgroundJobs              int `yaml:"max_background_jobs"`                // Default 2 (lightweight)

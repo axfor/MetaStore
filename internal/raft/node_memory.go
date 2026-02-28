@@ -18,17 +18,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"metaStore/internal/batch"
 	"metaStore/internal/kvstore"
 	"metaStore/internal/lease"
 	"metaStore/pkg/config"
+	"metaStore/pkg/log"
 
 	"go.etcd.io/etcd/client/pkg/v3/fileutil"
 	"go.etcd.io/etcd/client/pkg/v3/types"
@@ -41,7 +42,6 @@ import (
 	"go.etcd.io/raft/v3/raftpb"
 
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
 
 type commit = kvstore.Commit
@@ -93,11 +93,57 @@ type raftNode struct {
 	leaseManager     *lease.LeaseManager     // leasemanager(ifenabled)
 	readIndexManager *lease.ReadIndexManager // ReadIndex manager(ifenabled)
 
+	// ConfChange callback for ClusterManager synchronization
+	confChangeCallback func(cc raftpb.ConfChange, confState raftpb.ConfState)
+	confChangeMu       sync.RWMutex
+
+	// Leader change notifications
+	leaderChangeC chan kvstore.RaftStatus
+
 	logger *zap.Logger
 	cfg    *config.Config // Raft configuration
 }
 
 var defaultSnapshotCount uint64 = 10000
+
+// SetConfChangeCallback sets a callback function that will be invoked
+// after each ConfChange is applied. This is used to synchronize the
+// ClusterManager with committed configuration changes from Raft.
+func (rc *raftNode) SetConfChangeCallback(fn func(cc raftpb.ConfChange, confState raftpb.ConfState)) {
+	rc.confChangeMu.Lock()
+	defer rc.confChangeMu.Unlock()
+	rc.confChangeCallback = fn
+}
+
+// notifyConfChange invokes the registered callback (if any) after applying a ConfChange
+func (rc *raftNode) notifyConfChange(cc raftpb.ConfChange) {
+	rc.confChangeMu.RLock()
+	fn := rc.confChangeCallback
+	rc.confChangeMu.RUnlock()
+	if fn != nil {
+		fn(cc, rc.confState)
+	}
+}
+
+func (rc *raftNode) notifyLeaderChange() {
+	if rc.leaderChangeC == nil {
+		return
+	}
+	status := rc.node.Status()
+	raftStatus := kvstore.RaftStatus{
+		NodeID:   status.ID,
+		Term:     status.Term,
+		LeaderID: status.Lead,
+		State:    status.RaftState.String(),
+		Applied:  status.Applied,
+		Commit:   status.Commit,
+	}
+
+	select {
+	case rc.leaderChangeC <- raftStatus:
+	default:
+	}
+}
 
 // isWitness returns true if this node is configured as a witness node
 // Witness nodes participate in Raft voting but don't store data
@@ -138,10 +184,11 @@ func NewNode(id int, peers []string, join bool, getSnapshot func() ([]byte, erro
 		httpstopc:   make(chan struct{}),
 		httpdonec:   make(chan struct{}),
 
-		logger: newLogger(),
+		logger: log.ZapLogger(),
 		cfg:    cfg, // Store config reference
 
 		snapshotterReady: make(chan *snap.Snapshotter, 1),
+		leaderChangeC:    make(chan kvstore.RaftStatus, 1),
 		// rest of structure populated after WAL replay
 	}
 	go rc.startRaft()
@@ -149,16 +196,7 @@ func NewNode(id int, peers []string, join bool, getSnapshot func() ([]byte, erro
 }
 
 func newLogger(options ...zap.Option) *zap.Logger {
-	encoderCfg := zapcore.EncoderConfig{
-		MessageKey:     "msg",
-		LevelKey:       "level",
-		NameKey:        "logger",
-		EncodeLevel:    zapcore.LowercaseLevelEncoder,
-		EncodeTime:     zapcore.ISO8601TimeEncoder,
-		EncodeDuration: zapcore.StringDurationEncoder,
-	}
-	core := zapcore.NewCore(zapcore.NewJSONEncoder(encoderCfg), os.Stdout, zap.InfoLevel)
-	return zap.New(core).WithOptions(options...)
+	return log.ZapLogger(options...)
 }
 
 func (rc *raftNode) saveSnap(snap raftpb.Snapshot) error {
@@ -241,11 +279,13 @@ func (rc *raftNode) publishEntries(ents []raftpb.Entry) (<-chan struct{}, bool) 
 				}
 			case raftpb.ConfChangeRemoveNode:
 				if cc.NodeID == uint64(rc.id) {
-					log.Println("I've been removed from the cluster! Shutting down.")
+					log.Info("I've been removed from the cluster! Shutting down.")
 					return nil, false
 				}
 				rc.transport.RemovePeer(types.ID(cc.NodeID))
 			}
+			// Notify ClusterManager about this committed ConfChange
+			rc.notifyConfChange(cc)
 		}
 	}
 
@@ -308,6 +348,8 @@ func (rc *raftNode) publishEntriesAsWitness(ents []raftpb.Entry) (<-chan struct{
 					zap.Uint64("node_id", cc.NodeID),
 					zap.String("component", "raft-memory-witness"))
 			}
+			// Notify ClusterManager about this committed ConfChange
+			rc.notifyConfChange(cc)
 		}
 	}
 
@@ -411,6 +453,7 @@ func (rc *raftNode) startRaft() {
 		ID:            uint64(rc.id),
 		ElectionTick:  rc.cfg.Server.Raft.ElectionTick,  // fromconfigread
 		HeartbeatTick: rc.cfg.Server.Raft.HeartbeatTick, // fromconfigread
+		Logger:        newRaftLogger("raft-memory"),
 
 		Storage: rc.raftStorage,
 
@@ -439,7 +482,7 @@ func (rc *raftNode) startRaft() {
 		ClusterID:   0x1000,
 		Raft:        rc,
 		ServerStats: stats.NewServerStats("", ""),
-		LeaderStats: stats.NewLeaderStats(newLogger(), strconv.Itoa(rc.id)),
+		LeaderStats: stats.NewLeaderStats(log.ZapLogger(), strconv.Itoa(rc.id)),
 		ErrorC:      make(chan error),
 	}
 
@@ -553,6 +596,9 @@ func (rc *raftNode) stop() {
 		rc.batcher.Stop()
 	}
 
+	if rc.leaderChangeC != nil {
+		close(rc.leaderChangeC)
+	}
 	close(rc.commitC)
 	close(rc.errorC)
 	rc.node.Stop()
@@ -604,7 +650,10 @@ func (rc *raftNode) maybeTriggerSnapshot(applyDoneC <-chan struct{}) {
 		zap.String("component", "raft-memory"))
 	data, err := rc.getSnapshot()
 	if err != nil {
-		log.Panic(err)
+		log.Error("raft: failed to get snapshot data",
+			zap.Error(err),
+			zap.String("component", "raft-memory"))
+		panic(err)
 	}
 	snap, err := rc.raftStorage.CreateSnapshot(rc.appliedIndex, &rc.confState, data)
 	if err != nil {
@@ -666,7 +715,13 @@ func (rc *raftNode) serveChannels() {
 					} else {
 						confChangeCount++
 						cc.ID = confChangeCount
-						rc.node.ProposeConfChange(context.TODO(), cc)
+						if err := rc.node.ProposeConfChange(context.TODO(), cc); err != nil {
+							rc.logger.Warn("failed to propose conf change",
+								zap.Error(err),
+								zap.Uint64("node_id", cc.NodeID),
+								zap.String("cc_type", fmt.Sprintf("%v", cc.Type)),
+								zap.String("component", "raft-memory"))
+						}
 					}
 				}
 			}
@@ -688,7 +743,13 @@ func (rc *raftNode) serveChannels() {
 					} else {
 						confChangeCount++
 						cc.ID = confChangeCount
-						rc.node.ProposeConfChange(context.TODO(), cc)
+						if err := rc.node.ProposeConfChange(context.TODO(), cc); err != nil {
+							rc.logger.Warn("failed to propose conf change",
+								zap.Error(err),
+								zap.Uint64("node_id", cc.NodeID),
+								zap.String("cc_type", fmt.Sprintf("%v", cc.Type)),
+								zap.String("component", "raft-memory"))
+						}
 					}
 				}
 			}
@@ -734,6 +795,9 @@ func (rc *raftNode) serveChannels() {
 						rc.leaseManager.OnBecomeFollower()
 					}
 				}
+			}
+			if rd.SoftState != nil {
+				rc.notifyLeaderChange()
 			}
 
 			// Must save the snapshot file and WAL snapshot entry before saving any other entries
@@ -838,6 +902,11 @@ func (rc *raftNode) Status() kvstore.RaftStatus {
 func (rc *raftNode) TransferLeadership(targetID uint64) error {
 	rc.node.TransferLeadership(context.TODO(), 0, targetID)
 	return nil
+}
+
+// LeaderChangeC exposes leader change notifications
+func (rc *raftNode) LeaderChangeC() <-chan kvstore.RaftStatus {
+	return rc.leaderChangeC
 }
 
 // LeaseManager returnleasemanager(for test)

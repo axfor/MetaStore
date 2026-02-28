@@ -2,7 +2,6 @@ package etcdgateway
 
 import (
 	"context"
-	"net/http"
 	"strings"
 
 	gw "go.etcd.io/etcd/api/v3/etcdserverpb/gw"
@@ -17,7 +16,7 @@ import (
 //
 // The endpoint should be a gRPC dial target (typically host:port). If a port-only
 // address like ":2379" is provided, it will be normalized to "127.0.0.1:2379".
-func NewHandler(ctx context.Context, endpoint string, dialOpts []grpc.DialOption, muxOpts ...runtime.ServeMuxOption) (http.Handler, error) {
+func NewHandler(ctx context.Context, endpoint string, dialOpts []grpc.DialOption, muxOpts ...runtime.ServeMuxOption) (*runtime.ServeMux, error) {
 	endpoint = normalizeEndpoint(endpoint)
 
 	// 参考 etcd

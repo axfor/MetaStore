@@ -22,7 +22,7 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 )
 
-// MaintenanceServer implement etcd Maintenance 
+// MaintenanceServer implement etcd Maintenance
 type MaintenanceServer struct {
 	pb.UnimplementedMaintenanceServer
 	server            *Server
@@ -175,9 +175,9 @@ func (s *MaintenanceServer) Snapshot(req *pb.SnapshotRequest, stream pb.Maintena
 
 		// sendsnapshotblock
 		if err := stream.Send(&pb.SnapshotResponse{
-			Header:        s.server.getResponseHeader(),
+			Header:         s.server.getResponseHeader(),
 			RemainingBytes: uint64(len(snapshot) - end),
-			Blob:          snapshot[i:end],
+			Blob:           snapshot[i:end],
 		}); err != nil {
 			return err
 		}
@@ -199,7 +199,7 @@ func (s *MaintenanceServer) MoveLeader(ctx context.Context, req *pb.MoveLeaderRe
 		return nil, toGRPCError(fmt.Errorf("target ID must be specified"))
 	}
 
-	// call Store  TransferLeadership methodrow leader 
+	// call Store  TransferLeadership methodrow leader
 	if err := s.server.store.TransferLeadership(req.TargetID); err != nil {
 		return nil, toGRPCError(fmt.Errorf("failed to transfer leadership: %w", err))
 	}
@@ -227,22 +227,29 @@ func (s *MaintenanceServer) MemberList(ctx context.Context, req *pb.MemberListRe
 			pbMembers = make([]*pb.Member, 0, len(s.server.clusterPeers))
 			for i, peerURL := range s.server.clusterPeers {
 				memberID := uint64(i + 1)
+				// Only the local member can reliably report its configured advertised
+				// client URLs before ClusterManager is initialized.
+				clientURLs := []string{}
+				if memberID == s.server.memberID && len(s.server.clientURLs) > 0 {
+					clientURLs = s.server.clientURLs
+				}
 				pbMembers = append(pbMembers, &pb.Member{
 					ID:         memberID,
 					Name:       fmt.Sprintf("node-%d", memberID),
 					PeerURLs:   []string{peerURL},
-					ClientURLs: []string{fmt.Sprintf("http://127.0.0.1:%d", 9120+memberID)},
+					ClientURLs: clientURLs,
 					IsLearner:  false,
 				})
 			}
 		} else {
 			// completelynoneclusterinfowhen，returncurrentnode
+			clientURLs := s.server.clientURLs
 			pbMembers = []*pb.Member{
 				{
 					ID:         s.server.memberID,
 					Name:       fmt.Sprintf("node-%d", s.server.memberID),
 					PeerURLs:   []string{fmt.Sprintf("http://127.0.0.1:902%d", s.server.memberID)},
-					ClientURLs: []string{fmt.Sprintf("http://127.0.0.1:912%d", s.server.memberID)},
+					ClientURLs: clientURLs,
 					IsLearner:  false,
 				},
 			}
@@ -254,11 +261,17 @@ func (s *MaintenanceServer) MemberList(ctx context.Context, req *pb.MemberListRe
 		// 2. convertas protobuf format
 		pbMembers = make([]*pb.Member, 0, len(members))
 		for _, member := range members {
+			clientURLs := member.ClientURLs
+			// If Raft hasn't yet committed our self-published client URLs, still
+			// return the configured value for the local member.
+			if member.ID == s.server.memberID && len(clientURLs) == 0 && len(s.server.clientURLs) > 0 {
+				clientURLs = s.server.clientURLs
+			}
 			pbMembers = append(pbMembers, &pb.Member{
 				ID:         member.ID,
 				Name:       member.Name,
 				PeerURLs:   member.PeerURLs,
-				ClientURLs: member.ClientURLs,
+				ClientURLs: clientURLs,
 				IsLearner:  member.IsLearner,
 			})
 		}

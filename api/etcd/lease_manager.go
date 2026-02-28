@@ -32,8 +32,8 @@ type LeaseManager struct {
 	mu      sync.RWMutex
 	store   kvstore.Store
 	leases  map[int64]*kvstore.Lease // leaseID -> Lease
-	stopped atomic.Bool               // whether stopped
-	stopCh  chan struct{}             // stop signal
+	stopped atomic.Bool              // whether stopped
+	stopCh  chan struct{}            // stop signal
 
 	// Configuration
 	checkInterval time.Duration // Lease expiry check interval
@@ -44,16 +44,12 @@ type LeaseManager struct {
 	// ID format: upper 16 bits for node ID, lower 48 bits for counter
 	nodeID         uint64
 	leaseIDCounter atomic.Int64
-}
 
-// NewLeaseManager creates a new Lease manager
-// Parameters: store, leaseConfig (optional), limitsConfig (optional)
-func NewLeaseManager(store kvstore.Store, leaseCfg *config.LeaseConfig, limitsCfg *config.LimitsConfig) *LeaseManager {
-	return NewLeaseManagerWithNodeID(store, leaseCfg, limitsCfg, 1)
+	lastLeader atomic.Bool // track leader state for cleanup synchronization
 }
 
 // NewLeaseManagerWithNodeID creates a new Lease manager (with node ID for cluster)
-func NewLeaseManagerWithNodeID(store kvstore.Store, leaseCfg *config.LeaseConfig, limitsCfg *config.LimitsConfig, nodeID uint64) *LeaseManager {
+func NewLeaseManagerWithMemberID(store kvstore.Store, leaseCfg *config.LeaseConfig, limitsCfg *config.LimitsConfig, raftCfg *config.RaftConfig, nodeID uint64) *LeaseManager {
 	// Use configuration or defaults
 	if leaseCfg == nil {
 		defaultCfg := config.DefaultConfig(1, 1, ":2379")
@@ -84,6 +80,9 @@ func (lm *LeaseManager) Start() {
 			zap.Error(err),
 			zap.String("component", "lease-manager"))
 	}
+	// Immediate cleanup on startup (leader-only)
+	lm.checkExpiredLeases()
+	lm.lastLeader.Store(lm.isLeaderForCleanup())
 	go lm.expiryChecker()
 }
 
@@ -132,16 +131,6 @@ func (lm *LeaseManager) Stop() {
 		return
 	}
 	close(lm.stopCh)
-}
-
-// GenerateLeaseID generates a cluster-unique Lease ID
-// ID format: upper 16 bits for node ID, lower 48 bits for counter
-// This allows each node to independently generate non-conflicting IDs
-func (lm *LeaseManager) GenerateLeaseID() int64 {
-	counter := lm.leaseIDCounter.Add(1)
-	// Upper 16 bits: nodeID, lower 48 bits: counter
-	// Supports up to 65535 nodes, each with 2^48 leases
-	return int64(lm.nodeID<<48) | (counter & 0x0000FFFFFFFFFFFF)
 }
 
 // Grant creates a new lease
@@ -231,6 +220,32 @@ func (lm *LeaseManager) Leases() ([]*kvstore.Lease, error) {
 	return lm.store.Leases(context.Background())
 }
 
+// SyncFromStore rebuilds lease cache from storage
+func (lm *LeaseManager) SyncFromStore(ctx context.Context) error {
+	leases, err := lm.store.Leases(ctx)
+	if err != nil {
+		return err
+	}
+
+	leaseMap := make(map[int64]*kvstore.Lease, len(leases))
+	for _, lease := range leases {
+		if lease == nil {
+			continue
+		}
+		leaseMap[lease.ID] = lease
+	}
+
+	lm.mu.Lock()
+	lm.leases = leaseMap
+	lm.mu.Unlock()
+
+	log.Info("Lease cache synced",
+		zap.Int("lease_count", len(leaseMap)),
+		zap.String("component", "lease-manager"))
+
+	return nil
+}
+
 // expiryChecker periodically checks and cleans up expired leases
 func (lm *LeaseManager) expiryChecker() {
 	ticker := time.NewTicker(lm.checkInterval) // Use configured check interval
@@ -253,6 +268,10 @@ func (lm *LeaseManager) expiryChecker() {
 
 // checkExpiredLeases checks and cleans up expired leases
 func (lm *LeaseManager) checkExpiredLeases() {
+	if !lm.isLeaderForCleanup() {
+		return
+	}
+
 	lm.mu.RLock()
 	expiredIDs := make([]int64, 0)
 	for id, lease := range lm.leases {
@@ -269,5 +288,44 @@ func (lm *LeaseManager) checkExpiredLeases() {
 		} else {
 			log.Info("Revoked expired lease", zap.Int64("lease_id", id), zap.String("component", "lease-manager"))
 		}
+	}
+}
+
+func (lm *LeaseManager) isLeaderForCleanup() bool {
+	status := lm.store.GetRaftStatus()
+	if status.State == "standalone" {
+		return true
+	}
+	if status.LeaderID == 0 {
+		return false
+	}
+	return status.NodeID == status.LeaderID
+}
+
+// OnLeaderChange handles leader transitions (event-driven cleanup)
+func (lm *LeaseManager) OnLeaderChange(status kvstore.RaftStatus) {
+	if status.State == "standalone" {
+		if err := lm.SyncFromStore(context.Background()); err != nil {
+			log.Error("Failed to sync lease cache on leader change",
+				zap.Error(err),
+				zap.String("component", "lease-manager"))
+			return
+		}
+		lm.checkExpiredLeases()
+		lm.lastLeader.Store(true)
+		return
+	}
+	if status.LeaderID == 0 || status.NodeID != status.LeaderID {
+		lm.lastLeader.Store(false)
+		return
+	}
+	if !lm.lastLeader.Swap(true) {
+		if err := lm.SyncFromStore(context.Background()); err != nil {
+			log.Error("Failed to sync lease cache on leader change",
+				zap.Error(err),
+				zap.String("component", "lease-manager"))
+			return
+		}
+		lm.checkExpiredLeases()
 	}
 }
