@@ -27,7 +27,7 @@ import (
 func newTestLeaseManager(t *testing.T, store *memory.MemoryEtcd) *LeaseManager {
 	t.Helper()
 	cfg := config.DefaultConfig(1, 1, ":2379")
-	return NewLeaseManagerWithNodeID(store, &cfg.Server.Lease, &cfg.Server.Limits, 1)
+	return NewLeaseManagerWithMemberID(store, &cfg.Server.Lease, &cfg.Server.Limits, &cfg.Server.Raft, 1)
 }
 
 func TestLeaseManager_LoadLeases_Empty(t *testing.T) {
@@ -103,38 +103,6 @@ func TestLeaseManager_LoadLeases_Recovery(t *testing.T) {
 	}
 	if lease.ID != 200 {
 		t.Fatalf("expected lease ID 200, got %d", lease.ID)
-	}
-}
-
-func TestLeaseManager_LoadLeases_CounterInit(t *testing.T) {
-	store := memory.NewMemoryEtcd()
-
-	// Create leases with known IDs that have specific counter values
-	// Node ID 1 = upper 16 bits, counter in lower 48 bits
-	leaseID1 := int64(1<<48) | 50 // node 1, counter 50
-	leaseID2 := int64(1<<48) | 42 // node 1, counter 42
-
-	_, err := store.LeaseGrant(context.Background(), leaseID1, 600)
-	if err != nil {
-		t.Fatalf("LeaseGrant failed: %v", err)
-	}
-	_, err = store.LeaseGrant(context.Background(), leaseID2, 600)
-	if err != nil {
-		t.Fatalf("LeaseGrant failed: %v", err)
-	}
-
-	// Create new LeaseManager and load leases
-	lm := newTestLeaseManager(t, store)
-	if err := lm.LoadLeases(); err != nil {
-		t.Fatalf("LoadLeases failed: %v", err)
-	}
-
-	// Counter should be set to max(50, 42) = 50
-	// Next generated ID should have counter > 50
-	newID := lm.GenerateLeaseID()
-	newCounter := newID & 0x0000FFFFFFFFFFFF
-	if newCounter <= 50 {
-		t.Fatalf("expected counter > 50, got %d (full ID: %d)", newCounter, newID)
 	}
 }
 

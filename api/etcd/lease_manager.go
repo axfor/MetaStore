@@ -40,15 +40,10 @@ type LeaseManager struct {
 	defaultTTL    time.Duration // default TTL
 	maxLeaseCount int           // maximum lease count limit (0 means unlimited)
 
-	// Lease ID generator (cluster-safe)
-	// ID format: upper 16 bits for node ID, lower 48 bits for counter
-	nodeID         uint64
-	leaseIDCounter atomic.Int64
-
 	lastLeader atomic.Bool // track leader state for cleanup synchronization
 }
 
-// NewLeaseManagerWithNodeID creates a new Lease manager (with node ID for cluster)
+// NewLeaseManagerWithMemberID creates a new Lease manager (with member ID for cluster)
 func NewLeaseManagerWithMemberID(store kvstore.Store, leaseCfg *config.LeaseConfig, limitsCfg *config.LimitsConfig, raftCfg *config.RaftConfig, nodeID uint64) *LeaseManager {
 	// Use configuration or defaults
 	if leaseCfg == nil {
@@ -68,7 +63,6 @@ func NewLeaseManagerWithMemberID(store kvstore.Store, leaseCfg *config.LeaseConf
 		checkInterval: leaseCfg.CheckInterval,
 		defaultTTL:    leaseCfg.DefaultTTL,
 		maxLeaseCount: maxLeases,
-		nodeID:        nodeID,
 	}
 }
 
@@ -101,25 +95,12 @@ func (lm *LeaseManager) LoadLeases() error {
 	lm.mu.Lock()
 	defer lm.mu.Unlock()
 
-	var maxCounter int64
 	for _, lease := range leases {
 		lm.leases[lease.ID] = lease
-
-		// Extract the counter portion (lower 48 bits) to prevent ID collisions
-		counter := lease.ID & 0x0000FFFFFFFFFFFF
-		if counter > maxCounter {
-			maxCounter = counter
-		}
-	}
-
-	// Set counter to max existing value so next generated ID won't collide
-	if maxCounter > 0 {
-		lm.leaseIDCounter.Store(maxCounter)
 	}
 
 	log.Info("Loaded persisted leases",
 		zap.Int("count", len(leases)),
-		zap.Int64("max_counter", maxCounter),
 		zap.String("component", "lease-manager"))
 
 	return nil
