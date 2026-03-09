@@ -43,6 +43,7 @@ type etcdCluster struct {
 	proposeC           []chan string
 	confChangeC        []chan raftpb.ConfChange
 	snapshotterReady   []<-chan *snap.Snapshotter
+	raftNodes          []memory.RaftNode
 	kvStores           []*memory.Memory
 	servers            []*etcdapi.Server
 	clients            []*clientv3.Client
@@ -62,6 +63,7 @@ func newEtcdCluster(t *testing.T, n int) *etcdCluster {
 		proposeC:         make([]chan string, len(peers)),
 		confChangeC:      make([]chan raftpb.ConfChange, len(peers)),
 		snapshotterReady: make([]<-chan *snap.Snapshotter, len(peers)),
+		raftNodes:        make([]memory.RaftNode, len(peers)),
 		kvStores:         make([]*memory.Memory, len(peers)),
 		servers:          make([]*etcdapi.Server, len(peers)),
 		clients:          make([]*clientv3.Client, len(peers)),
@@ -84,9 +86,11 @@ func newEtcdCluster(t *testing.T, n int) *etcdCluster {
 			}
 			return kvs.GetSnapshot()
 		}
-		clus.commitC[i], clus.errorC[i], clus.snapshotterReady[i], _ = raft.NewNode(
+		var rn memory.RaftNode
+		clus.commitC[i], clus.errorC[i], clus.snapshotterReady[i], rn = raft.NewNode(
 			i+1, clus.peers, false, getSnapshot, clus.proposeC[i], clus.confChangeC[i], "memory", cfg,
 		)
+		clus.raftNodes[i] = rn
 	}
 
 	// Create KV stores and etcd servers
@@ -97,6 +101,8 @@ func newEtcdCluster(t *testing.T, n int) *etcdCluster {
 			clus.commitC[i],
 			clus.errorC[i],
 		)
+		// Set Raft node for proper leader/follower status reporting
+		kvs.SetRaftNode(clus.raftNodes[i], uint64(i+1))
 		clus.kvStores[i] = kvs
 
 		// Find available port
@@ -120,6 +126,16 @@ func newEtcdCluster(t *testing.T, n int) *etcdCluster {
 				t.Logf("Server start error: %v", err)
 			}
 		}(server)
+
+		// Wire up OnLeaderChange for lease expiry in cluster mode
+		leaseManager := server.GetLeaseManager()
+		if leaseManager != nil {
+			go func(rn memory.RaftNode, lm *etcdapi.LeaseManager) {
+				for status := range rn.LeaderChangeC() {
+					lm.OnLeaderChange(status)
+				}
+			}(clus.raftNodes[i], leaseManager)
+		}
 
 		// Create client
 		cli, err := NewEtcdClient([]string{addr}, 5*time.Second)

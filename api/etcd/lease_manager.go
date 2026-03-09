@@ -220,9 +220,11 @@ func (lm *LeaseManager) SyncFromStore(ctx context.Context) error {
 	lm.leases = leaseMap
 	lm.mu.Unlock()
 
-	log.Info("Lease cache synced",
-		zap.Int("lease_count", len(leaseMap)),
-		zap.String("component", "lease-manager"))
+	if len(leaseMap) > 0 {
+		log.Debug("Lease cache synced",
+			zap.Int("lease_count", len(leaseMap)),
+			zap.String("component", "lease-manager"))
+	}
 
 	return nil
 }
@@ -251,6 +253,15 @@ func (lm *LeaseManager) expiryChecker() {
 func (lm *LeaseManager) checkExpiredLeases() {
 	if !lm.isLeaderForCleanup() {
 		return
+	}
+
+	// Sync from store to pick up leases created on other nodes in the cluster.
+	// Without this, the leader's in-memory cache would miss leases granted
+	// through follower nodes, preventing them from being expired.
+	if err := lm.SyncFromStore(context.Background()); err != nil {
+		log.Error("Failed to sync lease cache before expiry check",
+			zap.Error(err),
+			zap.String("component", "lease-manager"))
 	}
 
 	lm.mu.RLock()
