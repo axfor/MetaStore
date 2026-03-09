@@ -1,0 +1,593 @@
+// Copyright 2025 The axfor Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package test
+
+import (
+	"context"
+	"net"
+	"testing"
+	"time"
+
+	etcdapi "metaStore/api/etcd"
+
+	clientv3 "go.etcd.io/etcd/client/v3"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// ============================================================================
+// Single-node lease expiry tests (Memory)
+// ============================================================================
+
+// TestLeaseExpiry_SingleNode_Memory tests that a lease with short TTL expires on a single memory node.
+func TestLeaseExpiry_SingleNode_Memory(t *testing.T) {
+	node, cleanup := startMemoryNode(t, 1)
+	defer cleanup()
+
+	ctx := context.Background()
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
+	require.NoError(t, err)
+	defer cli.Close()
+
+	// Grant lease with 2s TTL
+	leaseResp, err := cli.Grant(ctx, 2)
+	require.NoError(t, err)
+	leaseID := leaseResp.ID
+	t.Logf("Granted lease ID=%d, TTL=2s", leaseID)
+
+	// Put a key with the lease
+	_, err = cli.Put(ctx, "expire-test/key1", "value1", clientv3.WithLease(leaseID))
+	require.NoError(t, err)
+
+	// Verify key exists immediately
+	getResp, err := cli.Get(ctx, "expire-test/key1")
+	require.NoError(t, err)
+	require.Len(t, getResp.Kvs, 1, "key should exist before lease expires")
+
+	// Wait for lease to expire (TTL=2s + check interval=1s + margin=1s)
+	t.Log("Waiting for lease to expire...")
+	time.Sleep(4 * time.Second)
+
+	// Verify lease expired
+	ttlResp, err := cli.TimeToLive(ctx, leaseID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(-1), ttlResp.TTL, "expired lease should have TTL=-1")
+	t.Logf("Lease TTL after expiry: %d", ttlResp.TTL)
+
+	// Verify key was deleted when lease expired
+	getResp, err = cli.Get(ctx, "expire-test/key1")
+	require.NoError(t, err)
+	assert.Len(t, getResp.Kvs, 0, "key should be deleted after lease expired")
+	t.Log("Single-node memory lease expiry: PASSED")
+}
+
+// ============================================================================
+// Single-node lease expiry tests (RocksDB)
+// ============================================================================
+
+// TestLeaseExpiry_SingleNode_RocksDB tests lease expiry with the RocksDB engine.
+func TestLeaseExpiry_SingleNode_RocksDB(t *testing.T) {
+	node, cleanup := startRocksDBNode(t, 1)
+	defer cleanup()
+
+	ctx := context.Background()
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
+	require.NoError(t, err)
+	defer cli.Close()
+
+	// Grant lease with 2s TTL
+	leaseResp, err := cli.Grant(ctx, 2)
+	require.NoError(t, err)
+	leaseID := leaseResp.ID
+	t.Logf("Granted lease ID=%d, TTL=2s (RocksDB)", leaseID)
+
+	// Put a key with the lease
+	_, err = cli.Put(ctx, "expire-rocks/key1", "value1", clientv3.WithLease(leaseID))
+	require.NoError(t, err)
+
+	// Verify key exists
+	getResp, err := cli.Get(ctx, "expire-rocks/key1")
+	require.NoError(t, err)
+	require.Len(t, getResp.Kvs, 1)
+
+	// Wait for expiry
+	t.Log("Waiting for lease to expire (RocksDB)...")
+	time.Sleep(4 * time.Second)
+
+	// Verify expired
+	ttlResp, err := cli.TimeToLive(ctx, leaseID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(-1), ttlResp.TTL, "expired lease should have TTL=-1")
+
+	// Verify key deleted
+	getResp, err = cli.Get(ctx, "expire-rocks/key1")
+	require.NoError(t, err)
+	assert.Len(t, getResp.Kvs, 0, "key should be deleted after lease expired (RocksDB)")
+	t.Log("Single-node RocksDB lease expiry: PASSED")
+}
+
+// ============================================================================
+// Single-node restart + lease expiry tests (RocksDB)
+// ============================================================================
+
+// TestLeaseExpiry_AfterRestart_RocksDB tests that a lease with remaining TTL
+// properly expires after a RocksDB server restart.
+func TestLeaseExpiry_AfterRestart_RocksDB(t *testing.T) {
+	node, cleanup := startRocksDBNode(t, 1)
+	defer cleanup()
+
+	ctx := context.Background()
+	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
+	require.NoError(t, err)
+
+	// Grant lease with 5s TTL
+	leaseResp, err := cli.Grant(ctx, 5)
+	require.NoError(t, err)
+	leaseID := leaseResp.ID
+	t.Logf("Granted lease ID=%d, TTL=5s (RocksDB)", leaseID)
+
+	// Put keys with the lease
+	_, err = cli.Put(ctx, "restart-expire/key1", "v1", clientv3.WithLease(leaseID))
+	require.NoError(t, err)
+	_, err = cli.Put(ctx, "restart-expire/key2", "v2", clientv3.WithLease(leaseID))
+	require.NoError(t, err)
+
+	// Also create a long-lived lease
+	longResp, err := cli.Grant(ctx, 120)
+	require.NoError(t, err)
+	longID := longResp.ID
+	_, err = cli.Put(ctx, "restart-expire/long", "persist", clientv3.WithLease(longID))
+	require.NoError(t, err)
+
+	cli.Close()
+
+	// Wait 2 seconds (partial TTL elapsed)
+	t.Log("Waiting 2s before restart (partial TTL elapsed)...")
+	time.Sleep(2 * time.Second)
+
+	// Restart server (reuse same RocksDB)
+	t.Log("Restarting RocksDB server...")
+	node.server.Stop()
+	time.Sleep(500 * time.Millisecond)
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	newAddr := listener.Addr().String()
+	listener.Close()
+
+	newServer, err := etcdapi.NewServer(etcdapi.ServerConfig{
+		Store:     node.rocksKVStore,
+		Address:   newAddr,
+		ClusterID: 2000,
+		MemberID:  uint64(node.id),
+	})
+	require.NoError(t, err)
+	node.server = newServer
+	node.clientAddr = newAddr
+
+	go func() {
+		if err := newServer.Start(); err != nil {
+			t.Logf("Restarted server error: %v", err)
+		}
+	}()
+
+	// Wait for remaining TTL to expire after restart
+	// Original TTL=5s, already elapsed 2s before restart + 0.5s for restart
+	// Remaining ~2.5s + check interval 1s + margin 1s = ~4.5s
+	t.Log("Waiting for remaining TTL to expire after restart...")
+	time.Sleep(5 * time.Second)
+
+	// Verify with new client
+	cli2, err := NewEtcdClient([]string{newAddr}, 5*time.Second)
+	require.NoError(t, err)
+	defer cli2.Close()
+
+	// Short-lived lease should have expired
+	ttlResp, err := cli2.TimeToLive(ctx, leaseID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(-1), ttlResp.TTL, "lease should have expired after restart")
+	t.Logf("Short lease TTL after restart: %d", ttlResp.TTL)
+
+	// Keys should be deleted
+	getResp, err := cli2.Get(ctx, "restart-expire/key1")
+	require.NoError(t, err)
+	assert.Len(t, getResp.Kvs, 0, "key1 should be deleted after lease expired post-restart")
+
+	getResp, err = cli2.Get(ctx, "restart-expire/key2")
+	require.NoError(t, err)
+	assert.Len(t, getResp.Kvs, 0, "key2 should be deleted after lease expired post-restart")
+
+	// Long-lived lease should still be alive
+	ttlResp, err = cli2.TimeToLive(ctx, longID)
+	require.NoError(t, err)
+	assert.Greater(t, ttlResp.TTL, int64(0), "long-lived lease should still be alive")
+	t.Logf("Long lease TTL after restart: %d", ttlResp.TTL)
+
+	// Long-lived lease key should still exist
+	getResp, err = cli2.Get(ctx, "restart-expire/long")
+	require.NoError(t, err)
+	assert.Len(t, getResp.Kvs, 1, "long-lived lease key should survive")
+
+	// KeepAlive on long lease should work
+	kaResp, err := cli2.KeepAliveOnce(ctx, longID)
+	require.NoError(t, err)
+	assert.Greater(t, kaResp.TTL, int64(0))
+	t.Log("RocksDB restart + lease expiry: PASSED")
+}
+
+// ============================================================================
+// 3-Node cluster lease expiry tests (Memory)
+// ============================================================================
+
+// TestLeaseExpiry_3NodeCluster_ViaLeader tests lease expiry in a 3-node cluster
+// when the lease is created via the leader node.
+func TestLeaseExpiry_3NodeCluster_ViaLeader(t *testing.T) {
+	clus := newEtcdCluster(t, 3)
+	defer clus.Close(t)
+
+	ctx := context.Background()
+
+	// Determine which node is the leader
+	leaderIdx := -1
+	for i := 0; i < 3; i++ {
+		status := clus.kvStores[i].GetRaftStatus()
+		t.Logf("Node %d: state=%s, nodeID=%d, leaderID=%d", i, status.State, status.NodeID, status.LeaderID)
+		if status.NodeID == status.LeaderID && status.LeaderID != 0 {
+			leaderIdx = i
+		}
+	}
+	if leaderIdx == -1 {
+		// If no clear leader yet, default to node 0 which usually becomes leader
+		leaderIdx = 0
+		t.Log("No clear leader detected, using node 0")
+	}
+	t.Logf("Leader is node %d", leaderIdx)
+
+	// Grant lease with 3s TTL via the LEADER
+	leaseResp, err := clus.clients[leaderIdx].Grant(ctx, 3)
+	require.NoError(t, err)
+	leaseID := leaseResp.ID
+	t.Logf("Granted lease via leader (node %d), ID=%d, TTL=3s", leaderIdx, leaseID)
+
+	// Put key with lease
+	_, err = clus.clients[leaderIdx].Put(ctx, "cluster-expire/key1", "v1", clientv3.WithLease(leaseID))
+	require.NoError(t, err)
+
+	// Wait for replication
+	time.Sleep(1 * time.Second)
+
+	// Verify key exists on all nodes
+	for i := 0; i < 3; i++ {
+		getResp, err := clus.clients[i].Get(ctx, "cluster-expire/key1")
+		require.NoError(t, err)
+		assert.Len(t, getResp.Kvs, 1, "node %d should have the key", i)
+	}
+
+	// Wait for lease to expire (TTL=3s + check interval=1s + margin=2s)
+	t.Log("Waiting for lease to expire in cluster...")
+	time.Sleep(6 * time.Second)
+
+	// Verify lease expired on leader
+	ttlResp, err := clus.clients[leaderIdx].TimeToLive(ctx, leaseID)
+	require.NoError(t, err)
+	t.Logf("Leader (node %d) lease TTL after expiry: %d", leaderIdx, ttlResp.TTL)
+	assert.Equal(t, int64(-1), ttlResp.TTL, "lease should have expired on leader")
+
+	// Verify key was deleted on all nodes
+	for i := 0; i < 3; i++ {
+		getResp, err := clus.clients[i].Get(ctx, "cluster-expire/key1")
+		require.NoError(t, err)
+		assert.Len(t, getResp.Kvs, 0, "node %d: key should be deleted after lease expired", i)
+	}
+	t.Log("3-node cluster lease expiry (via leader): PASSED")
+}
+
+// TestLeaseExpiry_3NodeCluster_ViaFollower tests lease expiry in a 3-node cluster
+// when the lease is created via a FOLLOWER node.
+// This test verifies whether the leader's expiry checker can detect and clean up
+// leases that were not created through it.
+func TestLeaseExpiry_3NodeCluster_ViaFollower(t *testing.T) {
+	clus := newEtcdCluster(t, 3)
+	defer clus.Close(t)
+
+	ctx := context.Background()
+
+	// Determine leader and pick a follower
+	leaderIdx := -1
+	followerIdx := -1
+	for i := 0; i < 3; i++ {
+		status := clus.kvStores[i].GetRaftStatus()
+		t.Logf("Node %d: state=%s, nodeID=%d, leaderID=%d", i, status.State, status.NodeID, status.LeaderID)
+		if status.NodeID == status.LeaderID && status.LeaderID != 0 {
+			leaderIdx = i
+		}
+	}
+	if leaderIdx == -1 {
+		leaderIdx = 0
+	}
+	// Pick a follower that is NOT the leader
+	for i := 0; i < 3; i++ {
+		if i != leaderIdx {
+			followerIdx = i
+			break
+		}
+	}
+	t.Logf("Leader=node %d, Follower=node %d", leaderIdx, followerIdx)
+
+	// Grant lease with 3s TTL via a FOLLOWER
+	leaseResp, err := clus.clients[followerIdx].Grant(ctx, 3)
+	require.NoError(t, err)
+	leaseID := leaseResp.ID
+	t.Logf("Granted lease via FOLLOWER (node %d), ID=%d, TTL=3s", followerIdx, leaseID)
+
+	// Put key with lease via the same follower
+	_, err = clus.clients[followerIdx].Put(ctx, "follower-expire/key1", "v1", clientv3.WithLease(leaseID))
+	require.NoError(t, err)
+
+	// Wait for replication
+	time.Sleep(1 * time.Second)
+
+	// Verify key exists on leader
+	getResp, err := clus.clients[leaderIdx].Get(ctx, "follower-expire/key1")
+	require.NoError(t, err)
+	require.Len(t, getResp.Kvs, 1, "leader should have the key")
+
+	// Wait for lease to expire (TTL=3s + check interval=1s + margin=3s)
+	t.Log("Waiting for lease (granted via follower) to expire...")
+	time.Sleep(7 * time.Second)
+
+	// Verify lease expired
+	ttlResp, err := clus.clients[leaderIdx].TimeToLive(ctx, leaseID)
+	require.NoError(t, err)
+	t.Logf("Leader (node %d) lease TTL after expiry: %d", leaderIdx, ttlResp.TTL)
+
+	if ttlResp.TTL != -1 {
+		t.Errorf("BUG: lease granted via follower did NOT expire! TTL=%d (expected -1)", ttlResp.TTL)
+		t.Log("Root cause: leader's LeaseManager.leases in-memory cache does not contain")
+		t.Log("leases granted through other nodes, so checkExpiredLeases() never finds them.")
+	}
+
+	// Verify key was deleted
+	getResp, err = clus.clients[leaderIdx].Get(ctx, "follower-expire/key1")
+	require.NoError(t, err)
+	if len(getResp.Kvs) > 0 {
+		t.Errorf("BUG: key still exists after lease should have expired (granted via follower)")
+	} else {
+		t.Log("3-node cluster lease expiry (via follower): PASSED")
+	}
+}
+
+// ============================================================================
+// 3-Node cluster lease expiry tests (RocksDB)
+// ============================================================================
+
+// TestLeaseExpiry_3NodeCluster_RocksDB tests lease expiry in a 3-node RocksDB cluster.
+func TestLeaseExpiry_3NodeCluster_RocksDB(t *testing.T) {
+	clus := newEtcdRocksDBCluster(t, 3)
+	defer clus.Close(t)
+
+	ctx := context.Background()
+
+	// Determine leader
+	leaderIdx := -1
+	for i := 0; i < 3; i++ {
+		status := clus.kvStores[i].GetRaftStatus()
+		t.Logf("Node %d: state=%s, nodeID=%d, leaderID=%d", i, status.State, status.NodeID, status.LeaderID)
+		if status.NodeID == status.LeaderID && status.LeaderID != 0 {
+			leaderIdx = i
+		}
+	}
+	if leaderIdx == -1 {
+		leaderIdx = 0
+	}
+
+	// Grant lease with 3s TTL via leader
+	leaseResp, err := clus.clients[leaderIdx].Grant(ctx, 3)
+	require.NoError(t, err)
+	leaseID := leaseResp.ID
+	t.Logf("Granted lease via leader (node %d), ID=%d, TTL=3s (RocksDB)", leaderIdx, leaseID)
+
+	// Put key with lease
+	_, err = clus.clients[leaderIdx].Put(ctx, "rocks-cluster-expire/key1", "v1", clientv3.WithLease(leaseID))
+	require.NoError(t, err)
+
+	// Wait for replication
+	time.Sleep(1 * time.Second)
+
+	// Verify key exists
+	getResp, err := clus.clients[leaderIdx].Get(ctx, "rocks-cluster-expire/key1")
+	require.NoError(t, err)
+	require.Len(t, getResp.Kvs, 1)
+
+	// Wait for expiry
+	t.Log("Waiting for lease to expire (RocksDB cluster)...")
+	time.Sleep(6 * time.Second)
+
+	// Verify expired
+	ttlResp, err := clus.clients[leaderIdx].TimeToLive(ctx, leaseID)
+	require.NoError(t, err)
+	t.Logf("Lease TTL after expiry (RocksDB cluster): %d", ttlResp.TTL)
+	assert.Equal(t, int64(-1), ttlResp.TTL, "lease should have expired in RocksDB cluster")
+
+	// Verify key deleted on all nodes
+	for i := 0; i < 3; i++ {
+		getResp, err := clus.clients[i].Get(ctx, "rocks-cluster-expire/key1")
+		require.NoError(t, err)
+		assert.Len(t, getResp.Kvs, 0, "node %d: key should be deleted (RocksDB)", i)
+	}
+	t.Log("3-node RocksDB cluster lease expiry: PASSED")
+}
+
+// TestLeaseExpiry_3NodeCluster_RocksDB_ViaFollower tests lease expiry in a 3-node
+// RocksDB cluster when the lease is created via a follower.
+func TestLeaseExpiry_3NodeCluster_RocksDB_ViaFollower(t *testing.T) {
+	clus := newEtcdRocksDBCluster(t, 3)
+	defer clus.Close(t)
+
+	ctx := context.Background()
+
+	// Determine leader and follower
+	leaderIdx := -1
+	followerIdx := -1
+	for i := 0; i < 3; i++ {
+		status := clus.kvStores[i].GetRaftStatus()
+		t.Logf("Node %d: state=%s, nodeID=%d, leaderID=%d", i, status.State, status.NodeID, status.LeaderID)
+		if status.NodeID == status.LeaderID && status.LeaderID != 0 {
+			leaderIdx = i
+		}
+	}
+	if leaderIdx == -1 {
+		leaderIdx = 0
+	}
+	for i := 0; i < 3; i++ {
+		if i != leaderIdx {
+			followerIdx = i
+			break
+		}
+	}
+	t.Logf("Leader=node %d, Follower=node %d (RocksDB)", leaderIdx, followerIdx)
+
+	// Grant lease with 3s TTL via FOLLOWER
+	leaseResp, err := clus.clients[followerIdx].Grant(ctx, 3)
+	require.NoError(t, err)
+	leaseID := leaseResp.ID
+	t.Logf("Granted lease via FOLLOWER (node %d), ID=%d, TTL=3s (RocksDB)", followerIdx, leaseID)
+
+	// Put key with lease
+	_, err = clus.clients[followerIdx].Put(ctx, "rocks-follower-expire/key1", "v1", clientv3.WithLease(leaseID))
+	require.NoError(t, err)
+
+	// Wait for replication
+	time.Sleep(1 * time.Second)
+
+	// Wait for expiry
+	t.Log("Waiting for lease (granted via follower) to expire (RocksDB)...")
+	time.Sleep(7 * time.Second)
+
+	// Verify
+	ttlResp, err := clus.clients[leaderIdx].TimeToLive(ctx, leaseID)
+	require.NoError(t, err)
+	t.Logf("Lease TTL after expiry (RocksDB follower): %d", ttlResp.TTL)
+
+	if ttlResp.TTL != -1 {
+		t.Errorf("BUG: lease granted via follower did NOT expire in RocksDB cluster! TTL=%d", ttlResp.TTL)
+	}
+
+	getResp, err := clus.clients[leaderIdx].Get(ctx, "rocks-follower-expire/key1")
+	require.NoError(t, err)
+	if len(getResp.Kvs) > 0 {
+		t.Errorf("BUG: key still exists after lease should have expired (RocksDB follower)")
+	} else {
+		t.Log("3-node RocksDB cluster lease expiry (via follower): PASSED")
+	}
+}
+
+// ============================================================================
+// Restart + remaining TTL expiry (3-node cluster)
+// ============================================================================
+
+// TestLeaseExpiry_3NodeCluster_AfterRestart tests that leases with remaining TTL
+// expire correctly after a server restart in a 3-node cluster.
+func TestLeaseExpiry_3NodeCluster_AfterRestart(t *testing.T) {
+	clus := newEtcdCluster(t, 3)
+	defer clus.Close(t)
+
+	ctx := context.Background()
+
+	// Grant lease with 5s TTL
+	leaseResp, err := clus.clients[0].Grant(ctx, 5)
+	require.NoError(t, err)
+	leaseID := leaseResp.ID
+	t.Logf("Granted lease ID=%d, TTL=5s", leaseID)
+
+	_, err = clus.clients[0].Put(ctx, "cluster-restart-expire/key1", "v1", clientv3.WithLease(leaseID))
+	require.NoError(t, err)
+
+	// Also create a long-lived lease
+	longResp, err := clus.clients[0].Grant(ctx, 120)
+	require.NoError(t, err)
+	longID := longResp.ID
+	_, err = clus.clients[0].Put(ctx, "cluster-restart-expire/long", "persist", clientv3.WithLease(longID))
+	require.NoError(t, err)
+
+	// Wait for replication
+	time.Sleep(1 * time.Second)
+
+	// Restart node 0's etcd server (the likely leader)
+	t.Log("Restarting node 0's etcd server...")
+	clus.clients[0].Close()
+	clus.servers[0].Stop()
+	time.Sleep(500 * time.Millisecond)
+
+	// Wait for short lease to expire during "downtime" of node 0's etcd server
+	// The underlying Raft and store are still running
+	t.Log("Waiting for short lease TTL to pass...")
+	time.Sleep(5 * time.Second)
+
+	// Restart node 0's etcd server
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	newAddr := listener.Addr().String()
+	listener.Close()
+
+	newServer, err := etcdapi.NewServer(etcdapi.ServerConfig{
+		Store:     clus.kvStores[0],
+		Address:   newAddr,
+		ClusterID: 1000,
+		MemberID:  1,
+	})
+	require.NoError(t, err)
+	clus.servers[0] = newServer
+
+	go func() {
+		if err := newServer.Start(); err != nil {
+			t.Logf("Restarted node 0 error: %v", err)
+		}
+	}()
+	time.Sleep(2 * time.Second)
+
+	// Create new client
+	cli, err := NewEtcdClient([]string{newAddr}, 5*time.Second)
+	require.NoError(t, err)
+	clus.clients[0] = cli
+
+	// Verify short-lived lease expired
+	ttlResp, err := cli.TimeToLive(ctx, leaseID)
+	require.NoError(t, err)
+	t.Logf("Short lease TTL after restart: %d", ttlResp.TTL)
+	assert.Equal(t, int64(-1), ttlResp.TTL, "short lease should have expired after restart")
+
+	// Verify key was cleaned up
+	getResp, err := cli.Get(ctx, "cluster-restart-expire/key1")
+	require.NoError(t, err)
+	assert.Len(t, getResp.Kvs, 0, "key should be deleted after expired lease")
+
+	// Verify long-lived lease is still alive
+	ttlResp, err = cli.TimeToLive(ctx, longID)
+	require.NoError(t, err)
+	t.Logf("Long lease TTL after restart: %d", ttlResp.TTL)
+	assert.Greater(t, ttlResp.TTL, int64(0), "long lease should still be alive")
+
+	// Long-lived lease key should still exist
+	getResp, err = cli.Get(ctx, "cluster-restart-expire/long")
+	require.NoError(t, err)
+	assert.Len(t, getResp.Kvs, 1, "long lease key should survive")
+
+	// KeepAlive on long lease should work
+	kaResp, err := cli.KeepAliveOnce(ctx, longID)
+	require.NoError(t, err)
+	assert.Greater(t, kaResp.TTL, int64(0))
+	t.Log("3-node cluster restart + lease expiry: PASSED")
+}
