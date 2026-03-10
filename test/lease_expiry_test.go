@@ -21,6 +21,7 @@ import (
 	"time"
 
 	etcdapi "metaStore/api/etcd"
+	"metaStore/internal/memory"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"github.com/stretchr/testify/assert"
@@ -590,4 +591,573 @@ func TestLeaseExpiry_3NodeCluster_AfterRestart(t *testing.T) {
 	require.NoError(t, err)
 	assert.Greater(t, kaResp.TTL, int64(0))
 	t.Log("3-node cluster restart + lease expiry: PASSED")
+}
+
+// ============================================================================
+// 3-Node cluster: lease expired BEFORE restart, then restart cluster
+// ============================================================================
+
+// TestLeaseExpiry_3NodeCluster_ExpiredBeforeRestart tests that when a lease has
+// already expired before the cluster restarts, the expired lease is properly
+// cleaned up after the cluster comes back online.
+func TestLeaseExpiry_3NodeCluster_ExpiredBeforeRestart(t *testing.T) {
+	clus := newEtcdCluster(t, 3)
+	defer clus.Close(t)
+
+	ctx := context.Background()
+
+	// Grant lease with 10s TTL
+	leaseResp, err := clus.clients[0].Grant(ctx, 10)
+	require.NoError(t, err)
+	leaseID := leaseResp.ID
+	t.Logf("Granted lease ID=%d, TTL=10s", leaseID)
+
+	// Put keys with the lease
+	_, err = clus.clients[0].Put(ctx, "expired-before-restart/key1", "v1", clientv3.WithLease(leaseID))
+	require.NoError(t, err)
+	_, err = clus.clients[0].Put(ctx, "expired-before-restart/key2", "v2", clientv3.WithLease(leaseID))
+	require.NoError(t, err)
+
+	// Also create a long-lived lease that should survive
+	longResp, err := clus.clients[0].Grant(ctx, 300)
+	require.NoError(t, err)
+	longID := longResp.ID
+	_, err = clus.clients[0].Put(ctx, "expired-before-restart/long", "persist", clientv3.WithLease(longID))
+	require.NoError(t, err)
+
+	// Wait for replication
+	time.Sleep(1 * time.Second)
+
+	// Verify keys exist on all nodes before anything happens
+	for i := 0; i < 3; i++ {
+		getResp, err := clus.clients[i].Get(ctx, "expired-before-restart/key1")
+		require.NoError(t, err)
+		require.Len(t, getResp.Kvs, 1, "node %d should have key1 before expiry", i)
+	}
+
+	// Wait for the lease to fully expire (TTL=10s + check interval + margin)
+	t.Log("Waiting 14s for lease to expire before cluster restart...")
+	time.Sleep(14 * time.Second)
+
+	// Verify lease has expired before we restart
+	ttlResp, err := clus.clients[0].TimeToLive(ctx, leaseID)
+	require.NoError(t, err)
+	require.Equal(t, int64(-1), ttlResp.TTL, "lease should have expired before restart")
+	t.Logf("Lease TTL before restart: %d (confirmed expired)", ttlResp.TTL)
+
+	// Verify keys are already deleted
+	getResp, err := clus.clients[0].Get(ctx, "expired-before-restart/key1")
+	require.NoError(t, err)
+	require.Len(t, getResp.Kvs, 0, "key1 should be deleted before restart")
+
+	// Close all clients and stop all servers
+	t.Log("Stopping all 3 etcd servers...")
+	for i := 0; i < 3; i++ {
+		clus.clients[i].Close()
+		clus.clients[i] = nil
+		clus.servers[i].Stop()
+	}
+	time.Sleep(1 * time.Second)
+
+	// Restart all 3 servers with new ports
+	t.Log("Restarting all 3 etcd servers...")
+	for i := 0; i < 3; i++ {
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+		newAddr := listener.Addr().String()
+		listener.Close()
+
+		newServer, err := etcdapi.NewServer(etcdapi.ServerConfig{
+			Store:     clus.kvStores[i],
+			Address:   newAddr,
+			ClusterID: 1000,
+			MemberID:  uint64(i + 1),
+		})
+		require.NoError(t, err)
+		clus.servers[i] = newServer
+
+		go func(srv *etcdapi.Server) {
+			if err := srv.Start(); err != nil {
+				t.Logf("Restarted server error: %v", err)
+			}
+		}(newServer)
+
+		// Wire up OnLeaderChange for lease expiry
+		leaseManager := newServer.GetLeaseManager()
+		if leaseManager != nil {
+			go func(rn memory.RaftNode, lm *etcdapi.LeaseManager) {
+				for status := range rn.LeaderChangeC() {
+					lm.OnLeaderChange(status)
+				}
+			}(clus.raftNodes[i], leaseManager)
+		}
+
+		cli, err := NewEtcdClient([]string{newAddr}, 5*time.Second)
+		require.NoError(t, err)
+		clus.clients[i] = cli
+	}
+
+	// Wait for cluster to stabilize after restart
+	t.Log("Waiting for cluster to stabilize after restart...")
+	time.Sleep(3 * time.Second)
+
+	// Verify the expired lease is still reported as expired after restart
+	for i := 0; i < 3; i++ {
+		ttlResp, err := clus.clients[i].TimeToLive(ctx, leaseID)
+		require.NoError(t, err)
+		assert.Equal(t, int64(-1), ttlResp.TTL, "node %d: expired lease should still be TTL=-1 after restart", i)
+		t.Logf("Node %d: expired lease TTL after restart: %d", i, ttlResp.TTL)
+	}
+
+	// Verify expired keys are not resurrected after restart
+	for i := 0; i < 3; i++ {
+		getResp, err := clus.clients[i].Get(ctx, "expired-before-restart/key1")
+		require.NoError(t, err)
+		assert.Len(t, getResp.Kvs, 0, "node %d: key1 should not exist after restart", i)
+
+		getResp, err = clus.clients[i].Get(ctx, "expired-before-restart/key2")
+		require.NoError(t, err)
+		assert.Len(t, getResp.Kvs, 0, "node %d: key2 should not exist after restart", i)
+	}
+
+	// Verify long-lived lease survived the restart
+	for i := 0; i < 3; i++ {
+		ttlResp, err := clus.clients[i].TimeToLive(ctx, longID)
+		require.NoError(t, err)
+		assert.Greater(t, ttlResp.TTL, int64(0), "node %d: long-lived lease should still be alive after restart", i)
+		t.Logf("Node %d: long-lived lease TTL after restart: %d", i, ttlResp.TTL)
+	}
+
+	// Verify long-lived lease key survived
+	for i := 0; i < 3; i++ {
+		getResp, err := clus.clients[i].Get(ctx, "expired-before-restart/long")
+		require.NoError(t, err)
+		assert.Len(t, getResp.Kvs, 1, "node %d: long-lived key should survive restart", i)
+	}
+
+	// Verify KeepAlive on long lease still works after restart
+	kaResp, err := clus.clients[0].KeepAliveOnce(ctx, longID)
+	require.NoError(t, err)
+	assert.Greater(t, kaResp.TTL, int64(0))
+
+	// Verify granting a new lease works after restart
+	newResp, err := clus.clients[0].Grant(ctx, 60)
+	require.NoError(t, err)
+	assert.Greater(t, newResp.TTL, int64(0))
+	t.Logf("New lease after restart: ID=%d, TTL=%d", newResp.ID, newResp.TTL)
+
+	t.Log("3-node cluster expired-before-restart: PASSED")
+}
+
+// ============================================================================
+// 3-Node cluster: lease granted via follower, expired before restart
+// ============================================================================
+
+// TestLeaseExpiry_3NodeCluster_FollowerGrantExpiredBeforeRestart tests that a
+// lease granted via a follower node, which has expired before the cluster
+// restarts, does not reappear after the cluster comes back online.
+func TestLeaseExpiry_3NodeCluster_FollowerGrantExpiredBeforeRestart(t *testing.T) {
+	clus := newEtcdCluster(t, 3)
+	defer clus.Close(t)
+
+	ctx := context.Background()
+
+	// Determine leader and follower
+	leaderIdx := -1
+	followerIdx := -1
+	for i := 0; i < 3; i++ {
+		status := clus.kvStores[i].GetRaftStatus()
+		t.Logf("Node %d: state=%s, nodeID=%d, leaderID=%d", i, status.State, status.NodeID, status.LeaderID)
+		if status.NodeID == status.LeaderID && status.LeaderID != 0 {
+			leaderIdx = i
+		}
+	}
+	if leaderIdx == -1 {
+		leaderIdx = 0
+	}
+	for i := 0; i < 3; i++ {
+		if i != leaderIdx {
+			followerIdx = i
+			break
+		}
+	}
+	t.Logf("Leader=node %d, Follower=node %d", leaderIdx, followerIdx)
+
+	// Grant lease with 10s TTL via FOLLOWER
+	leaseResp, err := clus.clients[followerIdx].Grant(ctx, 10)
+	require.NoError(t, err)
+	leaseID := leaseResp.ID
+	t.Logf("Granted lease via follower (node %d), ID=%d, TTL=10s", followerIdx, leaseID)
+
+	// Put keys with the lease via follower
+	_, err = clus.clients[followerIdx].Put(ctx, "follower-restart/key1", "v1", clientv3.WithLease(leaseID))
+	require.NoError(t, err)
+	_, err = clus.clients[followerIdx].Put(ctx, "follower-restart/key2", "v2", clientv3.WithLease(leaseID))
+	require.NoError(t, err)
+
+	// Wait for replication
+	time.Sleep(1 * time.Second)
+
+	// Verify keys exist on leader
+	getResp, err := clus.clients[leaderIdx].Get(ctx, "follower-restart/key1")
+	require.NoError(t, err)
+	require.Len(t, getResp.Kvs, 1, "leader should have key1")
+
+	// Wait for the lease to fully expire (TTL=10s + check interval + margin)
+	t.Log("Waiting 14s for follower-granted lease to expire...")
+	time.Sleep(14 * time.Second)
+
+	// Verify lease has expired before restart
+	ttlResp, err := clus.clients[leaderIdx].TimeToLive(ctx, leaseID)
+	require.NoError(t, err)
+	require.Equal(t, int64(-1), ttlResp.TTL, "follower-granted lease should have expired")
+
+	// Verify keys deleted
+	getResp, err = clus.clients[leaderIdx].Get(ctx, "follower-restart/key1")
+	require.NoError(t, err)
+	require.Len(t, getResp.Kvs, 0, "key1 should be deleted before restart")
+
+	// Stop all servers
+	t.Log("Stopping all 3 etcd servers...")
+	for i := 0; i < 3; i++ {
+		clus.clients[i].Close()
+		clus.clients[i] = nil
+		clus.servers[i].Stop()
+	}
+	time.Sleep(1 * time.Second)
+
+	// Restart all servers
+	t.Log("Restarting all 3 etcd servers...")
+	for i := 0; i < 3; i++ {
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+		newAddr := listener.Addr().String()
+		listener.Close()
+
+		newServer, err := etcdapi.NewServer(etcdapi.ServerConfig{
+			Store:     clus.kvStores[i],
+			Address:   newAddr,
+			ClusterID: 1000,
+			MemberID:  uint64(i + 1),
+		})
+		require.NoError(t, err)
+		clus.servers[i] = newServer
+
+		go func(srv *etcdapi.Server) {
+			if err := srv.Start(); err != nil {
+				t.Logf("Restarted server error: %v", err)
+			}
+		}(newServer)
+
+		leaseManager := newServer.GetLeaseManager()
+		if leaseManager != nil {
+			go func(rn memory.RaftNode, lm *etcdapi.LeaseManager) {
+				for status := range rn.LeaderChangeC() {
+					lm.OnLeaderChange(status)
+				}
+			}(clus.raftNodes[i], leaseManager)
+		}
+
+		cli, err := NewEtcdClient([]string{newAddr}, 5*time.Second)
+		require.NoError(t, err)
+		clus.clients[i] = cli
+	}
+
+	// Wait for cluster to stabilize
+	time.Sleep(3 * time.Second)
+
+	// Verify the follower-granted lease is still expired after restart
+	for i := 0; i < 3; i++ {
+		ttlResp, err := clus.clients[i].TimeToLive(ctx, leaseID)
+		require.NoError(t, err)
+		assert.Equal(t, int64(-1), ttlResp.TTL,
+			"node %d: follower-granted expired lease should still be TTL=-1 after restart", i)
+	}
+
+	// Verify keys not resurrected
+	for i := 0; i < 3; i++ {
+		getResp, err := clus.clients[i].Get(ctx, "follower-restart/key1")
+		require.NoError(t, err)
+		assert.Len(t, getResp.Kvs, 0, "node %d: key1 should not exist after restart", i)
+
+		getResp, err = clus.clients[i].Get(ctx, "follower-restart/key2")
+		require.NoError(t, err)
+		assert.Len(t, getResp.Kvs, 0, "node %d: key2 should not exist after restart", i)
+	}
+
+	t.Log("3-node cluster follower-grant expired-before-restart: PASSED")
+}
+
+// ============================================================================
+// 3-Node cluster: lease expires DURING restart (TTL passes while servers down)
+// ============================================================================
+
+// TestLeaseExpiry_3NodeCluster_ExpiresDuringRestart tests that a lease which
+// is still alive when the servers stop, but whose TTL passes during the
+// downtime, is correctly identified as expired after the cluster restarts.
+func TestLeaseExpiry_3NodeCluster_ExpiresDuringRestart(t *testing.T) {
+	clus := newEtcdCluster(t, 3)
+	defer clus.Close(t)
+
+	ctx := context.Background()
+
+	// Grant lease with 5s TTL
+	leaseResp, err := clus.clients[0].Grant(ctx, 5)
+	require.NoError(t, err)
+	leaseID := leaseResp.ID
+	t.Logf("Granted lease ID=%d, TTL=5s", leaseID)
+
+	// Put key with the lease
+	_, err = clus.clients[0].Put(ctx, "expire-during-restart/key1", "v1", clientv3.WithLease(leaseID))
+	require.NoError(t, err)
+
+	// Also create a long-lived lease as control
+	longResp, err := clus.clients[0].Grant(ctx, 300)
+	require.NoError(t, err)
+	longID := longResp.ID
+	_, err = clus.clients[0].Put(ctx, "expire-during-restart/long", "persist", clientv3.WithLease(longID))
+	require.NoError(t, err)
+
+	// Wait for replication
+	time.Sleep(1 * time.Second)
+
+	// Verify lease is still alive
+	ttlResp, err := clus.clients[0].TimeToLive(ctx, leaseID)
+	require.NoError(t, err)
+	require.Greater(t, ttlResp.TTL, int64(0), "lease should still be alive before stop")
+	t.Logf("Lease TTL before stop: %d", ttlResp.TTL)
+
+	// Stop all servers WHILE the lease is still alive
+	t.Log("Stopping all 3 etcd servers (lease still alive)...")
+	for i := 0; i < 3; i++ {
+		clus.clients[i].Close()
+		clus.clients[i] = nil
+		clus.servers[i].Stop()
+	}
+
+	// Wait long enough for the lease TTL to pass during downtime
+	// TTL=5s + margin=3s = 8s
+	t.Log("Waiting 8s for TTL to pass during downtime...")
+	time.Sleep(8 * time.Second)
+
+	// Restart all servers
+	t.Log("Restarting all 3 etcd servers...")
+	for i := 0; i < 3; i++ {
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+		newAddr := listener.Addr().String()
+		listener.Close()
+
+		newServer, err := etcdapi.NewServer(etcdapi.ServerConfig{
+			Store:     clus.kvStores[i],
+			Address:   newAddr,
+			ClusterID: 1000,
+			MemberID:  uint64(i + 1),
+		})
+		require.NoError(t, err)
+		clus.servers[i] = newServer
+
+		go func(srv *etcdapi.Server) {
+			if err := srv.Start(); err != nil {
+				t.Logf("Restarted server error: %v", err)
+			}
+		}(newServer)
+
+		leaseManager := newServer.GetLeaseManager()
+		if leaseManager != nil {
+			go func(rn memory.RaftNode, lm *etcdapi.LeaseManager) {
+				for status := range rn.LeaderChangeC() {
+					lm.OnLeaderChange(status)
+				}
+			}(clus.raftNodes[i], leaseManager)
+		}
+
+		cli, err := NewEtcdClient([]string{newAddr}, 5*time.Second)
+		require.NoError(t, err)
+		clus.clients[i] = cli
+	}
+
+	// Wait for stabilization + lease expiry check (interval=1s + margin=3s)
+	t.Log("Waiting for cluster to stabilize and detect expired lease...")
+	time.Sleep(5 * time.Second)
+
+	// The lease was granted with original GrantTime preserved in WAL,
+	// so after replay its TTL should have already passed.
+	// The expiry checker should clean it up.
+	for i := 0; i < 3; i++ {
+		ttlResp, err := clus.clients[i].TimeToLive(ctx, leaseID)
+		require.NoError(t, err)
+		assert.Equal(t, int64(-1), ttlResp.TTL,
+			"node %d: lease whose TTL passed during downtime should be expired", i)
+	}
+
+	// Verify key was cleaned up
+	for i := 0; i < 3; i++ {
+		getResp, err := clus.clients[i].Get(ctx, "expire-during-restart/key1")
+		require.NoError(t, err)
+		assert.Len(t, getResp.Kvs, 0,
+			"node %d: key should be deleted after lease expired during downtime", i)
+	}
+
+	// Verify long-lived lease survived
+	for i := 0; i < 3; i++ {
+		ttlResp, err := clus.clients[i].TimeToLive(ctx, longID)
+		require.NoError(t, err)
+		assert.Greater(t, ttlResp.TTL, int64(0),
+			"node %d: long-lived lease should still be alive", i)
+
+		getResp, err := clus.clients[i].Get(ctx, "expire-during-restart/long")
+		require.NoError(t, err)
+		assert.Len(t, getResp.Kvs, 1,
+			"node %d: long-lived key should survive", i)
+	}
+
+	t.Log("3-node cluster expires-during-restart: PASSED")
+}
+
+// ============================================================================
+// 3-Node cluster: mixed leases with different TTLs + restart
+// ============================================================================
+
+// TestLeaseExpiry_3NodeCluster_MixedTTL_Restart tests a realistic scenario
+// with multiple leases of different TTLs: some expire before restart, some
+// expire during restart, and some survive the restart.
+func TestLeaseExpiry_3NodeCluster_MixedTTL_Restart(t *testing.T) {
+	clus := newEtcdCluster(t, 3)
+	defer clus.Close(t)
+
+	ctx := context.Background()
+
+	// Lease A: short TTL, will expire BEFORE restart
+	respA, err := clus.clients[0].Grant(ctx, 3)
+	require.NoError(t, err)
+	leaseA := respA.ID
+	_, err = clus.clients[0].Put(ctx, "mixed/short", "va", clientv3.WithLease(leaseA))
+	require.NoError(t, err)
+	t.Logf("Lease A (short, 3s): ID=%d", leaseA)
+
+	// Lease B: medium TTL, will expire DURING restart downtime
+	respB, err := clus.clients[0].Grant(ctx, 10)
+	require.NoError(t, err)
+	leaseB := respB.ID
+	_, err = clus.clients[0].Put(ctx, "mixed/medium", "vb", clientv3.WithLease(leaseB))
+	require.NoError(t, err)
+	t.Logf("Lease B (medium, 10s): ID=%d", leaseB)
+
+	// Lease C: long TTL, should survive everything
+	respC, err := clus.clients[0].Grant(ctx, 300)
+	require.NoError(t, err)
+	leaseC := respC.ID
+	_, err = clus.clients[0].Put(ctx, "mixed/long", "vc", clientv3.WithLease(leaseC))
+	require.NoError(t, err)
+	t.Logf("Lease C (long, 300s): ID=%d", leaseC)
+
+	// Wait for replication + lease A to expire (3s TTL + check + margin)
+	t.Log("Waiting 7s for lease A to expire...")
+	time.Sleep(7 * time.Second)
+
+	// Verify A expired, B alive, C alive
+	ttlA, err := clus.clients[0].TimeToLive(ctx, leaseA)
+	require.NoError(t, err)
+	require.Equal(t, int64(-1), ttlA.TTL, "lease A should be expired before restart")
+
+	ttlB, err := clus.clients[0].TimeToLive(ctx, leaseB)
+	require.NoError(t, err)
+	require.Greater(t, ttlB.TTL, int64(0), "lease B should still be alive before restart")
+	t.Logf("Before restart: A TTL=%d, B TTL=%d", ttlA.TTL, ttlB.TTL)
+
+	// Stop all servers
+	t.Log("Stopping all 3 etcd servers...")
+	for i := 0; i < 3; i++ {
+		clus.clients[i].Close()
+		clus.clients[i] = nil
+		clus.servers[i].Stop()
+	}
+
+	// Wait for lease B's TTL to pass during downtime
+	// B was granted ~7s ago with TTL=10s, so ~3s remaining + margin
+	t.Log("Waiting 6s for lease B TTL to pass during downtime...")
+	time.Sleep(6 * time.Second)
+
+	// Restart all servers
+	t.Log("Restarting all 3 etcd servers...")
+	for i := 0; i < 3; i++ {
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+		newAddr := listener.Addr().String()
+		listener.Close()
+
+		newServer, err := etcdapi.NewServer(etcdapi.ServerConfig{
+			Store:     clus.kvStores[i],
+			Address:   newAddr,
+			ClusterID: 1000,
+			MemberID:  uint64(i + 1),
+		})
+		require.NoError(t, err)
+		clus.servers[i] = newServer
+
+		go func(srv *etcdapi.Server) {
+			if err := srv.Start(); err != nil {
+				t.Logf("Restarted server error: %v", err)
+			}
+		}(newServer)
+
+		leaseManager := newServer.GetLeaseManager()
+		if leaseManager != nil {
+			go func(rn memory.RaftNode, lm *etcdapi.LeaseManager) {
+				for status := range rn.LeaderChangeC() {
+					lm.OnLeaderChange(status)
+				}
+			}(clus.raftNodes[i], leaseManager)
+		}
+
+		cli, err := NewEtcdClient([]string{newAddr}, 5*time.Second)
+		require.NoError(t, err)
+		clus.clients[i] = cli
+	}
+
+	// Wait for cluster to stabilize and expiry checker to run
+	t.Log("Waiting for cluster to stabilize...")
+	time.Sleep(5 * time.Second)
+
+	// Verify lease A (expired before restart): still expired
+	for i := 0; i < 3; i++ {
+		ttl, err := clus.clients[i].TimeToLive(ctx, leaseA)
+		require.NoError(t, err)
+		assert.Equal(t, int64(-1), ttl.TTL,
+			"node %d: lease A (expired before restart) should be TTL=-1", i)
+	}
+
+	// Verify lease B (expired during downtime): should be expired now
+	for i := 0; i < 3; i++ {
+		ttl, err := clus.clients[i].TimeToLive(ctx, leaseB)
+		require.NoError(t, err)
+		assert.Equal(t, int64(-1), ttl.TTL,
+			"node %d: lease B (expired during downtime) should be TTL=-1", i)
+	}
+
+	// Verify lease C (long-lived): should still be alive
+	for i := 0; i < 3; i++ {
+		ttl, err := clus.clients[i].TimeToLive(ctx, leaseC)
+		require.NoError(t, err)
+		assert.Greater(t, ttl.TTL, int64(0),
+			"node %d: lease C (long-lived) should still be alive", i)
+	}
+
+	// Verify keys: A and B deleted, C survives
+	for i := 0; i < 3; i++ {
+		getA, err := clus.clients[i].Get(ctx, "mixed/short")
+		require.NoError(t, err)
+		assert.Len(t, getA.Kvs, 0, "node %d: short key should be deleted", i)
+
+		getB, err := clus.clients[i].Get(ctx, "mixed/medium")
+		require.NoError(t, err)
+		assert.Len(t, getB.Kvs, 0, "node %d: medium key should be deleted", i)
+
+		getC, err := clus.clients[i].Get(ctx, "mixed/long")
+		require.NoError(t, err)
+		assert.Len(t, getC.Kvs, 1, "node %d: long key should survive", i)
+	}
+
+	t.Log("3-node cluster mixed-TTL restart: PASSED")
 }

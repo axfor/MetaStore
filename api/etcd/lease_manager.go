@@ -192,8 +192,18 @@ func (lm *LeaseManager) TimeToLive(id int64) (*kvstore.Lease, error) {
 		return nil, ErrLeaseNotFound
 	}
 
-	// Delegate to store
-	return lm.store.LeaseTimeToLive(context.Background(), id)
+	// Delegate to store. The cache and store may be briefly out of sync
+	// (e.g., SyncFromStore loaded a lease that was concurrently revoked),
+	// so treat any store "not found" error as ErrLeaseNotFound.
+	lease, err := lm.store.LeaseTimeToLive(context.Background(), id)
+	if err != nil {
+		// Remove stale entry from cache
+		lm.mu.Lock()
+		delete(lm.leases, id)
+		lm.mu.Unlock()
+		return nil, ErrLeaseNotFound
+	}
+	return lease, nil
 }
 
 // Leases returns all leases

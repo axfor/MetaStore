@@ -16,6 +16,7 @@ package memory
 
 import (
 	"metaStore/internal/kvstore"
+	"time"
 )
 
 // store_direct.go nogloballockoperationmethod
@@ -216,20 +217,31 @@ func (m *MemoryEtcd) applyTxnWithShardLocks(compares []kvstore.Compare, thenOps 
 //   - opType: operationtype ("LEASE_GRANT" or "LEASE_REVOKE")
 //   - leaseID: lease ID
 //   - ttl: TTL ( GRANT when using)
+// applyLeaseGrantDirect applies a LEASE_GRANT with the original GrantTime preserved.
+// grantTimeNano is the unix nano timestamp from the Raft log entry.
+// Using the original GrantTime ensures WAL replay does not reset the lease TTL.
+func (m *MemoryEtcd) applyLeaseGrantDirect(leaseID int64, ttl int64, grantTimeNano int64) {
+	grantTime := timeNow()
+	if grantTimeNano > 0 {
+		grantTime = time.Unix(0, grantTimeNano)
+	}
+	m.leaseMu.Lock()
+	if m.leases == nil {
+		m.leases = make(map[int64]*kvstore.Lease)
+	}
+	m.leases[leaseID] = &kvstore.Lease{
+		ID:        leaseID,
+		TTL:       ttl,
+		GrantTime: grantTime,
+		Keys:      make(map[string]bool),
+	}
+	m.leaseMu.Unlock()
+}
+
 func (m *MemoryEtcd) applyLeaseOperationDirect(opType string, leaseID int64, ttl int64) {
 	switch opType {
 	case "LEASE_GRANT":
-		m.leaseMu.Lock()
-		if m.leases == nil {
-			m.leases = make(map[int64]*kvstore.Lease)
-		}
-		m.leases[leaseID] = &kvstore.Lease{
-			ID:        leaseID,
-			TTL:       ttl,
-			GrantTime: timeNow(),
-			Keys:      make(map[string]bool),
-		}
-		m.leaseMu.Unlock()
+		m.applyLeaseGrantDirect(leaseID, ttl, 0)
 
 	case "LEASE_REVOKE":
 		m.leaseMu.Lock()

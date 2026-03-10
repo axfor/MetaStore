@@ -107,7 +107,8 @@ type RaftOperation struct {
 	SeqNum   string `json:"seq_num"` // for sync wait
 
 	// Lease operations
-	TTL int64 `json:"ttl"`
+	TTL       int64 `json:"ttl"`
+	GrantTime int64 `json:"grant_time,omitempty"` // unix nano, for WAL replay to preserve original GrantTime
 
 	// Transaction operations
 	Compares []kvstore.Compare `json:"compares,omitempty"`
@@ -262,8 +263,8 @@ func (r *RocksDB) applyOperation(op RaftOperation) {
 		}
 
 	case "LEASE_GRANT":
-		// Apply Lease Grant
-		if err := r.leaseGrantUnlocked(op.LeaseID, op.TTL); err != nil {
+		// Apply Lease Grant (preserve original GrantTime for WAL replay correctness)
+		if err := r.leaseGrantUnlockedWithTime(op.LeaseID, op.TTL, op.GrantTime); err != nil {
 			log.Error("Failed to apply LEASE_GRANT operation",
 				zap.Error(err),
 				zap.Int64("leaseID", op.LeaseID),
@@ -355,7 +356,7 @@ func (r *RocksDB) applyOperationsBatch(ops []*RaftOperation) {
 			watchEvents = append(watchEvents, events...)
 
 		case "LEASE_GRANT":
-			if err := r.prepareLeaseGrantBatch(batch, op.LeaseID, op.TTL); err != nil {
+			if err := r.prepareLeaseGrantBatchWithTime(batch, op.LeaseID, op.TTL, op.GrantTime); err != nil {
 				log.Error("Failed to prepare LEASE_GRANT in batch",
 					zap.Error(err),
 					zap.Int64("leaseID", op.LeaseID),
@@ -877,10 +878,20 @@ func (r *RocksDB) prepareDeleteBatch(batch *grocksdb.WriteBatch, key, rangeEnd s
 
 // prepareLeaseGrantBatch prepares a LEASE_GRANT operation to be added to a WriteBatch
 func (r *RocksDB) prepareLeaseGrantBatch(batch *grocksdb.WriteBatch, leaseID, ttl int64) error {
+	return r.prepareLeaseGrantBatchWithTime(batch, leaseID, ttl, 0)
+}
+
+// prepareLeaseGrantBatchWithTime prepares a LEASE_GRANT with an explicit GrantTime.
+func (r *RocksDB) prepareLeaseGrantBatchWithTime(batch *grocksdb.WriteBatch, leaseID, ttl int64, grantTimeNano int64) error {
+	grantTime := timeNow()
+	if grantTimeNano > 0 {
+		grantTime = time.Unix(0, grantTimeNano)
+	}
+
 	lease := &kvstore.Lease{
 		ID:        leaseID,
 		TTL:       ttl,
-		GrantTime: timeNow(), // Set GrantTime
+		GrantTime: grantTime,
 		Keys:      make(map[string]bool),
 	}
 
@@ -1244,10 +1255,11 @@ func (r *RocksDB) LeaseGrant(ctx context.Context, id int64, ttl int64) (*kvstore
 	}
 
 	op := RaftOperation{
-		Type:    "LEASE_GRANT",
-		LeaseID: id,
-		TTL:     ttl,
-		SeqNum:  seqNum,
+		Type:      "LEASE_GRANT",
+		LeaseID:   id,
+		TTL:       ttl,
+		GrantTime: timeNow().UnixNano(),
+		SeqNum:    seqNum,
 	}
 
 	data, err := marshalRaftOperation(&op)
@@ -1279,10 +1291,22 @@ func (r *RocksDB) LeaseGrant(ctx context.Context, id int64, ttl int64) (*kvstore
 
 // leaseGrantUnlocked applies lease grant (called after Raft commit)
 func (r *RocksDB) leaseGrantUnlocked(id int64, ttl int64) error {
+	return r.leaseGrantUnlockedWithTime(id, ttl, 0)
+}
+
+// leaseGrantUnlockedWithTime applies lease grant with an explicit GrantTime.
+// grantTimeNano is the unix nano timestamp from the Raft log entry.
+// Using the original GrantTime ensures WAL replay does not reset the lease TTL.
+func (r *RocksDB) leaseGrantUnlockedWithTime(id int64, ttl int64, grantTimeNano int64) error {
+	grantTime := timeNow()
+	if grantTimeNano > 0 {
+		grantTime = time.Unix(0, grantTimeNano)
+	}
+
 	lease := &kvstore.Lease{
 		ID:        id,
 		TTL:       ttl,
-		GrantTime: timeNow(),
+		GrantTime: grantTime,
 		Keys:      make(map[string]bool),
 	}
 
