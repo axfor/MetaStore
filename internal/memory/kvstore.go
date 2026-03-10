@@ -70,7 +70,8 @@ type RaftOperation struct {
 	SeqNum   string `json:"seq_num"` // for synchronouswaitcolumn
 
 	// Lease operation
-	TTL int64 `json:"ttl"`
+	TTL       int64  `json:"ttl"`
+	GrantTime int64  `json:"grant_time,omitempty"` // unix nano, for WAL replay to preserve original GrantTime
 
 	// Transaction operation
 	Compares []kvstore.Compare `json:"compares,omitempty"`
@@ -226,7 +227,7 @@ func (m *Memory) applyOperation(op RaftOperation) {
 
 	case "LEASE_GRANT":
 		// ✅ use lease operation (leaseMu lock)
-		m.MemoryEtcd.applyLeaseOperationDirect("LEASE_GRANT", op.LeaseID, op.TTL)
+		m.MemoryEtcd.applyLeaseGrantDirect(op.LeaseID, op.TTL, op.GrantTime)
 
 	case "LEASE_REVOKE":
 		// ✅ use lease operation
@@ -436,10 +437,11 @@ func (m *Memory) LeaseGrant(ctx context.Context, id int64, ttl int64) (*kvstore.
 	m.pendingMu.Unlock()
 
 	op := RaftOperation{
-		Type:    "LEASE_GRANT",
-		LeaseID: id,
-		TTL:     ttl,
-		SeqNum:  seqNum,
+		Type:      "LEASE_GRANT",
+		LeaseID:   id,
+		TTL:       ttl,
+		GrantTime: timeNow().UnixNano(),
+		SeqNum:    seqNum,
 	}
 
 	data, err := serializeOperation(op)
