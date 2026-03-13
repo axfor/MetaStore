@@ -119,9 +119,9 @@ func protoToLease(pbLease *raftpb.LeaseProto) *kvstore.Lease {
 
 ---
 
-### 3. RocksDB 引擎集成
+### 3. Pebble 引擎集成
 
-**文件**: [internal/rocksdb/kvstore.go](../internal/rocksdb/kvstore.go)
+**文件**: [internal/pebble/kvstore.go](../internal/pebble/kvstore.go)
 
 **替换位置** (共 8 处):
 
@@ -208,11 +208,11 @@ lease, err := common.DeserializeLease(it.Value().Data())
 
 #### 2. 集成测试
 
-✅ **TestLease_RocksDB** - RocksDB Lease 操作
+✅ **TestLease_Pebble** - Pebble Lease 操作
 - Lease Grant, Renew, Revoke
 - 完整的生命周期测试
 
-✅ **TestLeaseExpiry_RocksDB** - Lease 过期测试
+✅ **TestLeaseExpiry_Pebble** - Lease 过期测试
 - 自动过期和清理
 - 验证过期 Lease 被正确删除
 
@@ -265,7 +265,7 @@ lease, err := common.DeserializeLease(it.Value().Data())
    - 复用 `common.LeaseToProto()` 和 `common.ProtoToLease()` (+2 -27)
    - 添加 `import "metaStore/internal/common"`
 
-2. **internal/rocksdb/kvstore.go**
+2. **internal/pebble/kvstore.go**
    - 添加 `import "metaStore/internal/common"`
    - 替换所有 GOB 编码/解码为 Protobuf (8 处)
      - 序列化: 5 处 (prepareLeaseGrantBatch, leaseGrantUnlocked, LeaseRenew, preparePutBatch×2)
@@ -273,7 +273,7 @@ lease, err := common.DeserializeLease(it.Value().Data())
 
 ### 代码复用
 
-- Memory 和 RocksDB 共享同一套 Lease 转换逻辑
+- Memory 和 Pebble 共享同一套 Lease 转换逻辑
 - 避免重复代码，便于维护
 
 ---
@@ -309,7 +309,7 @@ server:
 
 ## 影响范围
 
-### RocksDB 所有 Lease 操作
+### Pebble 所有 Lease 操作
 
 - ✅ Lease Grant（创建）
 - ✅ Lease Renew（续约）
@@ -348,7 +348,7 @@ server:
 
 - ✅ 实现 Lease Protobuf 序列化，性能提升 **20.6x**（小 Lease）
 - ✅ 完全向后兼容，支持旧 GOB Lease
-- ✅ Memory 和 RocksDB 双引擎支持
+- ✅ Memory 和 Pebble 双引擎支持
 - ✅ 所有测试通过，包括集成测试
 - ✅ 代码复用，统一转换逻辑
 

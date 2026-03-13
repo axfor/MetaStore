@@ -2,7 +2,7 @@
 
 ## Overview
 
-Added new Makefile commands for running performance tests separately for Memory and RocksDB storage backends.
+Added new Makefile commands for running performance tests separately for Memory and Pebble storage backends.
 
 ---
 
@@ -27,21 +27,21 @@ make test-perf-memory
 
 ---
 
-### 2. `make test-perf-rocksdb`
+### 2. `make test-perf-pebble`
 
-Run only RocksDB storage performance tests.
+Run only Pebble storage performance tests.
 
 **Command:**
 ```bash
-make test-perf-rocksdb
+make test-perf-pebble
 ```
 
 **Tests Executed:**
-- `TestRocksDBPerformance_LargeScaleLoad` - 50 clients, 1000 ops each
-- `TestRocksDBPerformance_SustainedLoad` - 20 clients, 30s duration
-- `TestRocksDBPerformance_MixedWorkload` - Mixed PUT/GET/DELETE/RANGE operations
-- `TestRocksDBPerformance_Compaction` - 2K keys with updates and compaction
-- `TestRocksDBPerformance_WatchScalability` - 10 watchers, 10 events
+- `TestPebblePerformance_LargeScaleLoad` - 50 clients, 1000 ops each
+- `TestPebblePerformance_SustainedLoad` - 20 clients, 30s duration
+- `TestPebblePerformance_MixedWorkload` - Mixed PUT/GET/DELETE/RANGE operations
+- `TestPebblePerformance_Compaction` - 2K keys with updates and compaction
+- `TestPebblePerformance_WatchScalability` - 10 watchers, 10 events
 
 **Timeout:** 10 minutes
 
@@ -49,7 +49,7 @@ make test-perf-rocksdb
 
 ### 3. `make test-perf`
 
-Run all performance tests (both Memory and RocksDB).
+Run all performance tests (both Memory and Pebble).
 
 **Command:**
 ```bash
@@ -58,7 +58,7 @@ make test-perf
 
 **Tests Executed:**
 - All Memory performance tests (4 tests)
-- All RocksDB performance tests (5 tests)
+- All Pebble performance tests (5 tests)
 
 **Total:** 9 performance tests
 
@@ -86,21 +86,21 @@ Memory performance tests completed!
 
 ---
 
-### Run only RocksDB performance tests
+### Run only Pebble performance tests
 ```bash
-make test-perf-rocksdb
+make test-perf-pebble
 ```
 
 **Expected Output:**
 ```
-Running RocksDB storage performance tests...
-=== RUN   TestRocksDBPerformance_LargeScaleLoad
-=== RUN   TestRocksDBPerformance_SustainedLoad
-=== RUN   TestRocksDBPerformance_MixedWorkload
-=== RUN   TestRocksDBPerformance_Compaction
-=== RUN   TestRocksDBPerformance_WatchScalability
+Running Pebble storage performance tests...
+=== RUN   TestPebblePerformance_LargeScaleLoad
+=== RUN   TestPebblePerformance_SustainedLoad
+=== RUN   TestPebblePerformance_MixedWorkload
+=== RUN   TestPebblePerformance_Compaction
+=== RUN   TestPebblePerformance_WatchScalability
 PASS
-RocksDB performance tests completed!
+Pebble performance tests completed!
 ```
 
 ---
@@ -119,12 +119,12 @@ Testing Memory storage performance...
 === RUN   TestMemoryPerformance_MixedWorkload
 === RUN   TestMemoryPerformance_TransactionThroughput
 PASS
-Testing RocksDB storage performance...
-=== RUN   TestRocksDBPerformance_LargeScaleLoad
-=== RUN   TestRocksDBPerformance_SustainedLoad
-=== RUN   TestRocksDBPerformance_MixedWorkload
-=== RUN   TestRocksDBPerformance_Compaction
-=== RUN   TestRocksDBPerformance_WatchScalability
+Testing Pebble storage performance...
+=== RUN   TestPebblePerformance_LargeScaleLoad
+=== RUN   TestPebblePerformance_SustainedLoad
+=== RUN   TestPebblePerformance_MixedWorkload
+=== RUN   TestPebblePerformance_Compaction
+=== RUN   TestPebblePerformance_WatchScalability
 PASS
 All performance tests completed!
 ```
@@ -140,12 +140,12 @@ All performance tests completed!
 | `make test` | Run all tests (unit + integration) | 45m |
 | `make test-unit` | Run only unit tests | 10m |
 | `make test-integration` | Run only integration tests | 20m |
-| `make test-storage` | Run only RocksDB storage tests | - |
+| `make test-storage` | Run only Pebble storage tests | - |
 | `make test-coverage` | Run tests with coverage report | 20m |
 | `make test-maintenance` | Run only Maintenance Service tests | 10m |
 | `make test-quick` | Run quick tests (Status, Hash, Alarm) | 5m |
 | **`make test-perf-memory`** | **Run Memory performance tests** | **10m** |
-| **`make test-perf-rocksdb`** | **Run RocksDB performance tests** | **10m** |
+| **`make test-perf-pebble`** | **Run Pebble performance tests** | **10m** |
 | **`make test-perf`** | **Run all performance tests** | **20m** |
 
 ---
@@ -177,8 +177,8 @@ jobs:
       - uses: actions/checkout@v3
       - name: Run Memory performance tests
         run: make test-perf-memory
-      - name: Run RocksDB performance tests
-        run: make test-perf-rocksdb
+      - name: Run Pebble performance tests
+        run: make test-perf-pebble
 ```
 
 ---
@@ -188,11 +188,11 @@ jobs:
 ### 1. **Faster Iteration**
 Run only the performance tests you need during development:
 - Testing Memory optimizations? Use `make test-perf-memory`
-- Testing RocksDB optimizations? Use `make test-perf-rocksdb`
+- Testing Pebble optimizations? Use `make test-perf-pebble`
 
 ### 2. **CI/CD Efficiency**
 Split performance tests into separate jobs for parallel execution:
-- Memory tests can run in parallel with RocksDB tests
+- Memory tests can run in parallel with Pebble tests
 - Faster feedback on performance regressions
 
 ### 3. **Clear Organization**
@@ -228,19 +228,19 @@ test-perf-memory:
 	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v -timeout=10m -run="TestMemoryPerformance_" ./test/
 	@echo "$(GREEN)Memory performance tests completed!$(NO_COLOR)"
 
-## test-perf-rocksdb: Run RocksDB storage performance tests
-test-perf-rocksdb:
-	@echo "$(CYAN)Running RocksDB storage performance tests...$(NO_COLOR)"
-	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v -timeout=10m -run="TestRocksDBPerformance_" ./test/
-	@echo "$(GREEN)RocksDB performance tests completed!$(NO_COLOR)"
+## test-perf-pebble: Run Pebble storage performance tests
+test-perf-pebble:
+	@echo "$(CYAN)Running Pebble storage performance tests...$(NO_COLOR)"
+	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v -timeout=10m -run="TestPebblePerformance_" ./test/
+	@echo "$(GREEN)Pebble performance tests completed!$(NO_COLOR)"
 
-## test-perf: Run all performance tests (Memory + RocksDB)
+## test-perf: Run all performance tests (Memory + Pebble)
 test-perf:
 	@echo "$(CYAN)Running all performance tests...$(NO_COLOR)"
 	@echo "$(YELLOW)Testing Memory storage performance...$(NO_COLOR)"
 	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v -timeout=10m -run="TestMemoryPerformance_" ./test/
-	@echo "$(YELLOW)Testing RocksDB storage performance...$(NO_COLOR)"
-	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v -timeout=10m -run="TestRocksDBPerformance_" ./test/
+	@echo "$(YELLOW)Testing Pebble storage performance...$(NO_COLOR)"
+	@CGO_ENABLED=1 CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOTEST) -v -timeout=10m -run="TestPebblePerformance_" ./test/
 	@echo "$(GREEN)All performance tests completed!$(NO_COLOR)"
 ```
 
@@ -248,7 +248,7 @@ test-perf:
 
 The commands use Go test name patterns to filter tests:
 - `-run="TestMemoryPerformance_"` - Matches all Memory performance tests
-- `-run="TestRocksDBPerformance_"` - Matches all RocksDB performance tests
+- `-run="TestPebblePerformance_"` - Matches all Pebble performance tests
 
 This leverages the test naming convention established in the test file reorganization.
 

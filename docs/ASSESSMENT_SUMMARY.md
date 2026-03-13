@@ -66,7 +66,7 @@
 api/etcd/      → etcd 兼容 API 层
 internal/kvstore/ → 存储接口层
 internal/memory/  → 内存实现
-internal/rocksdb/ → RocksDB 实现
+internal/pebble/ → Pebble 实现
 ```
 
 ✅ **依赖注入**

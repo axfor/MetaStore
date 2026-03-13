@@ -156,7 +156,7 @@ func (rc *raftNode) isWitness() bool {
 // provided the proposal channel. All log entries are replayed over the
 // commit channel, followed by a nil message (to indicate the channel is
 // current), then new log entries. To shutdown, close proposeC and read errorC.
-// storageType: "memory" or "rocksdb" to separate data directories
+// storageType: "memory" or "pebble" to separate data directories
 func NewNode(id int, peers []string, join bool, getSnapshot func() ([]byte, error), proposeC <-chan string,
 	confChangeC <-chan raftpb.ConfChange, storageType string, cfg *config.Config,
 ) (<-chan *kvstore.Commit, <-chan error, <-chan *snap.Snapshotter, *raftNode) {
@@ -689,7 +689,7 @@ func (rc *raftNode) serveChannels() {
 
 	defer rc.wal.Close()
 
-	// use RocksDB config from config file tick interval
+	// use Pebble config from config file tick interval
 	ticker := time.NewTicker(rc.cfg.Server.Raft.TickInterval)
 	defer ticker.Stop()
 

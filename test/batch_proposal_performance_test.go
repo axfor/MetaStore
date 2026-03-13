@@ -257,45 +257,45 @@ func TestBatchProposal_TrafficSurge(t *testing.T) {
 	t.Logf("✓ Success rate during surge: %.2f%%", float64(success)/float64(success+errors)*100)
 }
 
-// TestBatchProposal_MemoryVsRocksDB compares batch performance between Memory and RocksDB
-func TestBatchProposal_MemoryVsRocksDB(t *testing.T) {
+// TestBatchProposal_MemoryVsPebble compares batch performance between Memory and Pebble
+func TestBatchProposal_MemoryVsPebble(t *testing.T) {
 	if testing.Short() {
-		t.Skip("Skipping memory vs rocksdb comparison test in short mode")
+		t.Skip("Skipping memory vs pebble comparison test in short mode")
 	}
 
-	t.Log("=== Testing Batch Proposal: Memory vs RocksDB Comparison ===")
+	t.Log("=== Testing Batch Proposal: Memory vs Pebble Comparison ===")
 
 	// Test Memory backend with batch
 	t.Log("\n--- Test 1: Memory Backend (Batch Enabled) ---")
 	memoryResult := runLoadTestMemory(t, "memory-batch", 20, 500, true)
 
-	// Test RocksDB backend with batch
-	t.Log("\n--- Test 2: RocksDB Backend (Batch Enabled) ---")
-	rocksdbResult := runLoadTestRocksDB(t, "rocksdb-batch", 20, 500, true)
+	// Test Pebble backend with batch
+	t.Log("\n--- Test 2: Pebble Backend (Batch Enabled) ---")
+	pebbleResult := runLoadTestPebble(t, "pebble-batch", 20, 500, true)
 
 	// Report comparison
-	t.Log("\n=== Memory vs RocksDB Performance Comparison ===")
+	t.Log("\n=== Memory vs Pebble Performance Comparison ===")
 	t.Logf("Memory Backend:")
 	t.Logf("  Throughput: %.2f ops/sec", memoryResult.throughput)
 	t.Logf("  Avg Latency: %v", memoryResult.avgLatency)
 	t.Logf("  Success Rate: %.2f%%", memoryResult.successRate)
 
-	t.Logf("\nRocksDB Backend:")
-	t.Logf("  Throughput: %.2f ops/sec", rocksdbResult.throughput)
-	t.Logf("  Avg Latency: %v", rocksdbResult.avgLatency)
-	t.Logf("  Success Rate: %.2f%%", rocksdbResult.successRate)
+	t.Logf("\nPebble Backend:")
+	t.Logf("  Throughput: %.2f ops/sec", pebbleResult.throughput)
+	t.Logf("  Avg Latency: %v", pebbleResult.avgLatency)
+	t.Logf("  Success Rate: %.2f%%", pebbleResult.successRate)
 
 	t.Logf("\nComparison:")
-	t.Logf("  Memory vs RocksDB Throughput Ratio: %.2fx", memoryResult.throughput/rocksdbResult.throughput)
-	t.Logf("  Memory vs RocksDB Latency Ratio: %.2fx",
-		float64(rocksdbResult.avgLatency)/float64(memoryResult.avgLatency))
+	t.Logf("  Memory vs Pebble Throughput Ratio: %.2fx", memoryResult.throughput/pebbleResult.throughput)
+	t.Logf("  Memory vs Pebble Latency Ratio: %.2fx",
+		float64(pebbleResult.avgLatency)/float64(memoryResult.avgLatency))
 
 	// Both backends should benefit from batching
 	if memoryResult.successRate < 95.0 {
 		t.Errorf("Memory backend success rate too low: %.2f%%", memoryResult.successRate)
 	}
-	if rocksdbResult.successRate < 95.0 {
-		t.Errorf("RocksDB backend success rate too low: %.2f%%", rocksdbResult.successRate)
+	if pebbleResult.successRate < 95.0 {
+		t.Errorf("Pebble backend success rate too low: %.2f%%", pebbleResult.successRate)
 	}
 }
 
@@ -340,19 +340,19 @@ func runLoadTestMemory(t *testing.T, testName string, numClients, opsPerClient i
 	return executeLoadTest(t, node.clientAddr, testName, numClients, opsPerClient)
 }
 
-// runLoadTestRocksDB runs a load test on RocksDB backend
-func runLoadTestRocksDB(t *testing.T, testName string, numClients, opsPerClient int, batchEnabled bool) loadTestResult {
+// runLoadTestPebble runs a load test on Pebble backend
+func runLoadTestPebble(t *testing.T, testName string, numClients, opsPerClient int, batchEnabled bool) loadTestResult {
 	var cleanup func()
 	var endpoint string
 
 	if batchEnabled {
-		rocksNode, rocksCleanup := startRocksDBNode(t, 1)
-		endpoint = rocksNode.clientAddr
-		cleanup = rocksCleanup
+		pebbleNode, pebbleCleanup := startPebbleNode(t, 1)
+		endpoint = pebbleNode.clientAddr
+		cleanup = pebbleCleanup
 	} else {
-		rocksNode, rocksCleanup := startRocksDBNode(t, 1, WithoutBatchProposal())
-		endpoint = rocksNode.clientAddr
-		cleanup = rocksCleanup
+		pebbleNode, pebbleCleanup := startPebbleNode(t, 1, WithoutBatchProposal())
+		endpoint = pebbleNode.clientAddr
+		cleanup = pebbleCleanup
 	}
 	defer cleanup()
 

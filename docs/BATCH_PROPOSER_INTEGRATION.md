@@ -36,8 +36,8 @@ defer batchProposer.Stop()
 // Memory 引擎
 kvs = memory.NewMemoryWithBatchProposer(<-snapshotterReady, batchProposer, commitC, errorC)
 
-// RocksDB 引擎
-kvs = rocksdb.NewRocksDBWithBatchProposer(db, <-snapshotterReady, batchProposer, commitC, errorC)
+// Pebble 引擎
+kvs = pebble.NewPebbleWithBatchProposer(db, <-snapshotterReady, batchProposer, commitC, errorC)
 ```
 
 ---
@@ -179,13 +179,13 @@ func (m *Memory) readCommits(commitC <-chan *kvstore.Commit, errorC <-chan error
 
 ---
 
-### 4. RocksDB 引擎集成 🚧
+### 4. Pebble 引擎集成 🚧
 
-**文件**: `internal/rocksdb/kvstore.go`
+**文件**: `internal/pebble/kvstore.go`
 
 **类似 Memory 的修改**:
 1. 添加 `batchProposer *raft.BatchProposer` 字段
-2. 创建 `NewRocksDBWithBatchProposer` 构造函数
+2. 创建 `NewPebbleWithBatchProposer` 构造函数
 3. 添加 `propose()` 辅助方法
 4. 修改所有 propose 调用点
 5. 修改 readCommits 支持批量拆分
@@ -215,12 +215,12 @@ make test
 # Memory 性能测试
 make test-perf-memory
 
-# RocksDB 性能测试
-make test-perf-rocksdb
+# Pebble 性能测试
+make test-perf-pebble
 
 # 预期性能提升
 # Memory:  3,386 → 20,000+ ops/sec (6x)
-# RocksDB: 4,921 → 25,000+ ops/sec (5x)
+# Pebble: 4,921 → 25,000+ ops/sec (5x)
 ```
 
 ---
@@ -229,7 +229,7 @@ make test-perf-rocksdb
 
 ### 设计考虑
 
-1. **保留原始 NewMemory 和 NewRocksDB**
+1. **保留原始 NewMemory 和 NewPebble**
    - 不破坏现有代码
    - 测试代码无需修改
 
@@ -272,7 +272,7 @@ make test-perf-rocksdb
 ## 下一步
 
 1. ✅ 完成 Memory 引擎集成
-2. ✅ 完成 RocksDB 引擎集成
+2. ✅ 完成 Pebble 引擎集成
 3. ✅ 运行性能测试验证
 4. ✅ 分析性能测试结果
 5. 📝 更新性能报告文档

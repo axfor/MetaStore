@@ -102,7 +102,7 @@ rc.batcher = batch.NewProposalBatcher(config, rc.proposeC, logger)
 rc.batchedProposeC = rc.batcher.ProposeC() // 获取只读通道
 ```
 
-#### RocksDB Raft Node
+#### Pebble Raft Node
 同样的变更模式。
 
 ---
@@ -113,7 +113,7 @@ rc.batchedProposeC = rc.batcher.ProposeC() // 获取只读通道
 |------|---------|------|
 | [internal/batch/proposal_batcher.go](../internal/batch/proposal_batcher.go) | **核心修改** | 通道所有权重构 |
 | [internal/raft/node_memory.go](../internal/raft/node_memory.go) | API 调用更新 | 适配新的 batcher API |
-| [internal/raft/node_rocksdb.go](../internal/raft/node_rocksdb.go) | API 调用更新 | 适配新的 batcher API |
+| [internal/raft/node_pebble.go](../internal/raft/node_pebble.go) | API 调用更新 | 适配新的 batcher API |
 | [internal/batch/proposal_batcher_test.go](../internal/batch/proposal_batcher_test.go) | 测试更新 | 更新所有测试用例（20个） |
 | [test/test_helpers.go](../test/test_helpers.go) | 辅助函数更新 | 添加配置选项支持 |
 | [test/batch_proposal_performance_test.go](../test/batch_proposal_performance_test.go) | 测试修复 | 类型匹配修复 |

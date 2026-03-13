@@ -762,7 +762,7 @@ kill -INT <pid>
 ### 编译测试
 
 ```bash
-$ CGO_ENABLED=1 CGO_LDFLAGS="-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain" go build -o metastore cmd/metastore/main.go
+$ CGO_ENABLED=1 CGO_LDFLAGS="-lpebble -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain" go build -o metastore cmd/metastore/main.go
 ✅ 编译成功
 ```
 
@@ -1043,7 +1043,7 @@ groups:
 4. **性能优化** (Performance Optimization)
    - 实现 shard lock
    - 实现 sync.Pool
-   - RocksDB 参数调优
+   - Pebble 参数调优
 
 5. **高级限流** (Rate Limiting)
    - Token bucket 算法

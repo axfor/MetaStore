@@ -325,7 +325,7 @@ ok      metaStore/test  8.27s
    - ❌ Concurrent client operations
 
 4. **Storage Engine Tests**
-   - ❌ RocksDB mode integration tests
+   - ❌ Pebble mode integration tests
    - ❌ Snapshot creation with large data
    - ❌ WAL replay tests
 
@@ -368,7 +368,7 @@ The integration tests provide solid coverage of both single-node and multi-node 
 
 **Recommendations:**
 - Add fault tolerance tests (node failures, leader election)
-- Add RocksDB mode integration tests
+- Add Pebble mode integration tests
 - Add performance benchmarks
 - Add node removal tests
 - Add more edge case coverage

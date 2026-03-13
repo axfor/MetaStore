@@ -80,7 +80,7 @@ grpc_server_rate_limit_hits_total{method="/etcdserverpb.KV/Put"}
 ### 4. Storage Operation Metrics
 ```promql
 # Storage operation duration by type (put, get, delete, txn)
-storage_operation_duration_seconds_bucket{operation="put", storage="rocksdb"}
+storage_operation_duration_seconds_bucket{operation="put", storage="pebble"}
 
 # Storage operation count
 storage_operation_total{operation="get", status="success"}

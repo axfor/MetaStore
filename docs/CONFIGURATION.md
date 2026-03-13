@@ -210,7 +210,7 @@ server:
 EOF
 
 # 使用配置文件启动
-./metastore --config=prod.yaml --storage=rocksdb
+./metastore --config=prod.yaml --storage=pebble
 ```
 
 ### 场景 3: 调试环境（环境变量覆盖）

@@ -336,7 +336,7 @@ func TestDynamicScaleUp(t *testing.T) {
 
 2. **Raft 节点初始化**
    - Memory 节点 ([node_memory.go:420-460](internal/raft/node_memory.go#L420-L460))
-   - RocksDB 节点 ([node_rocksdb.go:364-406](internal/raft/node_rocksdb.go#L364-L406))
+   - Pebble 节点 ([node_pebble.go:364-406](internal/raft/node_pebble.go#L364-L406))
    - ✅ 创建 SmartLeaseConfig 实例
    - ✅ 检测初始集群规模
    - ✅ 总是创建 LeaseManager/ReadIndexManager

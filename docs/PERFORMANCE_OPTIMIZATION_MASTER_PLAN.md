@@ -5,7 +5,7 @@
 **创建日期**: 2025-11-01
 **目标**: 端到端 QPS 从当前 3,386-4,921 ops/sec 提升至 100,000+ ops/sec
 **提升倍数**: ~20-30x
-**涵盖引擎**: Memory + RocksDB 双引擎优化
+**涵盖引擎**: Memory + Pebble 双引擎优化
 
 ---
 
@@ -16,7 +16,7 @@
 | 存储引擎 | 当前 QPS | 瓶颈 | 理论上限 | 差距 |
 |---------|---------|------|---------|-----|
 | **Memory** | 3,386 ops/sec | Raft 共识、序列化 | ~50K ops/sec | 15x |
-| **RocksDB** | 4,921 ops/sec | Raft 共识、磁盘 I/O | ~30K ops/sec | 6x |
+| **Pebble** | 4,921 ops/sec | Raft 共识、磁盘 I/O | ~30K ops/sec | 6x |
 | **目标** | **100,000+ ops/sec** | - | - | **20-30x** |
 
 ### 核心挑战
@@ -51,7 +51,7 @@
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  Layer 4: 存储层 (Memory/RocksDB Storage)                   │
+│  Layer 4: 存储层 (Memory/Pebble Storage)                   │
 │  优化目标: 细粒度锁，批量写入，缓存优化                       │
 │  预期提升: 2-3x                                              │
 └─────────────────────────────────────────────────────────────┘
@@ -101,11 +101,11 @@
                                             ───────
                                             小计: ~2.6-5.6 ms
 
-4. [Storage] Memory/RocksDB Layer
+4. [Storage] Memory/Pebble Layer
    ├─ 反序列化操作 (JSON.Unmarshal)         ~400 μs ⭐
    ├─ 应用到存储 (applyOperation)          ~200 μs
    │  ├─ ShardedMap.Set() [Memory]         ~100 μs
-   │  └─ RocksDB.WriteBatch [RocksDB]      ~500 μs
+   │  └─ Pebble.WriteBatch [Pebble]      ~500 μs
    ├─ Watch 事件通知                       ~100 μs
    └─ 唤醒等待的客户端 (close channel)      ~50 μs
                                             ───────
@@ -132,7 +132,7 @@
 |-----|------|------|------|---------|
 | **Raft WAL** | fsync 磁盘写入 | 2-5 ms | **50-70%** | ⭐⭐⭐⭐⭐ 极高 |
 | **序列化** | JSON Marshal/Unmarshal | 0.7 ms | 15-20% | ⭐⭐⭐⭐ 高 |
-| **存储层** | Memory/RocksDB 写入 | 0.1-0.5 ms | 5-15% | ⭐⭐⭐ 中 |
+| **存储层** | Memory/Pebble 写入 | 0.1-0.5 ms | 5-15% | ⭐⭐⭐ 中 |
 | **网络/协议** | gRPC + Protobuf | 0.6 ms | 10-15% | ⭐⭐ 低 |
 | **其他** | 拦截器、锁等待 | 0.3 ms | 5-10% | ⭐ 很低 |
 
@@ -142,22 +142,22 @@
 
 ### 1.2 性能对比分析
 
-#### Memory vs RocksDB 详细对比
+#### Memory vs Pebble 详细对比
 
-| 指标 | Memory (优化后) | RocksDB | 差异 | 原因分析 |
+| 指标 | Memory (优化后) | Pebble | 差异 | 原因分析 |
 |-----|----------------|---------|------|---------|
-| **MixedWorkload** | 3,386 ops/s | 4,921 ops/s | RocksDB 快 45% | ⚠️ 反直觉 |
+| **MixedWorkload** | 3,386 ops/s | 4,921 ops/s | Pebble 快 45% | ⚠️ 反直觉 |
 | **读操作延迟** | ~0.1 ms | ~0.5 ms | Memory 快 5x | ✅ 符合预期 |
 | **写操作延迟** | ~5 ms | ~5.5 ms | 相近 | Raft WAL 主导 |
-| **Range 查询** | ~1 ms (100 keys) | ~0.3 ms | RocksDB 快 3x | LSM 有序结构 |
-| **并发度** | 30 (256 分片) | 30+ (无锁读) | RocksDB 更高 | 细粒度锁更优 |
+| **Range 查询** | ~1 ms (100 keys) | ~0.3 ms | Pebble 快 3x | LSM 有序结构 |
+| **并发度** | 30 (256 分片) | 30+ (无锁读) | Pebble 更高 | 细粒度锁更优 |
 
-**为什么 RocksDB 更快？**
+**为什么 Pebble 更快？**
 
-1. **更好的批量处理**: RocksDB 使用 WriteBatch，一次性提交多个操作
-2. **更细粒度的锁**: RocksDB 读操作完全无锁，Memory 仍有分片锁
+1. **更好的批量处理**: Pebble 使用 WriteBatch，一次性提交多个操作
+2. **更细粒度的锁**: Pebble 读操作完全无锁，Memory 仍有分片锁
 3. **更高效的 Range 查询**: LSM Tree 有序结构 vs HashMap 全表扫描
-4. **更成熟的优化**: RocksDB 经过多年优化，有 Block Cache、Bloom Filter 等
+4. **更成熟的优化**: Pebble 经过多年优化，有 Block Cache、Bloom Filter 等
 
 **Memory 引擎优化空间**：
 - 实现类似 WriteBatch 的批量处理 → +50% 吞吐量
@@ -962,13 +962,13 @@ func (m *MemoryEtcd) Range(ctx context.Context, key, rangeEnd string, limit int6
 
 ---
 
-#### 4.2 RocksDB 引擎优化
+#### 4.2 Pebble 引擎优化
 
-**4.2.1 RocksDB 配置调优**
+**4.2.1 Pebble 配置调优**
 
 ```go
-// 优化 RocksDB 配置
-opts := grocksdb.NewDefaultOptions()
+// 优化 Pebble 配置
+opts := gpebble.NewDefaultOptions()
 
 // 1. 内存优化
 opts.SetAllowConcurrentMemtableWrites(true)  // 并发 memtable 写入
@@ -977,8 +977,8 @@ opts.SetMaxWriteBufferNumber(4)              // 4 个 write buffer
 opts.SetMinWriteBufferNumberToMerge(2)       // 合并 2 个 buffer
 
 // 2. Block Cache (热数据缓存)
-blockCache := grocksdb.NewLRUCache(2 * 1024 * 1024 * 1024) // 2GB cache
-blockOpts := grocksdb.NewDefaultBlockBasedTableOptions()
+blockCache := gpebble.NewLRUCache(2 * 1024 * 1024 * 1024) // 2GB cache
+blockOpts := gpebble.NewDefaultBlockBasedTableOptions()
 blockOpts.SetBlockCache(blockCache)
 blockOpts.SetBlockSize(64 * 1024)            // 64KB block
 blockOpts.SetCacheIndexAndFilterBlocks(true) // 缓存索引和过滤器
@@ -995,16 +995,16 @@ opts.SetLevel0StopWritesTrigger(36)          // L0 36 个文件停止写入
 opts.SetBloomFilterBitsPerKey(10)            // 10 bits/key bloom filter
 
 // 5. Compression (压缩策略)
-opts.SetCompressionType(grocksdb.LZ4Compression) // L0-L2 使用 LZ4
-opts.SetBottommostCompressionType(grocksdb.ZSTDCompression) // L3+ 使用 ZSTD
+opts.SetCompressionType(gpebble.LZ4Compression) // L0-L2 使用 LZ4
+opts.SetBottommostCompressionType(gpebble.ZSTDCompression) // L3+ 使用 ZSTD
 
 // 6. WAL 优化
 opts.SetMaxTotalWalSize(512 * 1024 * 1024)   // 512MB WAL 上限
 
 // 7. 写入优化
-writeOpts := grocksdb.NewDefaultWriteOptions()
+writeOpts := gpebble.NewDefaultWriteOptions()
 writeOpts.SetSync(false)                      // ✅ 异步写入 (依赖 Raft WAL)
-writeOpts.DisableWAL(true)                    // ✅ 禁用 RocksDB WAL (已有 Raft WAL)
+writeOpts.DisableWAL(true)                    // ✅ 禁用 Pebble WAL (已有 Raft WAL)
 ```
 
 **预期提升**: +50-100%
@@ -1013,13 +1013,13 @@ writeOpts.DisableWAL(true)                    // ✅ 禁用 RocksDB WAL (已有 
 
 **4.2.2 WriteBatch 优化 (已实现)**
 
-RocksDB 已使用 WriteBatch，但可进一步优化：
+Pebble 已使用 WriteBatch，但可进一步优化：
 
 ```go
 // 增大 WriteBatch 容量
-func (r *RocksDB) applyOperationsBatch(ops []*RaftOperation) {
+func (r *Pebble) applyOperationsBatch(ops []*RaftOperation) {
     // 预分配容量
-    batch := grocksdb.NewWriteBatchWithReservedBytes(len(ops) * 256) // 每个操作约 256 bytes
+    batch := gpebble.NewWriteBatchWithReservedBytes(len(ops) * 256) // 每个操作约 256 bytes
     defer batch.Destroy()
 
     // 批量添加
@@ -1165,7 +1165,7 @@ func (m *Memory) PutWithLease(...) {
 | **3.2 Group Commit WAL** | Raft | +300% | 5天 | 高 |
 | **4.1.2 BTree Index** | Storage | +500% (Range) | 5天 | 中 |
 | **2.1 Batch API** | Protocol | +200% (Batch) | 3天 | 低 |
-| **4.2.1 RocksDB 调优** | Storage | +50% | 2天 | 低 |
+| **4.2.1 Pebble 调优** | Storage | +50% | 2天 | 低 |
 
 **累计提升**: 20,000 × 2.5 ≈ **50,000 QPS** ✅
 
@@ -1226,7 +1226,7 @@ func (m *Memory) PutWithLease(...) {
     │                           [2.1 Batch API]
     │
     │  [3.3 Pipeline]           [1.1 gRPC优化]
-    │  [5.1 Lock-Free]          [4.2 RocksDB调优]
+    │  [5.1 Lock-Free]          [4.2 Pebble调优]
     │
     │  [分区Sharding]            [1.2 连接池]
     │                           [5.2 Zero-Copy]
@@ -1239,7 +1239,7 @@ func (m *Memory) PutWithLease(...) {
 
 ---
 
-### 4.2 Memory vs RocksDB 优化策略
+### 4.2 Memory vs Pebble 优化策略
 
 #### Memory 引擎优化重点
 
@@ -1247,25 +1247,25 @@ func (m *Memory) PutWithLease(...) {
 |-------|--------|------|
 | BatchProposer | ⭐⭐⭐⭐⭐ | Raft 瓶颈对两者都适用 |
 | WriteBatch | ⭐⭐⭐⭐⭐ | Memory 缺少批量处理 |
-| BTree Index | ⭐⭐⭐⭐ | Range 查询远慢于 RocksDB |
+| BTree Index | ⭐⭐⭐⭐ | Range 查询远慢于 Pebble |
 | Protobuf | ⭐⭐⭐⭐ | 序列化开销大 |
 | Lock-Free | ⭐⭐⭐ | 进一步减少锁竞争 |
 
-**目标**: 让 Memory 在高并发场景下超越 RocksDB
+**目标**: 让 Memory 在高并发场景下超越 Pebble
 
 ---
 
-#### RocksDB 引擎优化重点
+#### Pebble 引擎优化重点
 
 | 优化项 | 优先级 | 原因 |
 |-------|--------|------|
 | BatchProposer | ⭐⭐⭐⭐⭐ | Raft 瓶颈对两者都适用 |
-| 配置调优 | ⭐⭐⭐⭐ | 挖掘 RocksDB 潜力 |
+| 配置调优 | ⭐⭐⭐⭐ | 挖掘 Pebble 潜力 |
 | Protobuf | ⭐⭐⭐⭐ | 序列化开销大 |
-| 禁用 RocksDB WAL | ⭐⭐⭐ | 依赖 Raft WAL，避免双写 |
+| 禁用 Pebble WAL | ⭐⭐⭐ | 依赖 Raft WAL，避免双写 |
 | Block Cache | ⭐⭐⭐ | 提升读性能 |
 
-**目标**: 保持 RocksDB 的持久性优势，提升性能
+**目标**: 保持 Pebble 的持久性优势，提升性能
 
 ---
 
@@ -1279,8 +1279,8 @@ func (m *Memory) PutWithLease(...) {
 # Memory 引擎性能测试
 make test-perf-memory
 
-# RocksDB 引擎性能测试
-make test-perf-rocksdb
+# Pebble 引擎性能测试
+make test-perf-pebble
 
 # 对比测试
 ./scripts/compare_performance.sh
@@ -1349,7 +1349,7 @@ jobs:
 | 指标 | 当前值 | Phase 1 | Phase 2 | Phase 3 | 最终目标 |
 |-----|--------|---------|---------|---------|---------|
 | **Memory QPS** | 3,386 | 20K | 50K | 100K | 100K+ |
-| **RocksDB QPS** | 4,921 | 25K | 60K | 120K | 120K+ |
+| **Pebble QPS** | 4,921 | 25K | 60K | 120K | 120K+ |
 | **Batch QPS** | N/A | 50K | 150K | 300K | 300K+ |
 
 #### 延迟指标
@@ -1442,7 +1442,7 @@ dashboard:
 - ✅ 所有现有测试通过
 - ✅ 新增性能测试覆盖所有优化点
 - ✅ 兼容 etcd v3 API
-- ✅ 支持 Memory + RocksDB 双引擎
+- ✅ 支持 Memory + Pebble 双引擎
 
 ### 6.2 性能要求
 
@@ -1507,12 +1507,12 @@ dashboard:
    - 值得迁移
 
 3. **Memory 引擎有巨大潜力**
-   - WriteBatch + BTree 可超越 RocksDB
+   - WriteBatch + BTree 可超越 Pebble
    - 适合高并发缓存场景
 
-4. **RocksDB 需要精细调优**
+4. **Pebble 需要精细调优**
    - Block Cache、Bloom Filter、Compaction
-   - 禁用 RocksDB WAL (依赖 Raft WAL)
+   - 禁用 Pebble WAL (依赖 Raft WAL)
 
 5. **分层优化，逐步推进**
    - 先做高 ROI 优化 (BatchProposer)
@@ -1556,8 +1556,8 @@ dashboard:
    - "In Search of an Understandable Consensus Algorithm" (Raft Paper)
    - "Paxos Made Live" (Google Chubby)
 
-3. **RocksDB Tuning Guide**
-   - https://github.com/facebook/rocksdb/wiki/RocksDB-Tuning-Guide
+3. **Pebble Tuning Guide**
+   - https://github.com/facebook/pebble/wiki/Pebble-Tuning-Guide
 
 4. **gRPC Performance Best Practices**
    - https://grpc.io/docs/guides/performance/

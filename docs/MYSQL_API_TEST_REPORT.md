@@ -6,7 +6,7 @@ Complete end-to-end test suite created for MySQL protocol access layer with comp
 - ✅ Basic MySQL operations (CRUD)
 - ✅ Cross-protocol data consistency (HTTP ↔ etcd ↔ MySQL)
 - ✅ Multi-node cluster replication
-- ✅ Both storage engines (Memory and RocksDB)
+- ✅ Both storage engines (Memory and Pebble)
 
 **Status**: ✅ **Test Suite Complete**
 
@@ -28,20 +28,20 @@ Basic MySQL protocol operations with memory storage engine.
 
 **Lines of Code**: ~180 lines
 
-### 2. `test/mysql_api_rocksdb_integration_test.go`
-MySQL operations with RocksDB persistent storage.
+### 2. `test/mysql_api_pebble_integration_test.go`
+MySQL operations with Pebble persistent storage.
 
 **Test Coverage**:
-- ✅ `TestMySQLRocksDBSingleNodeOperations` - RocksDB storage tests
-  - `InsertAndSelect_RocksDB` - Basic operations
-  - `Update_RocksDB` - Update operations
-  - `Delete_RocksDB` - Delete operations
-  - `MultipleOperations_RocksDB` - Batch operations
-  - `Persistence_RocksDB` - Data persistence verification
-  - `Transaction_RocksDB` - Transaction support
-  - `SpecialCharacters_RocksDB` - Special character handling
+- ✅ `TestMySQLPebbleSingleNodeOperations` - Pebble storage tests
+  - `InsertAndSelect_Pebble` - Basic operations
+  - `Update_Pebble` - Update operations
+  - `Delete_Pebble` - Delete operations
+  - `MultipleOperations_Pebble` - Batch operations
+  - `Persistence_Pebble` - Data persistence verification
+  - `Transaction_Pebble` - Transaction support
+  - `SpecialCharacters_Pebble` - Special character handling
 
-- ✅ `TestMySQLRocksDBLargeValues` - Large value handling
+- ✅ `TestMySQLPebbleLargeValues` - Large value handling
   - `LargeValue_1KB` - 1KB value test
   - `LargeValue_10KB` - 10KB value test
 
@@ -63,7 +63,7 @@ Cross-protocol data consistency and interoperability tests.
   9. **Batch_Interleaved_Operations** - Multi-protocol batch writes
   10. **Concurrent_Multi_Protocol_Writes** - Concurrent writes from all protocols
 
-- ✅ `TestMySQLCrossProtocolRocksDB` - RocksDB cross-protocol (placeholder)
+- ✅ `TestMySQLCrossProtocolPebble` - Pebble cross-protocol (placeholder)
 - ✅ `TestMySQLProtocolShowCommands` - MySQL SHOW commands
   - `SHOW_DATABASES` - Database listing
   - `SHOW_TABLES` - Table listing
@@ -105,7 +105,7 @@ Comprehensive testing guide and documentation.
 | Category | Test Count | LOC | Status |
 |----------|------------|-----|--------|
 | Basic Operations | 6 | 180 | ✅ Complete |
-| RocksDB Tests | 9 | 280 | ✅ Complete |
+| Pebble Tests | 9 | 280 | ✅ Complete |
 | Cross-Protocol | 13 | 420 | ✅ Complete |
 | Cluster Tests | 7 | 380 | ✅ Complete |
 | Documentation | N/A | 450 | ✅ Complete |
@@ -135,7 +135,7 @@ Comprehensive testing guide and documentation.
 | Engine | Basic Ops | Transactions | Large Values | Persistence | Status |
 |--------|-----------|--------------|--------------|-------------|--------|
 | Memory | ✅ | ✅ | N/A | N/A | ✅ Complete |
-| RocksDB | ✅ | ✅ | ✅ | ✅ | ✅ Complete |
+| Pebble | ✅ | ✅ | ✅ | ✅ | ✅ Complete |
 
 ### Cluster Operations
 
@@ -198,7 +198,7 @@ go test -v ./test -run TestMySQL.*Memory
 
 ### Full Test Suite
 ```bash
-# With RocksDB
+# With Pebble
 CGO_ENABLED=1 CGO_LDFLAGS="..." go test -v ./test -run TestMySQL -timeout 10m
 ```
 **Expected Duration**: ~3-5 minutes
@@ -274,7 +274,7 @@ From the original prompt requirements:
 | MySQL write → etcd read | ✅ Pass | `TestMySQLCrossProtocol` line 140-156 |
 | Data consistency across protocols | ✅ Pass | All cross-protocol tests |
 | Memory engine support | ✅ Pass | `TestMySQLMemorySingleNodeOperations` |
-| RocksDB engine support | ✅ Pass | `TestMySQLRocksDBSingleNodeOperations` |
+| Pebble engine support | ✅ Pass | `TestMySQLPebbleSingleNodeOperations` |
 | Cluster replication | ✅ Pass | `TestMySQLClusterConsistency` |
 | Concurrent operations | ✅ Pass | `Concurrent_Multi_Protocol_Writes` |
 | Transaction support | ✅ Pass | Transaction tests in all suites |
@@ -360,7 +360,7 @@ The test suite successfully validates that:
 1. MySQL protocol implementation is correct
 2. Data written via HTTP or etcd is accessible via MySQL
 3. Data written via MySQL is accessible via HTTP and etcd
-4. All operations work correctly with both Memory and RocksDB engines
+4. All operations work correctly with both Memory and Pebble engines
 5. Cluster replication maintains consistency across nodes
 6. Concurrent operations are handled correctly
 

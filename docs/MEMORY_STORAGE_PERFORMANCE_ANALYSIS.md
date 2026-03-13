@@ -2,7 +2,7 @@
 
 ## 执行摘要
 
-通过对比性能测试结果，Memory 存储在 MixedWorkload (80% 读，20% 写) 场景下的吞吐量为 **1,455 ops/s**，而 RocksDB 存储达到 **4,921 ops/s**，**RocksDB 快 3.4 倍**。
+通过对比性能测试结果，Memory 存储在 MixedWorkload (80% 读，20% 写) 场景下的吞吐量为 **1,455 ops/s**，而 Pebble 存储达到 **4,921 ops/s**，**Pebble 快 3.4 倍**。
 
 本文档深入分析了 Memory 存储的性能瓶颈，并提出具体的优化方案。
 
@@ -11,9 +11,9 @@
 | 存储类型 | MixedWorkload (ops/s) | 客户端数 | 读写比例 |
 |---------|---------------------|---------|---------|
 | Memory  | 1,455               | 30      | 80% 读 / 20% 写 |
-| RocksDB | 4,921               | 30      | 80% 读 / 20% 写 |
+| Pebble | 4,921               | 30      | 80% 读 / 20% 写 |
 
-**差距：RocksDB 比 Memory 快 3.4 倍**
+**差距：Pebble 比 Memory 快 3.4 倍**
 
 这个结果**违反直觉**，因为通常认为内存存储应该比持久化存储快。但实际上，这反映了 Memory 存储在**并发控制**和**锁竞争**上存在严重问题。
 
@@ -101,14 +101,14 @@ func (m *Memory) applyOperation(op RaftOperation) {
 4. Watch 事件通知
 5. 锁等待时间（最大开销）
 
-#### 对比：RocksDB 的锁策略
+#### 对比：Pebble 的锁策略
 
-**[internal/rocksdb/kvstore.go](../internal/rocksdb/kvstore.go)**
+**[internal/pebble/kvstore.go](../internal/pebble/kvstore.go)**
 
 ```go
 // Line 59-70: 多个细粒度锁，职责分离
-type RocksDB struct {
-    db          *grocksdb.DB
+type Pebble struct {
+    db          *gpebble.DB
     mu          sync.Mutex          // 仅用于元数据操作
     pendingMu   sync.RWMutex        // 仅用于 pending operations
     watchMu     sync.RWMutex        // 仅用于 watch 订阅
@@ -116,25 +116,25 @@ type RocksDB struct {
 }
 
 // Line 479-545: Range 查询完全不加锁！
-func (r *RocksDB) Range(...) (*kvstore.RangeResponse, error) {
-    // 无锁！使用 RocksDB iterator，RocksDB 内部保证线程安全
+func (r *Pebble) Range(...) (*kvstore.RangeResponse, error) {
+    // 无锁！使用 Pebble iterator，Pebble 内部保证线程安全
     it := r.db.NewIterator(r.ro)
     defer it.Close()
 
     for it.Seek(startKey); it.Valid(); it.Next() {
-        // 迭代过程无锁，RocksDB 保证 snapshot 隔离
+        // 迭代过程无锁，Pebble 保证 snapshot 隔离
     }
 }
 
 // Line 457: 无锁获取 revision
-func (r *RocksDB) CurrentRevision() int64 {
+func (r *Pebble) CurrentRevision() int64 {
     return r.cachedRevision.Load()  // atomic 操作，无锁！
 }
 ```
 
 **关键差异：**
 
-| 特性 | Memory Storage | RocksDB Storage |
+| 特性 | Memory Storage | Pebble Storage |
 |------|----------------|-----------------|
 | 读操作加锁 | ✅ 全局读锁 (RLock) | ❌ 完全无锁 |
 | 写操作加锁 | ✅ 全局写锁 (Lock) | ✅ 仅锁 WriteBatch |
@@ -158,9 +158,9 @@ seqNum := fmt.Sprintf("seq-%d", m.seqNum)
 m.mu.Unlock()
 ```
 
-**对比：RocksDB 无锁实现**
+**对比：Pebble 无锁实现**
 
-**[internal/rocksdb/kvstore.go:553](../internal/rocksdb/kvstore.go#L553)**
+**[internal/pebble/kvstore.go:553](../internal/pebble/kvstore.go#L553)**
 
 ```go
 // 无锁原子操作
@@ -213,12 +213,12 @@ func (m *Memory) applyOperation(op RaftOperation) {
 2. Memory 存储逐个处理，**每个操作都要获取/释放锁**
 3. 失去了批量处理的机会
 
-#### 对比：RocksDB 批量处理
+#### 对比：Pebble 批量处理
 
-**[internal/rocksdb/kvstore.go:207-228](../internal/rocksdb/kvstore.go#L207-L228)**
+**[internal/pebble/kvstore.go:207-228](../internal/pebble/kvstore.go#L207-L228)**
 
 ```go
-func (r *RocksDB) readCommits(commitC <-chan *kvstore.Commit, errorC <-chan error) {
+func (r *Pebble) readCommits(commitC <-chan *kvstore.Commit, errorC <-chan error) {
     for commit := range commitC {
         // 收集所有操作到 batch
         var batchOps []*RaftOperation
@@ -236,11 +236,11 @@ func (r *RocksDB) readCommits(commitC <-chan *kvstore.Commit, errorC <-chan erro
 }
 ```
 
-**[internal/rocksdb/kvstore.go:312-414](../internal/rocksdb/kvstore.go#L312-L414)**
+**[internal/pebble/kvstore.go:312-414](../internal/pebble/kvstore.go#L312-L414)**
 
 ```go
-func (r *RocksDB) applyOperationsBatch(ops []*RaftOperation) {
-    batch := grocksdb.NewWriteBatch()  // ← 创建批处理
+func (r *Pebble) applyOperationsBatch(ops []*RaftOperation) {
+    batch := gpebble.NewWriteBatch()  // ← 创建批处理
     defer batch.Destroy()
 
     // 准备所有操作（无锁）
@@ -272,7 +272,7 @@ func (r *RocksDB) applyOperationsBatch(ops []*RaftOperation) {
 | 实现方式 | 加锁次数 | fsync 次数 | 总耗时估算 |
 |---------|---------|-----------|-----------|
 | Memory (逐个) | 10 | N/A | 10 × 0.7ms = 7ms |
-| RocksDB (批量) | 1 | 1 | 1ms (batch) + 0.2ms (fsync) = 1.2ms |
+| Pebble (批量) | 1 | 1 | 1ms (batch) + 0.2ms (fsync) = 1.2ms |
 
 **吞吐量提升：7ms / 1.2ms ≈ 5.8x**
 
@@ -309,12 +309,12 @@ sort.Slice(kvs, func(i, j int) bool {
 - 需要扫描全部 10,000 个 key
 - 然后排序 10 个结果
 
-#### 对比：RocksDB 高效范围查询
+#### 对比：Pebble 高效范围查询
 
-**[internal/rocksdb/kvstore.go:495-529](../internal/rocksdb/kvstore.go#L495-L529)**
+**[internal/pebble/kvstore.go:495-529](../internal/pebble/kvstore.go#L495-L529)**
 
 ```go
-// 使用 RocksDB iterator，直接定位到起始位置
+// 使用 Pebble iterator，直接定位到起始位置
 it := r.db.NewIterator(r.ro)
 defer it.Close()
 
@@ -346,9 +346,9 @@ for it.ValidForPrefix([]byte(kvPrefix)) {
 // ✅ 无需排序！LSM tree 中 key 已经有序
 ```
 
-**RocksDB 优势：**
+**Pebble 优势：**
 
-| 特性 | Memory Storage | RocksDB Storage |
+| 特性 | Memory Storage | Pebble Storage |
 |------|----------------|-----------------|
 | 数据结构 | Hash Map (无序) | LSM Tree (有序) |
 | Seek 复杂度 | O(n) 全表扫描 | O(log n) 二分查找 |
@@ -364,14 +364,14 @@ for it.ValidForPrefix([]byte(kvPrefix)) {
 - 查询范围：10 个 key
 - Limit：5
 
-| 操作 | Memory | RocksDB |
+| 操作 | Memory | Pebble |
 |------|--------|---------|
 | 查找起始 key | 扫描 5,000 (平均) | Seek: log(10000) ≈ 13 |
 | 遍历 key | 10,000 (全表) | 10 (范围) |
 | 排序 | 10 log 10 ≈ 33 | 0 (已有序) |
 | **总开销** | **~15,033** | **~23** |
 
-**RocksDB 快 ~650 倍！**
+**Pebble 快 ~650 倍！**
 
 ---
 
@@ -436,23 +436,23 @@ currentRevision := m.MemoryEtcd.revision.Load()  // ✅ atomic，无需锁
 
 ---
 
-### 瓶颈 6：缺少 RocksDB 的高级优化 ⭐⭐⭐
+### 瓶颈 6：缺少 Pebble 的高级优化 ⭐⭐⭐
 
 #### 优化 1：Atomic Cached Revision
 
-**RocksDB 实现：**
+**Pebble 实现：**
 
 ```go
 // Line 70
 cachedRevision atomic.Int64
 
 // Line 457: 无锁获取
-func (r *RocksDB) CurrentRevision() int64 {
+func (r *Pebble) CurrentRevision() int64 {
     return r.cachedRevision.Load()  // ✅ 无锁
 }
 
 // Line 463: 原子递增
-func (r *RocksDB) incrementRevision() (int64, error) {
+func (r *Pebble) incrementRevision() (int64, error) {
     rev := r.cachedRevision.Add(1)  // ✅ atomic
     // ... 持久化到 DB ...
     return rev, nil
@@ -475,7 +475,7 @@ m.MemoryEtcd.mu.RUnlock()
 
 #### 优化 2：Batch Proposer
 
-RocksDB 有 BatchProposer (line 164):
+Pebble 有 BatchProposer (line 164):
 ```go
 r.batchProposer = NewBatchProposer(batchConfig, proposeC)
 
@@ -496,7 +496,7 @@ Memory 可以实现类似机制。
 - JSON 编码 RaftOperation (line 281, kvstore.go)
 - Gob 编码快照 (line 658, kvstore.go)
 
-**RocksDB 使用：**
+**Pebble 使用：**
 - 自定义二进制编码 (encodeKeyValue / decodeKeyValue)
 - 更快的序列化/反序列化
 - 更小的数据大小
@@ -883,7 +883,7 @@ func (m *Memory) PutWithLease(...) {
 
 ### 阶段 3：极致优化（1-2 周）🚀
 
-**目标：接近或超越 RocksDB**
+**目标：接近或超越 Pebble**
 
 4. **优化 4：BTree + 分片**
    - 改动：~1000 行代码
@@ -896,17 +896,17 @@ func (m *Memory) PutWithLease(...) {
    - 风险：中
 
 **预期吞吐量：~30,000-50,000 ops/s**
-**（可能超过当前 RocksDB 的 4,921 ops/s！）**
+**（可能超过当前 Pebble 的 4,921 ops/s！）**
 
 ---
 
 ## 结论
 
-### 为什么 Memory 比 RocksDB 慢？
+### 为什么 Memory 比 Pebble 慢？
 
 1. **全局锁竞争**：Memory 使用单个 RWMutex，所有操作串行化
 2. **缺少批量处理**：错失 Raft batch 的优化机会
-3. **Range 查询低效**：O(n) 全表扫描 vs. RocksDB 的 O(log n) seek
+3. **Range 查询低效**：O(n) 全表扫描 vs. Pebble 的 O(log n) seek
 4. **缺少高级优化**：无分片、无缓存、无二进制编码
 
 ### 推荐优化路径
@@ -924,13 +924,13 @@ func (m *Memory) PutWithLease(...) {
 - BTree + 分片（方案 4）
 - BatchProposer + 二进制编码
 - **预期：20-30x 提升 → ~40,000+ ops/s**
-- **可能超越 RocksDB！**
+- **可能超越 Pebble！**
 
 ### 关键启示
 
 > "内存存储不一定快，并发控制才是关键。"
 
-RocksDB 虽然是持久化存储，但由于：
+Pebble 虽然是持久化存储，但由于：
 - 细粒度锁设计
 - WriteBatch 批量处理
 - LSM tree 有序结构
@@ -950,9 +950,9 @@ RocksDB 虽然是持久化存储，但由于：
 # Memory 性能测试
 CGO_ENABLED=1 go test ./test -run "TestPerformance_MixedWorkload$" -v -timeout=5m
 
-# RocksDB 性能测试
-CGO_ENABLED=1 CGO_LDFLAGS="-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain" \
-  go test ./test -run "TestPerformanceRocksDB_MixedWorkload$" -v -timeout=5m
+# Pebble 性能测试
+CGO_ENABLED=1 CGO_LDFLAGS="-lpebble -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain" \
+  go test ./test -run "TestPerformancePebble_MixedWorkload$" -v -timeout=5m
 ```
 
 ### 预期输出
@@ -964,7 +964,7 @@ Memory MixedWorkload:
   GET: 23,280 (80.0%)
   Throughput: 1,455.00 ops/sec
 
-RocksDB MixedWorkload:
+Pebble MixedWorkload:
   Total operations: 98,420
   PUT: 19,684 (20.0%)
   GET: 78,736 (80.0%)

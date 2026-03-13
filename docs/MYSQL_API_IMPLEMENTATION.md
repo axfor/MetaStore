@@ -20,7 +20,7 @@ api/mysql/
 ### Design Principles
 
 1. **Protocol Layer Isolation**: MySQL protocol layer is completely independent, sharing only the storage layer interface
-2. **Storage Engine Agnostic**: Works with both Memory and RocksDB storage engines
+2. **Storage Engine Agnostic**: Works with both Memory and Pebble storage engines
 3. **Cross-Protocol Data Consistency**: Data written via HTTP/etcd can be read via MySQL, and vice versa
 4. **Standards Compliance**: Returns standard MySQL error codes and behaviors
 
@@ -150,7 +150,7 @@ server:
 ├─────────────┴─────────────┴─────────────────┤
 │         Unified Storage Interface            │
 ├──────────────────────────────────────────────┤
-│         Storage Layer (Memory/RocksDB)       │
+│         Storage Layer (Memory/Pebble)       │
 └──────────────────────────────────────────────┘
 ```
 
@@ -264,8 +264,8 @@ Located in `test/mysql_api_memory_integration_test.go`:
 # Memory engine
 go test -v ./test -run TestMySQLMemory
 
-# RocksDB engine (requires CGO)
-CGO_ENABLED=1 CGO_LDFLAGS="..." go test -v ./test -run TestMySQLRocksDB
+# Pebble engine (requires CGO)
+CGO_ENABLED=1 CGO_LDFLAGS="..." go test -v ./test -run TestMySQLPebble
 
 # Cross-protocol tests
 go test -v ./test -run TestCrossProtocol

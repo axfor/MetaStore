@@ -34,7 +34,7 @@ type WatchCreateRequest struct {
 
 **位置**:
 - [internal/memory/kvstore_etcd_watch_lease.go:42](../internal/memory/kvstore_etcd_watch_lease.go#L42)
-- [internal/rocksdb/kvstore_etcd_raft.go:727](../internal/rocksdb/kvstore_etcd_raft.go#L727)
+- [internal/pebble/kvstore_etcd_raft.go:727](../internal/pebble/kvstore_etcd_raft.go#L727)
 
 **影响**: 客户端无法从指定 revision 恢复 watch，断线重连后会丢失事件
 
@@ -43,7 +43,7 @@ type WatchCreateRequest struct {
 **问题**: 多次调用 CancelWatch 会 panic
 
 ```go
-func (r *RocksDBEtcdRaft) CancelWatch(watchID int64) error {
+func (r *PebbleEtcdRaft) CancelWatch(watchID int64) error {
     // ...
     close(sub.cancel)    // ❌ 重复关闭会 panic
     close(sub.eventCh)   // ❌ 重复关闭会 panic
@@ -53,7 +53,7 @@ func (r *RocksDBEtcdRaft) CancelWatch(watchID int64) error {
 
 **位置**:
 - [internal/memory/kvstore_etcd_watch_lease.go:58-59](../internal/memory/kvstore_etcd_watch_lease.go#L58-L59)
-- [internal/rocksdb/kvstore_etcd_raft.go:744-745](../internal/rocksdb/kvstore_etcd_raft.go#L744-L745)
+- [internal/pebble/kvstore_etcd_raft.go:744-745](../internal/pebble/kvstore_etcd_raft.go#L744-L745)
 
 **影响**:
 - 并发场景下可能导致程序崩溃
@@ -64,7 +64,7 @@ func (r *RocksDBEtcdRaft) CancelWatch(watchID int64) error {
 **问题**: notifyWatches 在持有读锁时尝试写入 channel
 
 ```go
-func (r *RocksDBEtcdRaft) notifyWatches(event kvstore.WatchEvent) {
+func (r *PebbleEtcdRaft) notifyWatches(event kvstore.WatchEvent) {
     r.watchMu.RLock()  // 持有读锁
     defer r.watchMu.RUnlock()
 
@@ -77,7 +77,7 @@ func (r *RocksDBEtcdRaft) notifyWatches(event kvstore.WatchEvent) {
 }
 ```
 
-**位置**: [internal/rocksdb/kvstore_etcd_raft.go:948-973](../internal/rocksdb/kvstore_etcd_raft.go#L948-L973)
+**位置**: [internal/pebble/kvstore_etcd_raft.go:948-973](../internal/pebble/kvstore_etcd_raft.go#L948-L973)
 
 **影响**:
 - 慢客户端会阻塞所有其他 watch
@@ -183,10 +183,10 @@ func (s *WatchServer) handleCreateWatch(stream pb.Watch_WatchServer, req *pb.Wat
 
 需要存储变更历史。两种方案：
 
-#### 方案 2.1: 使用 WAL（推荐用于 RocksDB）
+#### 方案 2.1: 使用 WAL（推荐用于 Pebble）
 
 ```go
-func (r *RocksDBEtcdRaft) Watch(..., startRevision int64, ...) {
+func (r *PebbleEtcdRaft) Watch(..., startRevision int64, ...) {
     // ...
 
     if startRevision > 0 && startRevision < r.CurrentRevision() {
@@ -197,8 +197,8 @@ func (r *RocksDBEtcdRaft) Watch(..., startRevision int64, ...) {
     return eventCh, nil
 }
 
-func (r *RocksDBEtcdRaft) replayHistoryEvents(sub *watchSubscription, startRev int64) {
-    // 使用 RocksDB TransactionLogIterator
+func (r *PebbleEtcdRaft) replayHistoryEvents(sub *watchSubscription, startRev int64) {
+    // 使用 Pebble TransactionLogIterator
     iter := r.db.GetUpdatesSince(startRev)
     defer iter.Close()
 
@@ -220,7 +220,7 @@ func (r *RocksDBEtcdRaft) replayHistoryEvents(sub *watchSubscription, startRev i
 }
 ```
 
-#### 方案 2.2: 维护独立的事件历史缓存（适用于内存和 RocksDB）
+#### 方案 2.2: 维护独立的事件历史缓存（适用于内存和 Pebble）
 
 ```go
 type EventHistory struct {
@@ -269,7 +269,7 @@ type watchSubscription struct {
     closeOnce sync.Once
 }
 
-func (r *RocksDBEtcdRaft) CancelWatch(watchID int64) error {
+func (r *PebbleEtcdRaft) CancelWatch(watchID int64) error {
     r.watchMu.Lock()
     sub, ok := r.watches[watchID]
     if !ok {
@@ -299,7 +299,7 @@ func (r *RocksDBEtcdRaft) CancelWatch(watchID int64) error {
 ### 方案 4: 改进 notifyWatches 并发性能
 
 ```go
-func (r *RocksDBEtcdRaft) notifyWatches(event kvstore.WatchEvent) {
+func (r *PebbleEtcdRaft) notifyWatches(event kvstore.WatchEvent) {
     // 快速复制 watch 列表（减少锁持有时间）
     r.watchMu.RLock()
     watchesCopy := make([]*watchSubscription, 0, len(r.watches))
@@ -338,7 +338,7 @@ func (r *RocksDBEtcdRaft) notifyWatches(event kvstore.WatchEvent) {
     }
 }
 
-func (r *RocksDBEtcdRaft) slowSend(sub *watchSubscription, event kvstore.WatchEvent) {
+func (r *PebbleEtcdRaft) slowSend(sub *watchSubscription, event kvstore.WatchEvent) {
     // 慢客户端处理：重试或断开连接
     timer := time.NewTimer(5 * time.Second)
     defer timer.Stop()

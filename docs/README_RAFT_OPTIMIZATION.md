@@ -67,7 +67,7 @@
 | 批量 Apply | 5-10x | ✓ 已启用 | internal/memory/kvstore.go:132-179 |
 | Protobuf 序列化 | 3-20.6x | ✓ 已启用 | pkg/config/config.go:128-132 |
 | 日志压缩 | - | ✓ 已实现 | internal/raft/node_memory.go:433-443 |
-| RocksDB 批量写入 | 5-10x | ✓ 已实现 | internal/rocksdb/kvstore.go |
+| Pebble 批量写入 | 5-10x | ✓ 已实现 | internal/pebble/kvstore.go |
 | 流控制窗口 | 2x | ✓ 已配置 | pkg/config/config.go:268-272 |
 
 ### 未实现的优化 (3 项)
@@ -177,15 +177,15 @@ grep -E "Tick|MaxInflight" pkg/config/config.go
 ```
 internal/raft/
 ├── node_memory.go      # Memory 存储的 Raft 实现 (500+ lines)
-├── node_rocksdb.go     # RocksDB 存储的 Raft 实现
+├── node_pebble.go     # Pebble 存储的 Raft 实现
 └── listener.go         # HTTP 监听器
 
 internal/memory/
 └── kvstore.go          # 内存存储的 etcd 兼容层 (已优化批量 apply)
 
-internal/rocksdb/
-├── kvstore.go          # RocksDB 存储的 etcd 兼容层 (已优化批量写入)
-└── raftlog.go          # RocksDB Raft 日志存储 (259+ lines)
+internal/pebble/
+├── kvstore.go          # Pebble 存储的 etcd 兼容层 (已优化批量写入)
+└── raftlog.go          # Pebble Raft 日志存储 (259+ lines)
 
 pkg/config/
 └── config.go           # 配置管理 (已优化参数) (550+ lines)
@@ -323,7 +323,7 @@ docs/
 
 ### 内部资源
 - Raft 实现: `internal/raft/`
-- 存储层: `internal/memory/` 和 `internal/rocksdb/`
+- 存储层: `internal/memory/` 和 `internal/pebble/`
 - 配置管理: `pkg/config/`
 - 性能测试: `test/benchmark_test.go`
 

@@ -219,7 +219,7 @@ Client Requests
     ↓               ↓               ↓
 [Apply Worker Pool] ← ⚠️ 关键: 异步批量 Apply
     ↓
-[RocksDB WriteBatch] ← LSM-tree, 批量写入
+[Pebble WriteBatch] ← LSM-tree, 批量写入
 ```
 
 ### 关键设计 #1: Multi-Raft (数据分片)
@@ -318,13 +318,13 @@ type ApplyWorker struct {
 
 func (w *ApplyWorker) run() {
     for entries := range w.queue {
-        // 批量应用到 RocksDB
-        batch := rocksdb.NewWriteBatch()
+        // 批量应用到 Pebble
+        batch := pebble.NewWriteBatch()
         for _, entry := range entries {
             op := decode(entry.Data)
             batch.Put(op.Key, op.Value)
         }
-        rocksdb.Write(batch)  // 一次 fsync
+        pebble.Write(batch)  // 一次 fsync
     }
 }
 ```
@@ -386,7 +386,7 @@ Client Requests
     ↓
 [Raft Propose]
     ↓
-[Pebble (LSM)] ← RocksDB fork, 批量写入
+[Pebble (LSM)] ← Pebble fork, 批量写入
 ```
 
 ### 关键设计 #1: Leaseholder (租约机制)

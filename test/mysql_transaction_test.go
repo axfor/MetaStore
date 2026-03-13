@@ -25,7 +25,7 @@ import (
 	"metaStore/internal/kvstore"
 	"metaStore/internal/memory"
 	"metaStore/internal/raft"
-	"metaStore/internal/rocksdb"
+	"metaStore/internal/pebbledb"
 	myapi "metaStore/api/mysql"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -91,9 +91,9 @@ func setupMemoryStore(t *testing.T, testName string, nodeID int, port int) *test
 	}
 }
 
-// setupRocksDBStore sets up a RocksDB-based store for testing
-func setupRocksDBStore(t *testing.T, testName string, nodeID int, port int) *testStoreSetup {
-	dataDir := fmt.Sprintf("data/rocksdb/%s", testName)
+// setupPebbleStore sets up a Pebble-based store for testing
+func setupPebbleStore(t *testing.T, testName string, nodeID int, port int) *testStoreSetup {
+	dataDir := fmt.Sprintf("data/pebble/%s", testName)
 	os.RemoveAll(dataDir)
 
 	proposeC := make(chan string, 100)
@@ -101,7 +101,7 @@ func setupRocksDBStore(t *testing.T, testName string, nodeID int, port int) *tes
 
 	peers := []string{fmt.Sprintf("http://127.0.0.1:%d", port+100)}
 
-	var kvs *rocksdb.RocksDB
+	var kvs *pebbledb.PebbleDB
 	getSnapshot := func() ([]byte, error) {
 		if kvs == nil {
 			return nil, nil
@@ -111,13 +111,13 @@ func setupRocksDBStore(t *testing.T, testName string, nodeID int, port int) *tes
 
 	commitC, errorC, snapshotterReady, _ := raft.NewNode(nodeID, peers, false, getSnapshot, proposeC, confChangeC, dataDir, NewTestConfig(1, uint64(nodeID), fmt.Sprintf(":%d", port)))
 
-	// Open RocksDB
-	dbPath := fmt.Sprintf("%s/rocksdb", dataDir)
+	// Open Pebble
+	dbPath := fmt.Sprintf("%s/pebble", dataDir)
 	os.MkdirAll(dbPath, 0755)
-	db, err := rocksdb.Open(dbPath)
-	require.NoError(t, err, "Failed to open RocksDB")
+	db, err := pebbledb.Open(dbPath)
+	require.NoError(t, err, "Failed to open Pebble")
 
-	kvs = rocksdb.NewRocksDB(db, <-snapshotterReady, proposeC, commitC, errorC)
+	kvs = pebbledb.NewPebbleDB(db, <-snapshotterReady, proposeC, commitC, errorC)
 
 	cleanup := func() {
 		if kvs != nil {
@@ -147,7 +147,7 @@ func setupRocksDBStore(t *testing.T, testName string, nodeID int, port int) *tes
 	}
 }
 
-// runTransactionTest runs a test function with both Memory and RocksDB engines
+// runTransactionTest runs a test function with both Memory and Pebble engines
 func runTransactionTest(t *testing.T, testName string, testFunc func(t *testing.T, store kvstore.Store, mysqlAddr string)) {
 	engines := []struct {
 		name      string
@@ -156,7 +156,7 @@ func runTransactionTest(t *testing.T, testName string, testFunc func(t *testing.
 		raftPort  int
 	}{
 		{"Memory", setupMemoryStore, 13400, 2380},
-		{"RocksDB", setupRocksDBStore, 13500, 2390},
+		{"Pebble", setupPebbleStore, 13500, 2390},
 	}
 
 	for _, engine := range engines {

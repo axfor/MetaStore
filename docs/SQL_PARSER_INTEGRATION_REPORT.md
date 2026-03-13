@@ -302,7 +302,7 @@ SELECT * FROM kv WHERE key LIKE 'prefix%'
 
 ### Running Unit Tests
 ```bash
-CGO_ENABLED=1 CGO_LDFLAGS="-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain" \
+CGO_ENABLED=1 CGO_LDFLAGS="-lpebble -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain" \
   go test ./api/mysql/parser -v
 ```
 

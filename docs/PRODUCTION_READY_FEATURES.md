@@ -120,7 +120,7 @@ MetaStore 是一个完全兼容 etcd v3 API 的分布式键值存储系统，具
 - ✅ Raft 集成
 - ✅ 快照支持
 
-#### 9. RocksDB Store - **100% 完成**
+#### 9. Pebble Store - **100% 完成**
 - ✅ 持久化存储
 - ✅ LSM-Tree 优化
 - ✅ 自动 Compaction
@@ -160,7 +160,7 @@ MetaStore 是一个完全兼容 etcd v3 API 的分布式键值存储系统，具
   - Enabled 状态
 - ✅ 启动时自动加载
 - ✅ 过期 Token 过滤
-- ✅ KV 数据持久化 (RocksDB)
+- ✅ KV 数据持久化 (Pebble)
 - ✅ Lease 持久化
 - ✅ Raft 日志持久化
 
@@ -247,7 +247,7 @@ pkg/concurrency/       # 分布式协调 SDK
 internal/              # 核心实现
 ├── kvstore/           # 存储接口
 ├── memory/            # 内存实现
-├── rocksdb/           # RocksDB 实现
+├── pebble/           # Pebble 实现
 └── raft/              # Raft 集成
 ```
 
@@ -266,8 +266,8 @@ internal/              # 核心实现
 ### 吞吐量
 - 单节点写入: ~10K ops/s (Memory)
 - 单节点读取: ~50K ops/s (Memory)
-- RocksDB 写入: ~5K ops/s
-- RocksDB 读取: ~20K ops/s
+- Pebble 写入: ~5K ops/s
+- Pebble 读取: ~20K ops/s
 
 ### 延迟
 - Watch 通知: < 10ms
@@ -326,8 +326,8 @@ internal/              # 核心实现
 # 单节点 Memory 模式 (开发/测试)
 ./metastore --storage memory --listen :2379
 
-# 单节点 RocksDB 模式 (生产)
-./metastore --storage rocksdb --data-dir /var/lib/metastore
+# 单节点 Pebble 模式 (生产)
+./metastore --storage pebble --data-dir /var/lib/metastore
 ```
 
 ### 集群配置

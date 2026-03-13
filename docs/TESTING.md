@@ -1,6 +1,6 @@
 # 测试指南
 
-本文档说明如何运行 MetaStore 的各种测试。MetaStore 支持两种存储引擎（内存和RocksDB），所有测试都会覆盖这两种模式。
+本文档说明如何运行 MetaStore 的各种测试。MetaStore 支持两种存储引擎（内存和Pebble），所有测试都会覆盖这两种模式。
 
 ## 测试结构
 
@@ -12,7 +12,7 @@ MetaStore/
 │   ├── raft/
 │   │   └── node_test.go             # Raft节点单元测试
 │   └── storage/
-│       └── rocksdb_test.go          # RocksDB存储单元测试
+│       └── pebble_test.go          # Pebble存储单元测试
 └── test/
     └── integration_test.go           # 集成测试（多节点集群、HTTP API）
 ```
@@ -29,7 +29,7 @@ make test
 1. 内存存储层测试
 2. Raft共识层测试
 3. 集成测试（使用内存存储）
-4. RocksDB存储层测试
+4. Pebble存储层测试
 
 ## 测试命令说明
 
@@ -51,7 +51,7 @@ make test-unit
 make test-integration
 ```
 
-### 4. 只运行RocksDB存储测试
+### 4. 只运行Pebble存储测试
 
 ```bash
 make test-storage
@@ -74,7 +74,7 @@ make test-coverage
 - 数据查找
 
 ```bash
-CGO_ENABLED=1 CGO_LDFLAGS="-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2" \
+CGO_ENABLED=1 CGO_LDFLAGS="-lpebble -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2" \
   go test ./internal/store/ -v -run TestMemory
 ```
 
@@ -85,13 +85,13 @@ CGO_ENABLED=1 CGO_LDFLAGS="-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -l
 - ConfState更新
 
 ```bash
-CGO_ENABLED=1 CGO_LDFLAGS="-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2" \
+CGO_ENABLED=1 CGO_LDFLAGS="-lpebble -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2" \
   go test ./internal/raft/ -v
 ```
 
-### 3. Storage 层测试 (`internal/storage/rocksdb_test.go`)
+### 3. Storage 层测试 (`internal/storage/pebble_test.go`)
 
-测试RocksDB存储引擎的低层操作：
+测试Pebble存储引擎的低层操作：
 - 基本操作（初始化、索引）
 - 日志条目追加和检索
 - Term查询
@@ -120,18 +120,18 @@ make test-integration
 
 ## 手动运行测试（高级）
 
-如果需要手动控制测试执行，可以使用 `go test` 命令。由于项目依赖 RocksDB C++ 库，需要设置正确的 CGO 链接标志：
+如果需要手动控制测试执行，可以使用 `go test` 命令。由于项目依赖 Pebble C++ 库，需要设置正确的 CGO 链接标志：
 
 ```bash
 # 设置环境变量（方便多次使用）
 export CGO_ENABLED=1
-export CGO_LDFLAGS="-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2"
+export CGO_LDFLAGS="-lpebble -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2"
 
 # 运行所有测试
 go test ./internal/... ./test/ -v
 
-# 运行RocksDB存储测试
-go test -tags=rocksdb ./internal/storage/ -v
+# 运行Pebble存储测试
+go test -tags=pebble ./internal/storage/ -v
 
 # 运行特定测试
 go test ./internal/raft/ -v -run TestProcessMessages
@@ -147,7 +147,7 @@ MetaStore 支持两种存储引擎，测试会覆盖所有模式：
 | 存储引擎 | 用途 | 测试覆盖 |
 |---------|------|---------|
 | **Memory + WAL** | 默认模式，快速启动，WAL持久化 | ✅ 单元测试 + 集成测试 |
-| **RocksDB** | 完全持久化，适合生产环境 | ✅ 专门的存储层测试 |
+| **Pebble** | 完全持久化，适合生产环境 | ✅ 专门的存储层测试 |
 
 ### 内存存储引擎测试
 
@@ -158,9 +158,9 @@ MetaStore 支持两种存储引擎，测试会覆盖所有模式：
   - 快照创建和恢复
   - Raft日志持久化（WAL）
 
-### RocksDB存储引擎测试
+### Pebble存储引擎测试
 
-- **测试文件**: `internal/storage/rocksdb_test.go`
+- **测试文件**: `internal/storage/pebble_test.go`
 - **覆盖功能**:
   - Raft日志存储
   - HardState持久化
@@ -175,7 +175,7 @@ MetaStore 支持两种存储引擎，测试会覆盖所有模式：
 1. **运行所有测试**: 在每次提交前运行 `make test` 确保没有回归
 2. **单元测试**: 优先编写单元测试，测试单个组件的功能
 3. **集成测试**: 编写集成测试验证组件间的交互
-4. **测试两种存储模式**: 确保功能在内存和RocksDB模式下都能工作
+4. **测试两种存储模式**: 确保功能在内存和Pebble模式下都能工作
 
 ## 添加新测试
 
@@ -232,7 +232,7 @@ func TestNewIntegration(t *testing.T) {
 
 #### 问题：链接错误 (undefined reference to BZ2_*)
 
-**原因**: RocksDB 编译时启用了 bz2 压缩，但链接时缺少 bz2 库。
+**原因**: Pebble 编译时启用了 bz2 压缩，但链接时缺少 bz2 库。
 
 **解决方案**:
 1. 确保已安装 bz2 开发库：

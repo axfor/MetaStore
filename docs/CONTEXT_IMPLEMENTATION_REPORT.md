@@ -53,8 +53,8 @@ Successfully completed Context propagation throughout the entire codebase. All S
 - `internal/memory/watch.go` - Watch & Lease operations (6 methods + context import)
 - `internal/memory/kvstore.go` - Legacy wrapper (context import)
 
-**RocksDB Storage**:
-- `internal/rocksdb/kvstore.go` - All operations (11 methods + context import + internal calls fixed)
+**Pebble Storage**:
+- `internal/pebble/kvstore.go` - All operations (11 methods + context import + internal calls fixed)
 
 ---
 
@@ -112,7 +112,7 @@ resp, err := am.store.Range(context.Background(), authUserPrefix, endKey, 0, 0)
 | `internal/memory/store.go` | 7 | 6 | ✅ |
 | `internal/memory/watch.go` | 6 | 5 | ✅ |
 | `internal/memory/kvstore.go` | 1 | 0 (import only) | ✅ |
-| `internal/rocksdb/kvstore.go` | 14 | 11 + internals | ✅ |
+| `internal/pebble/kvstore.go` | 14 | 11 + internals | ✅ |
 | **Total** | **103** | **87** | ✅ |
 
 ---
@@ -251,7 +251,7 @@ resp, err := store.Range(context.Background(), "key", "", 0, 0)
 ### Completed ✅
 - [x] Interface definition (Store interface)
 - [x] API layer propagation (etcdapi, httpapi)
-- [x] Storage implementation (memory, rocksdb)
+- [x] Storage implementation (memory, pebble)
 - [x] All compilation errors fixed
 - [x] Context import added to all files
 

@@ -29,8 +29,8 @@ func BenchmarkMaintenance_Status(b *testing.B) {
 	b.Run("Memory", func(b *testing.B) {
 		benchmarkMaintenanceStatus(b, "memory")
 	})
-	b.Run("RocksDB", func(b *testing.B) {
-		benchmarkMaintenanceStatus(b, "rocksdb")
+	b.Run("Pebble", func(b *testing.B) {
+		benchmarkMaintenanceStatus(b, "pebble")
 	})
 }
 
@@ -43,7 +43,7 @@ func benchmarkMaintenanceStatus(b *testing.B, storageType string) {
 		clientAddr = node.clientAddr
 		cleanup = c
 	} else {
-		node, c := startRocksDBNode(b, 1)
+		node, c := startPebbleNode(b, 1)
 		clientAddr = node.clientAddr
 		cleanup = c
 	}
@@ -76,8 +76,8 @@ func BenchmarkMaintenance_Hash(b *testing.B) {
 	b.Run("Memory", func(b *testing.B) {
 		benchmarkMaintenanceHash(b, "memory")
 	})
-	b.Run("RocksDB", func(b *testing.B) {
-		benchmarkMaintenanceHash(b, "rocksdb")
+	b.Run("Pebble", func(b *testing.B) {
+		benchmarkMaintenanceHash(b, "pebble")
 	})
 }
 
@@ -90,7 +90,7 @@ func benchmarkMaintenanceHash(b *testing.B, storageType string) {
 		clientAddr = node.clientAddr
 		cleanup = c
 	} else {
-		node, c := startRocksDBNode(b, 1)
+		node, c := startPebbleNode(b, 1)
 		clientAddr = node.clientAddr
 		cleanup = c
 	}
@@ -137,8 +137,8 @@ func BenchmarkMaintenance_HashKV(b *testing.B) {
 	b.Run("Memory", func(b *testing.B) {
 		benchmarkMaintenanceHashKV(b, "memory")
 	})
-	b.Run("RocksDB", func(b *testing.B) {
-		benchmarkMaintenanceHashKV(b, "rocksdb")
+	b.Run("Pebble", func(b *testing.B) {
+		benchmarkMaintenanceHashKV(b, "pebble")
 	})
 }
 
@@ -151,7 +151,7 @@ func benchmarkMaintenanceHashKV(b *testing.B, storageType string) {
 		clientAddr = node.clientAddr
 		cleanup = c
 	} else {
-		node, c := startRocksDBNode(b, 1)
+		node, c := startPebbleNode(b, 1)
 		clientAddr = node.clientAddr
 		cleanup = c
 	}
@@ -201,8 +201,8 @@ func BenchmarkMaintenance_Alarm(b *testing.B) {
 	b.Run("Memory_ACTIVATE", func(b *testing.B) {
 		benchmarkMaintenanceAlarm(b, "memory", pb.AlarmRequest_ACTIVATE)
 	})
-	b.Run("RocksDB_GET", func(b *testing.B) {
-		benchmarkMaintenanceAlarm(b, "rocksdb", pb.AlarmRequest_GET)
+	b.Run("Pebble_GET", func(b *testing.B) {
+		benchmarkMaintenanceAlarm(b, "pebble", pb.AlarmRequest_GET)
 	})
 }
 
@@ -215,7 +215,7 @@ func benchmarkMaintenanceAlarm(b *testing.B, storageType string, action pb.Alarm
 		clientAddr = node.clientAddr
 		cleanup = c
 	} else {
-		node, c := startRocksDBNode(b, 1)
+		node, c := startPebbleNode(b, 1)
 		clientAddr = node.clientAddr
 		cleanup = c
 	}
@@ -256,8 +256,8 @@ func BenchmarkMaintenance_Snapshot(b *testing.B) {
 	b.Run("Memory_MediumDB", func(b *testing.B) {
 		benchmarkMaintenanceSnapshot(b, "memory", 1000)
 	})
-	b.Run("RocksDB_SmallDB", func(b *testing.B) {
-		benchmarkMaintenanceSnapshot(b, "rocksdb", 100)
+	b.Run("Pebble_SmallDB", func(b *testing.B) {
+		benchmarkMaintenanceSnapshot(b, "pebble", 100)
 	})
 }
 
@@ -270,7 +270,7 @@ func benchmarkMaintenanceSnapshot(b *testing.B, storageType string, numKeys int)
 		clientAddr = node.clientAddr
 		cleanup = c
 	} else {
-		node, c := startRocksDBNode(b, 1)
+		node, c := startPebbleNode(b, 1)
 		clientAddr = node.clientAddr
 		cleanup = c
 	}
@@ -333,8 +333,8 @@ func BenchmarkMaintenance_Defragment(b *testing.B) {
 	b.Run("Memory", func(b *testing.B) {
 		benchmarkMaintenanceDefragment(b, "memory")
 	})
-	b.Run("RocksDB", func(b *testing.B) {
-		benchmarkMaintenanceDefragment(b, "rocksdb")
+	b.Run("Pebble", func(b *testing.B) {
+		benchmarkMaintenanceDefragment(b, "pebble")
 	})
 }
 
@@ -347,7 +347,7 @@ func benchmarkMaintenanceDefragment(b *testing.B, storageType string) {
 		clientAddr = node.clientAddr
 		cleanup = c
 	} else {
-		node, c := startRocksDBNode(b, 1)
+		node, c := startPebbleNode(b, 1)
 		clientAddr = node.clientAddr
 		cleanup = c
 	}
@@ -380,8 +380,8 @@ func BenchmarkMaintenance_MixedWorkload(b *testing.B) {
 	b.Run("Memory", func(b *testing.B) {
 		benchmarkMaintenanceMixed(b, "memory")
 	})
-	b.Run("RocksDB", func(b *testing.B) {
-		benchmarkMaintenanceMixed(b, "rocksdb")
+	b.Run("Pebble", func(b *testing.B) {
+		benchmarkMaintenanceMixed(b, "pebble")
 	})
 }
 
@@ -394,7 +394,7 @@ func benchmarkMaintenanceMixed(b *testing.B, storageType string) {
 		clientAddr = node.clientAddr
 		cleanup = c
 	} else {
-		node, c := startRocksDBNode(b, 1)
+		node, c := startPebbleNode(b, 1)
 		clientAddr = node.clientAddr
 		cleanup = c
 	}

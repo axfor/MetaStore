@@ -35,7 +35,7 @@
 - ✅ `internal/kvstore/store.go` - 扩展接口
 - ✅ `cmd/etcd-demo/main.go` - 演示服务器
 - ✅ `examples/etcd-client/main.go` - 客户端示例
-- ✅ `internal/rocksdb/kvstore_stubs.go` - RocksDB 兼容桩
+- ✅ `internal/pebble/kvstore_stubs.go` - Pebble 兼容桩
 
 **总计**：16 个核心文件
 
@@ -326,7 +326,7 @@ go test ./test/etcd_compatibility_test.go
 
 ### Phase 2（生产就绪）
 - 集成 Raft 共识
-- RocksDB 持久化
+- Pebble 持久化
 - 完整 MVCC（如果需要）
 - 单元测试覆盖率 > 80%
 

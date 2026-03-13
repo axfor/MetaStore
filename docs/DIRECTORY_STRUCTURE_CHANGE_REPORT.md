@@ -2,7 +2,7 @@
 
 **日期 / Date**: 2025-10-21
 **项目 / Project**: metaStore
-**版本 / Version**: RocksDB Backend
+**版本 / Version**: Pebble Backend
 
 ---
 
@@ -12,9 +12,9 @@
 
 ```
 .
-├── metaStore-1-rocksdb/        # 节点 1 RocksDB 数据
-├── metaStore-2-rocksdb/        # 节点 2 RocksDB 数据
-├── metaStore-3-rocksdb/        # 节点 3 RocksDB 数据
+├── metaStore-1-pebble/        # 节点 1 Pebble 数据
+├── metaStore-2-pebble/        # 节点 2 Pebble 数据
+├── metaStore-3-pebble/        # 节点 3 Pebble 数据
 ├── metaStore-1-snap/           # 节点 1 快照
 ├── metaStore-2-snap/           # 节点 2 快照
 └── metaStore-3-snap/           # 节点 3 快照
@@ -25,7 +25,7 @@
 ```
 data/
 ├── 1/                          # 节点 1 数据
-│   ├── 000004.log             # RocksDB WAL
+│   ├── 000004.log             # Pebble WAL
 │   ├── CURRENT
 │   ├── IDENTITY
 │   ├── LOCK
@@ -52,21 +52,21 @@ data/
 
 ## 🔧 代码修改 / Code Changes
 
-### 1. [main_rocksdb.go:45](main_rocksdb.go#L45)
+### 1. [main_pebble.go:45](main_pebble.go#L45)
 
 ```go
 // 修改前 / Before:
-// dbPath := fmt.Sprintf("metaStore-%d-rocksdb", *id)
+// dbPath := fmt.Sprintf("metaStore-%d-pebble", *id)
 
 // 修改后 / After:
 dbPath := fmt.Sprintf("data/%d", *id)
 ```
 
-### 2. [raft_rocks.go:93-94](raft_rocks.go#L93-L94)
+### 2. [raft_pebble.go:93-94](raft_pebble.go#L93-L94)
 
 ```go
 // 修改前 / Before:
-// dbdir:   fmt.Sprintf("metaStore-%d-rocksdb", id),
+// dbdir:   fmt.Sprintf("metaStore-%d-pebble", id),
 // snapdir: fmt.Sprintf("metaStore-%d-snap", id),
 
 // 修改后 / After:
@@ -85,12 +85,12 @@ snapdir: fmt.Sprintf("data/%d/snap", id),
 
 更新了以下文档中的所有目录引用：
 - [README.md](README.md)
-- [ROCKSDB_BUILD_MACOS.md](ROCKSDB_BUILD_MACOS.md)
-- [ROCKSDB_BUILD_MACOS_EN.md](ROCKSDB_BUILD_MACOS_EN.md)
+- [PEBBLE_BUILD_MACOS.md](PEBBLE_BUILD_MACOS.md)
+- [PEBBLE_BUILD_MACOS_EN.md](PEBBLE_BUILD_MACOS_EN.md)
 - [QUICKSTART.md](QUICKSTART.md)
 - [IMPLEMENTATION.md](IMPLEMENTATION.md)
-- [ROCKSDB_TEST_GUIDE.md](ROCKSDB_TEST_GUIDE.md)
-- [ROCKSDB_TEST_REPORT.md](ROCKSDB_TEST_REPORT.md)
+- [PEBBLE_TEST_GUIDE.md](PEBBLE_TEST_GUIDE.md)
+- [PEBBLE_TEST_REPORT.md](PEBBLE_TEST_REPORT.md)
 
 ---
 
@@ -166,7 +166,7 @@ curl -s http://127.0.0.1:12380/key3      # ✅ value3
 #### 日志验证 / Log Verification:
 
 ```
-2025/10/21 01:10:29 Starting with RocksDB persistent storage
+2025/10/21 01:10:29 Starting with Pebble persistent storage
 raft2025/10/21 01:10:29 INFO: newRaft 1 [peers: [], term: 2, commit: 6, applied: 0, lastindex: 6, lastterm: 2]
                                                                  ↑        ↑                      ↑
                                                            已恢复的 term  已提交的条目      最后的日志索引
@@ -261,11 +261,11 @@ $ du -sh data/*
 
 ### 1. 父目录要求 / Parent Directory Requirement
 
-⚠️ **关键问题**: RocksDB 无法自动创建父目录 `data/`，必须手动创建。
+⚠️ **关键问题**: Pebble 无法自动创建父目录 `data/`，必须手动创建。
 
 **错误示例 / Error Example**:
 ```
-2025/10/21 01:09:10 Failed to open RocksDB: failed to open RocksDB at data/1:
+2025/10/21 01:09:10 Failed to open Pebble: failed to open Pebble at data/1:
 IO error: No such file or directory: While mkdir if missing: data/1: No such file or directory
 ```
 
@@ -281,8 +281,8 @@ mkdir -p data
 
 所有启动示例已更新为包含 `mkdir -p data` 命令：
 - ✅ README.md - 添加了数据目录创建说明
-- ✅ ROCKSDB_BUILD_MACOS.md - 所有启动示例已更新
-- ✅ ROCKSDB_BUILD_MACOS_EN.md - 所有启动示例已更新
+- ✅ PEBBLE_BUILD_MACOS.md - 所有启动示例已更新
+- ✅ PEBBLE_BUILD_MACOS_EN.md - 所有启动示例已更新
 
 ### 3. 清理命令简化 / Simplified Cleanup
 
@@ -290,7 +290,7 @@ mkdir -p data
 
 ```bash
 # 旧方式 / Old way:
-rm -rf metaStore-*-rocksdb metaStore-*-snap
+rm -rf metaStore-*-pebble metaStore-*-snap
 
 # 新方式 / New way:
 rm -rf data/
@@ -307,7 +307,7 @@ rm -rf data/
 | 3节点集群 / 3-Node Cluster | ✅ 通过 / Pass | Leader选举成功，数据同步正常 |
 | 跨节点数据同步 / Cross-Node Sync | ✅ 通过 / Pass | 所有节点数据一致 |
 | 目录结构验证 / Directory Structure | ✅ 通过 / Pass | `data/{id}/` 和 `data/{id}/snap/` |
-| RocksDB文件完整性 / RocksDB Files | ✅ 通过 / Pass | LOG, MANIFEST, OPTIONS 等文件齐全 |
+| Pebble文件完整性 / Pebble Files | ✅ 通过 / Pass | LOG, MANIFEST, OPTIONS 等文件齐全 |
 
 **总计 / Total**: 6/6 测试通过 (100%)
 
@@ -383,9 +383,9 @@ rm -rf data/
 ### 相关文档 / Related Documentation:
 
 - [README.md](README.md) - 项目主文档
-- [ROCKSDB_BUILD_MACOS.md](ROCKSDB_BUILD_MACOS.md) - macOS 编译指南（中文）
-- [ROCKSDB_BUILD_MACOS_EN.md](ROCKSDB_BUILD_MACOS_EN.md) - macOS Build Guide (English)
-- [ROCKSDB_3NODE_TEST_REPORT.md](ROCKSDB_3NODE_TEST_REPORT.md) - 3节点集群测试报告
+- [PEBBLE_BUILD_MACOS.md](PEBBLE_BUILD_MACOS.md) - macOS 编译指南（中文）
+- [PEBBLE_BUILD_MACOS_EN.md](PEBBLE_BUILD_MACOS_EN.md) - macOS Build Guide (English)
+- [PEBBLE_3NODE_TEST_REPORT.md](PEBBLE_3NODE_TEST_REPORT.md) - 3节点集群测试报告
 
 ---
 

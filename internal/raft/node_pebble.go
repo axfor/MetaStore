@@ -1,0 +1,986 @@
+// Copyright 2025 The axfor Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package raft
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/url"
+	"os"
+	"strconv"
+	"sync"
+	"time"
+
+	"metaStore/internal/batch"
+	"metaStore/internal/kvstore"
+	"metaStore/internal/lease"
+	"metaStore/internal/pebbledb"
+	"metaStore/pkg/config"
+	"metaStore/pkg/log"
+
+	"github.com/cockroachdb/pebble"
+
+	"go.etcd.io/etcd/client/pkg/v3/fileutil"
+	"go.etcd.io/etcd/client/pkg/v3/types"
+	"go.etcd.io/etcd/server/v3/etcdserver/api/rafthttp"
+	"go.etcd.io/etcd/server/v3/etcdserver/api/snap"
+	stats "go.etcd.io/etcd/server/v3/etcdserver/api/v2stats"
+	"go.etcd.io/raft/v3"
+	"go.etcd.io/raft/v3/raftpb"
+
+	"go.uber.org/zap"
+)
+
+// raftNodePebble is a raft node backed by Pebble for persistent storage
+type raftNodePebble struct {
+	proposeC    <-chan string            // proposed messages (k,v)
+	confChangeC <-chan raftpb.ConfChange // proposed cluster config changes
+	commitC     chan<- *kvstore.Commit   // entries committed to log (k,v)
+	errorC      chan<- error             // errors from raft session
+
+	id          int      // client ID for raft session
+	peers       []string // raft peer URLs
+	join        bool     // node is joining an existing cluster
+	dbdir       string   // path to Pebble directory
+	snapdir     string   // path to snapshot directory
+	getSnapshot func() ([]byte, error)
+
+	confState     raftpb.ConfState
+	snapshotIndex uint64
+	appliedIndex  uint64
+
+	// raft backing for the commit/error channel
+	node        raft.Node
+	raftStorage *pebbledb.PebbleStorage
+	pebbleDB     *pebble.DB
+
+	snapshotter      *snap.Snapshotter
+	snapshotterReady chan *snap.Snapshotter // signals when snapshotter is ready
+
+	snapCount uint64
+	transport *rafthttp.Transport
+	stopc     chan struct{} // signals proposal channel closed
+	httpstopc chan struct{} // signals http server to shutdown
+	httpdonec chan struct{} // signals http server shutdown complete
+
+	// system(optional)
+	batcher         *batch.ProposalBatcher // (ifenabled)
+	batchedProposeC <-chan []byte          // channel(ifenabled，from batcher get)
+
+	// Lease Read system(optional)
+	smartLeaseConfig *lease.SmartLeaseConfig // canconfigmanager(supporteddynamic)
+	leaseManager     *lease.LeaseManager     // leasemanager(ifenabled)
+	readIndexManager *lease.ReadIndexManager // ReadIndex manager(ifenabled)
+
+	// ConfChange callback for ClusterManager synchronization
+	confChangeCallback func(cc raftpb.ConfChange, confState raftpb.ConfState)
+	confChangeMu       sync.RWMutex
+
+	// Leader change notifications
+	leaderChangeC chan kvstore.RaftStatus
+
+	logger *zap.Logger
+	cfg    *config.Config // Raft configuration
+}
+
+// NewNodePebble initiates a raft instance backed by Pebble
+func NewNodePebble(id int, peers []string, join bool, getSnapshot func() ([]byte, error),
+	proposeC <-chan string, confChangeC <-chan raftpb.ConfChange, pebbleDB *pebble.DB, dataDir string, cfg *config.Config,
+) (<-chan *kvstore.Commit, <-chan error, <-chan *snap.Snapshotter, *raftNodePebble) {
+	commitC := make(chan *kvstore.Commit)
+	errorC := make(chan error)
+
+	rc := &raftNodePebble{
+		proposeC:    proposeC,
+		confChangeC: confChangeC,
+		commitC:     commitC,
+		errorC:      errorC,
+		id:          id,
+		peers:       peers,
+		join:        join,
+		dbdir:       dataDir,
+		snapdir:     fmt.Sprintf("%s/snap", dataDir),
+		getSnapshot: getSnapshot,
+		snapCount:   defaultSnapshotCount,
+		stopc:       make(chan struct{}),
+		httpstopc:   make(chan struct{}),
+		httpdonec:   make(chan struct{}),
+		pebbleDB:     pebbleDB,
+
+		logger: log.ZapLogger(),
+		cfg:    cfg, // Store config reference
+
+		snapshotterReady: make(chan *snap.Snapshotter, 1),
+		leaderChangeC:    make(chan kvstore.RaftStatus, 1),
+	}
+	go rc.startRaft()
+	return commitC, errorC, rc.snapshotterReady, rc
+}
+
+func (rc *raftNodePebble) saveSnap(snap raftpb.Snapshot) error {
+	// Save snapshot to file system using snapshotter
+	if err := rc.snapshotter.SaveSnap(snap); err != nil {
+		return err
+	}
+	rc.logger.Info("saved snapshot", zap.Uint64("index", snap.Metadata.Index), zap.String("component", "raft-pebble"))
+	return nil
+}
+
+// SetConfChangeCallback sets a callback function that will be invoked
+// after each ConfChange is applied. This is used to synchronize the
+// ClusterManager with committed configuration changes from Raft.
+func (rc *raftNodePebble) SetConfChangeCallback(fn func(cc raftpb.ConfChange, confState raftpb.ConfState)) {
+	rc.confChangeMu.Lock()
+	defer rc.confChangeMu.Unlock()
+	rc.confChangeCallback = fn
+}
+
+// notifyConfChange invokes the registered callback (if any) after applying a ConfChange
+func (rc *raftNodePebble) notifyConfChange(cc raftpb.ConfChange) {
+	rc.confChangeMu.RLock()
+	fn := rc.confChangeCallback
+	rc.confChangeMu.RUnlock()
+	if fn != nil {
+		fn(cc, rc.confState)
+	}
+}
+
+func (rc *raftNodePebble) notifyLeaderChange() {
+	if rc.leaderChangeC == nil {
+		return
+	}
+	status := rc.node.Status()
+	raftStatus := kvstore.RaftStatus{
+		NodeID:   status.ID,
+		Term:     status.Term,
+		LeaderID: status.Lead,
+		State:    status.RaftState.String(),
+		Applied:  status.Applied,
+		Commit:   status.Commit,
+	}
+
+	select {
+	case rc.leaderChangeC <- raftStatus:
+	default:
+	}
+}
+
+// isWitness returns true if this node is configured as a witness node
+// Witness nodes participate in Raft voting but don't store data
+func (rc *raftNodePebble) isWitness() bool {
+	return rc.cfg != nil && rc.cfg.Server.Raft.IsWitness()
+}
+
+func (rc *raftNodePebble) entriesToApply(ents []raftpb.Entry) (nents []raftpb.Entry) {
+	if len(ents) == 0 {
+		return ents
+	}
+	firstIdx := ents[0].Index
+	if firstIdx > rc.appliedIndex+1 {
+		log.Fatal("raft: invalid committed entry index",
+			zap.Uint64("first_index", firstIdx),
+			zap.Uint64("applied_index", rc.appliedIndex),
+			zap.String("component", "raft-pebble"))
+	}
+	if rc.appliedIndex-firstIdx+1 < uint64(len(ents)) {
+		nents = ents[rc.appliedIndex-firstIdx+1:]
+	}
+	return nents
+}
+
+// publishEntries writes committed log entries to commit channel
+func (rc *raftNodePebble) publishEntries(ents []raftpb.Entry) (<-chan struct{}, bool) {
+	if len(ents) == 0 {
+		return nil, true
+	}
+
+	// Witness nodes only process ConfChange entries, skip data application
+	if rc.isWitness() {
+		return rc.publishEntriesAsWitness(ents)
+	}
+
+	data := make([]string, 0, len(ents))
+	for i := range ents {
+		switch ents[i].Type {
+		case raftpb.EntryNormal:
+			if len(ents[i].Data) == 0 {
+				// ignore empty messages
+				break
+			}
+
+			// ifenabled，needdecode
+			if rc.cfg.Server.Raft.Batch.Enable {
+				proposals, err := batch.DecodeBatch(ents[i].Data)
+				if err != nil {
+					rc.logger.Error("failed to decode batch proposal",
+						zap.Error(err),
+						zap.Uint64("index", ents[i].Index),
+						zap.String("component", "raft-pebble"))
+					continue
+				}
+				data = append(data, proposals...)
+			} else {
+				// notenabled，use
+				s := string(ents[i].Data)
+				data = append(data, s)
+			}
+		case raftpb.EntryConfChange:
+			var cc raftpb.ConfChange
+			cc.Unmarshal(ents[i].Data)
+			rc.confState = *rc.node.ApplyConfChange(cc)
+			switch cc.Type {
+			case raftpb.ConfChangeAddNode:
+				if len(cc.Context) > 0 {
+					rc.transport.AddPeer(types.ID(cc.NodeID), []string{string(cc.Context)})
+				}
+			case raftpb.ConfChangeRemoveNode:
+				if cc.NodeID == uint64(rc.id) {
+					log.Info("I've been removed from the cluster! Shutting down.")
+					return nil, false
+				}
+				rc.transport.RemovePeer(types.ID(cc.NodeID))
+			}
+			// Notify ClusterManager about this committed ConfChange
+			rc.notifyConfChange(cc)
+		}
+	}
+
+	var applyDoneC chan struct{}
+
+	if len(data) > 0 {
+		applyDoneC = make(chan struct{}, 1)
+		select {
+		case rc.commitC <- &kvstore.Commit{Data: data, ApplyDoneC: applyDoneC}:
+		case <-rc.stopc:
+			return nil, false
+		}
+	}
+
+	// after commit, update appliedIndex
+	rc.appliedIndex = ents[len(ents)-1].Index
+
+	// Lease Read: notification ReadIndexManager applied
+	if rc.cfg.Server.Raft.LeaseRead.Enable && rc.readIndexManager != nil {
+		rc.readIndexManager.NotifyApplied(rc.appliedIndex)
+	}
+
+	return applyDoneC, true
+}
+
+// publishEntriesAsWitness handles entries for witness nodes
+// Witness nodes only process ConfChange entries (cluster membership changes)
+// They skip all data entries since they don't store data
+func (rc *raftNodePebble) publishEntriesAsWitness(ents []raftpb.Entry) (<-chan struct{}, bool) {
+	for i := range ents {
+		switch ents[i].Type {
+		case raftpb.EntryNormal:
+			// Witness nodes skip normal data entries
+			// They participate in Raft consensus but don't apply data
+			continue
+
+		case raftpb.EntryConfChange:
+			// Process cluster configuration changes
+			var cc raftpb.ConfChange
+			cc.Unmarshal(ents[i].Data)
+			rc.confState = *rc.node.ApplyConfChange(cc)
+
+			switch cc.Type {
+			case raftpb.ConfChangeAddNode:
+				if len(cc.Context) > 0 {
+					rc.transport.AddPeer(types.ID(cc.NodeID), []string{string(cc.Context)})
+				}
+				rc.logger.Info("witness: added peer",
+					zap.Uint64("node_id", cc.NodeID),
+					zap.String("component", "raft-pebble-witness"))
+
+			case raftpb.ConfChangeRemoveNode:
+				if cc.NodeID == uint64(rc.id) {
+					rc.logger.Warn("witness: I've been removed from the cluster! Shutting down.",
+						zap.String("component", "raft-pebble-witness"))
+					return nil, false
+				}
+				rc.transport.RemovePeer(types.ID(cc.NodeID))
+				rc.logger.Info("witness: removed peer",
+					zap.Uint64("node_id", cc.NodeID),
+					zap.String("component", "raft-pebble-witness"))
+			}
+			// Notify ClusterManager about this committed ConfChange
+			rc.notifyConfChange(cc)
+		}
+	}
+
+	// Update appliedIndex even for witness nodes (for Raft protocol correctness)
+	rc.appliedIndex = ents[len(ents)-1].Index
+
+	return nil, true
+}
+
+func (rc *raftNodePebble) loadSnapshot() *raftpb.Snapshot {
+	snapshot, err := rc.snapshotter.Load()
+	if err != nil && !errors.Is(err, snap.ErrNoSnapshot) {
+		log.Fatal("store: error loading snapshot",
+			zap.Error(err),
+			zap.String("component", "raft-pebble"))
+	}
+	if snapshot != nil {
+		return snapshot
+	}
+	return &raftpb.Snapshot{}
+}
+
+// initPebbleStorage initializes Pebble storage and recovers state
+func (rc *raftNodePebble) initPebbleStorage() error {
+	nodeID := fmt.Sprintf("node_%d", rc.id)
+	pebbleStorage, err := pebbledb.NewPebbleStorage(rc.pebbleDB, nodeID)
+	if err != nil {
+		return fmt.Errorf("failed to create Pebble storage: %v", err)
+	}
+	rc.raftStorage = pebbleStorage
+
+	// Load snapshot and apply to Pebble storage
+	snapshot := rc.loadSnapshot()
+	if snapshot != nil && !raft.IsEmptySnap(*snapshot) {
+		rc.logger.Info("applying snapshot to Pebble storage",
+			zap.Uint64("term", snapshot.Metadata.Term),
+			zap.Uint64("index", snapshot.Metadata.Index),
+			zap.String("component", "raft-pebble"))
+		if err := rc.raftStorage.ApplySnapshot(*snapshot); err != nil {
+			return fmt.Errorf("failed to apply snapshot: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func (rc *raftNodePebble) writeError(err error) {
+	rc.stopHTTP()
+	close(rc.commitC)
+	rc.errorC <- err
+	close(rc.errorC)
+	rc.node.Stop()
+}
+
+func (rc *raftNodePebble) startRaft() {
+	if !fileutil.Exist(rc.snapdir) {
+		if err := os.Mkdir(rc.snapdir, 0o750); err != nil {
+			log.Fatal("store: cannot create dir for snapshot",
+				zap.Error(err),
+				zap.String("path", rc.snapdir),
+				zap.String("component", "raft-pebble"))
+		}
+	}
+	rc.snapshotter = snap.New(log.ZapLogger(), rc.snapdir)
+
+	// Initialize Pebble storage
+	if err := rc.initPebbleStorage(); err != nil {
+		log.Fatal("store: failed to initialize Pebble storage",
+			zap.Error(err),
+			zap.String("component", "raft-pebble"))
+	}
+
+	// Check if we're restarting an existing node
+	hardState, confState, err := rc.raftStorage.InitialState()
+	if err != nil {
+		log.Fatal("store: failed to get initial state",
+			zap.Error(err),
+			zap.String("component", "raft-pebble"))
+	}
+
+	// Update conf state
+	if len(confState.Voters) > 0 {
+		rc.confState = confState
+	}
+
+	oldNode := !raft.IsEmptyHardState(hardState)
+
+	// signal initialization finished
+	rc.snapshotterReady <- rc.snapshotter
+
+	rpeers := make([]raft.Peer, len(rc.peers))
+	for i := range rpeers {
+		rpeers[i] = raft.Peer{ID: uint64(i + 1)}
+	}
+	// Raft config - fromconfigfileread(at：etcd、TiKV、CockroachDB)
+	c := &raft.Config{
+		ID:            uint64(rc.id),
+		ElectionTick:  rc.cfg.Server.Raft.ElectionTick,  // fromconfigread
+		HeartbeatTick: rc.cfg.Server.Raft.HeartbeatTick, // fromconfigread
+		Logger:        newRaftLogger("raft-pebble"),
+
+		Storage: rc.raftStorage,
+
+		// performanceoptimizeargument(fromconfigread)
+		MaxSizePerMsg:             rc.cfg.Server.Raft.MaxSizePerMsg,
+		MaxInflightMsgs:           rc.cfg.Server.Raft.MaxInflightMsgs,
+		MaxUncommittedEntriesSize: rc.cfg.Server.Raft.MaxUncommittedEntriesSize,
+
+		// stableoptimize(fromconfigread)
+		PreVote:     rc.cfg.Server.Raft.PreVote,
+		CheckQuorum: rc.cfg.Server.Raft.CheckQuorum,
+
+		// innetworkpartitionwhendegradation leader
+		// DisableProposalForwarding: false, // allow follower (defaultrowas)
+	}
+
+	if oldNode || rc.join {
+		rc.node = raft.RestartNode(c)
+	} else {
+		rc.node = raft.StartNode(c, rpeers)
+	}
+
+	rc.transport = &rafthttp.Transport{
+		Logger:      rc.logger,
+		ID:          types.ID(rc.id),
+		ClusterID:   0x1000,
+		Raft:        rc,
+		ServerStats: stats.NewServerStats("", ""),
+		LeaderStats: stats.NewLeaderStats(log.ZapLogger(), strconv.Itoa(rc.id)),
+		ErrorC:      make(chan error),
+	}
+
+	rc.transport.Start()
+	for i := range rc.peers {
+		if i+1 != rc.id {
+			rc.transport.AddPeer(types.ID(i+1), []string{rc.peers[i]})
+		}
+	}
+
+	// initializesystem(ifenabled)
+	// Witness nodes don't propose data, so batch system is not needed
+	if rc.cfg.Server.Raft.Batch.Enable && !rc.isWitness() {
+		batchConfig := batch.BatchConfig{
+			MinBatchSize:  rc.cfg.Server.Raft.Batch.MinBatchSize,
+			MaxBatchSize:  rc.cfg.Server.Raft.Batch.MaxBatchSize,
+			MinTimeout:    rc.cfg.Server.Raft.Batch.MinTimeout,
+			MaxTimeout:    rc.cfg.Server.Raft.Batch.MaxTimeout,
+			LoadThreshold: rc.cfg.Server.Raft.Batch.LoadThreshold,
+		}
+		// batcher ownandmanagementoutputchannel，via ProposeC() get
+		rc.batcher = batch.NewProposalBatcher(batchConfig, rc.proposeC, rc.logger)
+		rc.batcher.Start(context.Background())
+		rc.batchedProposeC = rc.batcher.ProposeC() // get batcher outputchannel
+		rc.logger.Info("batch proposal system enabled",
+			zap.Int("min_batch_size", batchConfig.MinBatchSize),
+			zap.Int("max_batch_size", batchConfig.MaxBatchSize),
+			zap.Duration("min_timeout", batchConfig.MinTimeout),
+			zap.Duration("max_timeout", batchConfig.MaxTimeout),
+			zap.Float64("load_threshold", batchConfig.LoadThreshold),
+			zap.String("component", "raft-pebble"))
+	} else if rc.isWitness() {
+		rc.logger.Info("batch proposal system skipped (witness node)",
+			zap.String("component", "raft-pebble-witness"))
+	} else {
+		rc.logger.Info("batch proposal system disabled", zap.String("component", "raft-pebble"))
+	}
+
+	// initialize Lease Read system(ifenabled)
+	if rc.cfg.Server.Raft.LeaseRead.Enable {
+		// calculateelectelectiontimeoutandinterval
+		electionTimeout := time.Duration(rc.cfg.Server.Raft.ElectionTick) * rc.cfg.Server.Raft.TickInterval
+		heartbeatInterval := time.Duration(rc.cfg.Server.Raft.HeartbeatTick) * rc.cfg.Server.Raft.TickInterval
+
+		// 1. createcanconfigmanager(supporteddynamic)
+		rc.smartLeaseConfig = lease.NewSmartLeaseConfig(true, rc.logger)
+
+		// 2. testinitialcluster
+		initialClusterSize := lease.DetectClusterSizeFromPeers(rc.peers)
+		rc.smartLeaseConfig.UpdateClusterSize(initialClusterSize)
+
+		// 3. ✅ alwayscreatecomponent(singlenode)- supporteddynamic
+		leaseConfig := lease.LeaseConfig{
+			ElectionTimeout: electionTimeout,
+			HeartbeatTick:   heartbeatInterval,
+			ClockDrift:      rc.cfg.Server.Raft.LeaseRead.ClockDrift,
+		}
+		rc.leaseManager = lease.NewLeaseManager(leaseConfig, rc.smartLeaseConfig, rc.logger)
+		rc.readIndexManager = lease.NewReadIndexManager(rc.smartLeaseConfig, rc.logger)
+
+		// 4. starttestclusterchangetransform(60secondstestfirst time)
+		go rc.smartLeaseConfig.StartAutoDetection(
+			func() int {
+				// from Raft nodestatusgetcurrentcluster
+				status := rc.node.Status()
+				clusterSize := len(status.Progress)
+
+				// ：if Raft statusstillnot ready(Progress asempty)，use peers asafterprepare
+				if clusterSize == 0 {
+					clusterSize = len(rc.peers)
+				}
+
+				return clusterSize
+			},
+			60*time.Second, // testinterval
+			rc.stopc,       // stopped
+		)
+
+		rc.logger.Info("lease read system enabled with smart scaling",
+			zap.Duration("election_timeout", electionTimeout),
+			zap.Duration("heartbeat_interval", heartbeatInterval),
+			zap.Duration("clock_drift", rc.cfg.Server.Raft.LeaseRead.ClockDrift),
+			zap.Int("initial_cluster_size", initialClusterSize),
+			zap.Bool("currently_enabled", rc.smartLeaseConfig.IsEnabled()),
+			zap.String("component", "raft-pebble"))
+	} else {
+		rc.logger.Info("lease read system disabled", zap.String("component", "raft-pebble"))
+	}
+
+	// Create an initial snapshot if none exists (for new clusters)
+	// This prevents "need non-empty snapshot" panic when leader tries to sync followers
+	// Witness nodes skip snapshot creation as they don't store data
+	if !oldNode && !rc.join && !rc.isWitness() {
+		go func() {
+			// Wait a bit for the node to be ready
+			time.Sleep(100 * time.Millisecond)
+
+			// Check if we already have a snapshot
+			snap, err := rc.raftStorage.Snapshot()
+			if err == nil && raft.IsEmptySnap(snap) {
+				rc.logger.Info("creating initial snapshot for new cluster", zap.String("component", "raft-pebble"))
+				data, err := rc.getSnapshot()
+				if err != nil {
+					rc.logger.Error("failed to get initial snapshot data", zap.Error(err), zap.String("component", "raft-pebble"))
+					return
+				}
+
+				// Create initial snapshot at index 0
+				_, err = rc.raftStorage.CreateSnapshot(0, &rc.confState, data)
+				if err != nil {
+					rc.logger.Error("failed to create initial snapshot", zap.Error(err), zap.String("component", "raft-pebble"))
+				}
+			}
+		}()
+	}
+
+	// Log witness node startup
+	if rc.isWitness() {
+		rc.logger.Info("witness node started",
+			zap.Int("id", rc.id),
+			zap.Int("peer_count", len(rc.peers)),
+			zap.Bool("persist_vote", rc.cfg.Server.Raft.Witness.PersistVote),
+			zap.String("role", "witness"),
+			zap.String("component", "raft-pebble-witness"))
+	}
+
+	go rc.serveRaft()
+	go rc.serveChannels()
+}
+
+// stop closes http, closes all channels, and stops raft
+func (rc *raftNodePebble) stop() {
+	rc.stopHTTP()
+
+	// stopped(ifenabled)
+	if rc.batcher != nil {
+		rc.batcher.Stop()
+	}
+
+	if rc.leaderChangeC != nil {
+		close(rc.leaderChangeC)
+	}
+	close(rc.commitC)
+	close(rc.errorC)
+	rc.node.Stop()
+
+	// Close Pebble storage resources
+	if rc.raftStorage != nil {
+		rc.raftStorage.Close()
+	}
+}
+
+func (rc *raftNodePebble) stopHTTP() {
+	rc.transport.Stop()
+	close(rc.httpstopc)
+	<-rc.httpdonec
+}
+
+func (rc *raftNodePebble) publishSnapshot(snapshotToSave raftpb.Snapshot) {
+	if raft.IsEmptySnap(snapshotToSave) {
+		return
+	}
+
+	rc.logger.Info("publishing snapshot", zap.Uint64("index", rc.snapshotIndex), zap.String("component", "raft-pebble"))
+	defer rc.logger.Info("finished publishing snapshot", zap.Uint64("index", rc.snapshotIndex), zap.String("component", "raft-pebble"))
+
+	if snapshotToSave.Metadata.Index <= rc.appliedIndex {
+		log.Fatal("snapshot index should be greater than applied index",
+			zap.Uint64("snapshot_index", snapshotToSave.Metadata.Index),
+			zap.Uint64("applied_index", rc.appliedIndex),
+			zap.String("component", "raft-pebble"))
+	}
+	rc.commitC <- nil // trigger kvstore to load snapshot
+
+	rc.confState = snapshotToSave.Metadata.ConfState
+	rc.snapshotIndex = snapshotToSave.Metadata.Index
+	rc.appliedIndex = snapshotToSave.Metadata.Index
+}
+
+func (rc *raftNodePebble) maybeTriggerSnapshot(applyDoneC <-chan struct{}) {
+	if rc.appliedIndex-rc.snapshotIndex <= rc.snapCount {
+		return
+	}
+
+	// wait until all committed entries are applied (or server is closed)
+	if applyDoneC != nil {
+		select {
+		case <-applyDoneC:
+		case <-rc.stopc:
+			return
+		}
+	}
+
+	rc.logger.Info("start snapshot",
+		zap.Uint64("applied_index", rc.appliedIndex),
+		zap.Uint64("last_snapshot_index", rc.snapshotIndex),
+		zap.String("component", "raft-pebble"))
+	data, err := rc.getSnapshot()
+	if err != nil {
+		log.Error("raft: failed to get snapshot data",
+			zap.Error(err),
+			zap.String("component", "raft-pebble"))
+		panic(err)
+	}
+
+	// Create snapshot using Pebble storage
+	snap, err := rc.raftStorage.CreateSnapshot(rc.appliedIndex, &rc.confState, data)
+	if err != nil {
+		panic(err)
+	}
+
+	// Save snapshot to file system
+	if err := rc.saveSnap(snap); err != nil {
+		panic(err)
+	}
+
+	// Compact Pebble storage
+	compactIndex := uint64(1)
+	if rc.appliedIndex > snapshotCatchUpEntriesN {
+		compactIndex = rc.appliedIndex - snapshotCatchUpEntriesN
+	}
+	if err := rc.raftStorage.Compact(compactIndex); err != nil {
+		if !errors.Is(err, raft.ErrCompacted) {
+			panic(err)
+		}
+	} else {
+		rc.logger.Info("compacted log", zap.Uint64("index", compactIndex), zap.String("component", "raft-pebble"))
+	}
+
+	rc.snapshotIndex = rc.appliedIndex
+}
+
+func (rc *raftNodePebble) serveChannels() {
+	snap, err := rc.raftStorage.Snapshot()
+	if err != nil {
+		panic(err)
+	}
+	rc.confState = snap.Metadata.ConfState
+	rc.snapshotIndex = snap.Metadata.Index
+	rc.appliedIndex = snap.Metadata.Index
+
+	// use Pebble config from config file tick interval
+	ticker := time.NewTicker(rc.cfg.Server.Raft.TickInterval)
+	defer ticker.Stop()
+
+	// send proposals over raft
+	go func() {
+		confChangeCount := uint64(0)
+
+		// ifenabled，from batchedProposeC read
+		if rc.cfg.Server.Raft.Batch.Enable {
+			for rc.batchedProposeC != nil && rc.confChangeC != nil {
+				select {
+				case batchedProp, ok := <-rc.batchedProposeC:
+					if !ok {
+						rc.batchedProposeC = nil
+					} else {
+						// alreadyencodeas []byte，commit
+						rc.node.Propose(context.TODO(), batchedProp)
+					}
+
+				case cc, ok := <-rc.confChangeC:
+					if !ok {
+						rc.confChangeC = nil
+					} else {
+						confChangeCount++
+						cc.ID = confChangeCount
+						if err := rc.node.ProposeConfChange(context.TODO(), cc); err != nil {
+							rc.logger.Warn("failed to propose conf change",
+								zap.Error(err),
+								zap.Uint64("node_id", cc.NodeID),
+								zap.String("cc_type", fmt.Sprintf("%v", cc.Type)),
+								zap.String("component", "raft-pebble"))
+						}
+					}
+				}
+			}
+		} else {
+			// notenabled，usestart
+			for rc.proposeC != nil && rc.confChangeC != nil {
+				select {
+				case prop, ok := <-rc.proposeC:
+					if !ok {
+						rc.proposeC = nil
+					} else {
+						// blocks until accepted by raft state machine
+						rc.node.Propose(context.TODO(), []byte(prop))
+					}
+
+				case cc, ok := <-rc.confChangeC:
+					if !ok {
+						rc.confChangeC = nil
+					} else {
+						confChangeCount++
+						cc.ID = confChangeCount
+						if err := rc.node.ProposeConfChange(context.TODO(), cc); err != nil {
+							rc.logger.Warn("failed to propose conf change",
+								zap.Error(err),
+								zap.Uint64("node_id", cc.NodeID),
+								zap.String("cc_type", fmt.Sprintf("%v", cc.Type)),
+								zap.String("component", "raft-pebble"))
+						}
+					}
+				}
+			}
+		}
+		// client closed channel; shutdown raft if not already
+		close(rc.stopc)
+	}()
+
+	// singlenodeleaseschedule(3：singlenodehandle)
+	// for singlenodescenarioscenenextrenewallease,assinglenodenonemessagetriggerReadyevent
+	heartbeatInterval := time.Duration(rc.cfg.Server.Raft.HeartbeatTick) * rc.cfg.Server.Raft.TickInterval
+	leaseRenewTicker := time.NewTicker(heartbeatInterval / 2)
+	defer leaseRenewTicker.Stop()
+
+	// event loop on raft state machine updates
+	for {
+		select {
+		case <-ticker.C:
+			rc.node.Tick()
+
+		// singlenodeleasescheduletrigger
+		case <-leaseRenewTicker.C:
+			// insinglenodescenarioscenenextexecutelease
+			if rc.cfg.Server.Raft.LeaseRead.Enable && rc.leaseManager != nil && rc.leaseManager.IsLeader() {
+				status := rc.node.Status()
+				totalNodes := len(status.Progress)
+
+				// tosinglenodeexecuteschedulerenewal
+				if totalNodes == 1 {
+					rc.tryRenewLease()
+				}
+			}
+
+		// store raft entries to Pebble, then publish over commit channel
+		case rd := <-rc.node.Ready():
+			// Lease Read: handlerolechange
+			if rc.cfg.Server.Raft.LeaseRead.Enable && rc.leaseManager != nil {
+				if rd.SoftState != nil {
+					// checkrolechange
+					if rd.SoftState.RaftState == raft.StateLeader {
+						rc.leaseManager.OnBecomeLeader()
+					} else {
+						rc.leaseManager.OnBecomeFollower()
+					}
+				}
+			}
+			if rd.SoftState != nil {
+				rc.notifyLeaderChange()
+			}
+
+			// Save hard state to Pebble
+			if !raft.IsEmptyHardState(rd.HardState) {
+				if err := rc.raftStorage.SetHardState(rd.HardState); err != nil {
+					log.Fatal("failed to save hard state",
+						zap.Error(err),
+						zap.String("component", "raft-pebble"))
+				}
+			}
+
+			// Handle snapshot
+			if !raft.IsEmptySnap(rd.Snapshot) {
+				if err := rc.raftStorage.ApplySnapshot(rd.Snapshot); err != nil {
+					log.Fatal("failed to apply snapshot",
+						zap.Error(err),
+						zap.String("component", "raft-pebble"))
+				}
+				if err := rc.saveSnap(rd.Snapshot); err != nil {
+					log.Fatal("failed to save snapshot",
+						zap.Error(err),
+						zap.String("component", "raft-pebble"))
+				}
+				rc.publishSnapshot(rd.Snapshot)
+			}
+
+			// Append entries to Pebble
+			if len(rd.Entries) > 0 {
+				if err := rc.raftStorage.Append(rd.Entries); err != nil {
+					log.Fatal("failed to append entries",
+						zap.Error(err),
+						zap.String("component", "raft-pebble"))
+				}
+			}
+
+			// Send messages to peers
+			rc.transport.Send(rc.processMessages(rd.Messages))
+
+			// Lease Read: handleresponserenewallease(manynodescenarioscene)
+			if rc.cfg.Server.Raft.LeaseRead.Enable && rc.leaseManager != nil && rc.leaseManager.IsLeader() {
+				rc.tryRenewLease()
+			}
+
+			// Apply committed entries
+			applyDoneC, ok := rc.publishEntries(rc.entriesToApply(rd.CommittedEntries))
+			if !ok {
+				rc.stop()
+				return
+			}
+
+			// Trigger snapshot if needed
+			rc.maybeTriggerSnapshot(applyDoneC)
+
+			rc.node.Advance()
+
+		case err := <-rc.transport.ErrorC:
+			rc.writeError(err)
+			return
+
+		case <-rc.stopc:
+			rc.stop()
+			return
+		}
+	}
+}
+
+// processMessages updates conf state in snapshot messages
+func (rc *raftNodePebble) processMessages(ms []raftpb.Message) []raftpb.Message {
+	for i := 0; i < len(ms); i++ {
+		if ms[i].Type == raftpb.MsgSnap {
+			ms[i].Snapshot.Metadata.ConfState = rc.confState
+		}
+	}
+	return ms
+}
+
+func (rc *raftNodePebble) serveRaft() {
+	url, err := url.Parse(rc.peers[rc.id-1])
+	if err != nil {
+		log.Fatal("store: failed parsing URL",
+			zap.Error(err),
+			zap.String("component", "raft-pebble"))
+	}
+
+	ln, err := NewStoppableListener(url.Host, rc.httpstopc)
+	if err != nil {
+		log.Fatal("store: failed to listen rafthttp",
+			zap.Error(err),
+			zap.String("component", "raft-pebble"))
+	}
+
+	err = (&http.Server{Handler: rc.transport.Handler()}).Serve(ln)
+	select {
+	case <-rc.httpstopc:
+	default:
+		log.Fatal("store: failed to serve rafthttp",
+			zap.Error(err),
+			zap.String("component", "raft-pebble"))
+	}
+	close(rc.httpdonec)
+}
+
+func (rc *raftNodePebble) Process(ctx context.Context, m raftpb.Message) error {
+	return rc.node.Step(ctx, m)
+}
+
+func (rc *raftNodePebble) IsIDRemoved(_ uint64) bool { return false }
+
+func (rc *raftNodePebble) ReportUnreachable(id uint64) { rc.node.ReportUnreachable(id) }
+
+func (rc *raftNodePebble) ReportSnapshot(id uint64, status raft.SnapshotStatus) {
+	rc.node.ReportSnapshot(id, status)
+}
+
+// Status return Raft status info
+func (rc *raftNodePebble) Status() kvstore.RaftStatus {
+	status := rc.node.Status()
+	return kvstore.RaftStatus{
+		NodeID:   status.ID,
+		Term:     status.Term,
+		LeaderID: status.Lead,
+		State:    status.RaftState.String(),
+		Applied:  status.Applied,
+		Commit:   status.Commit,
+	}
+}
+
+// TransferLeadership will leader roletospecifiednode
+func (rc *raftNodePebble) TransferLeadership(targetID uint64) error {
+	rc.node.TransferLeadership(context.TODO(), 0, targetID)
+	return nil
+}
+
+// LeaderChangeC exposes leader change notifications
+func (rc *raftNodePebble) LeaderChangeC() <-chan kvstore.RaftStatus {
+	return rc.leaderChangeC
+}
+
+// LeaseManager returnleasemanager(for test)
+func (rc *raftNodePebble) LeaseManager() *lease.LeaseManager {
+	return rc.leaseManager
+}
+
+// ReadIndexManager returnindexmanager(for test)
+func (rc *raftNodePebble) ReadIndexManager() *lease.ReadIndexManager {
+	return rc.readIndexManager
+}
+
+// tryRenewLease testrenewallease
+// statisticsactivenodequantityandcallleasemanagerrowrenewal
+// shouldmethodbenext scenarioscenecall：
+// 1. singlenodescenarioscene：scheduletrigger
+// 2. manynodescenarioscene：Ready eventtrigger(response)
+func (rc *raftNodePebble) tryRenewLease() {
+	status := rc.node.Status()
+	totalNodes := len(status.Progress)
+	activeNodes := 0
+
+	// statisticsactivenodequantity(package)
+	for _, pr := range status.Progress {
+		if pr.RecentActive {
+			activeNodes++
+		}
+	}
+
+	// callleasemanagerrenewal
+	renewed := rc.leaseManager.RenewLease(activeNodes, totalNodes)
+
+	// in timerenewalordebugwhenrecordlog
+	if renewed && rc.cfg.Server.Raft.LeaseRead.Enable {
+		// rc.logger.Info("leaserenewalsuccess",
+		// 	zap.Int("activeNodes", activeNodes),
+		// 	zap.Int("totalNodes", totalNodes))
+	}
+}
+
+// IsStopped checknodeisnoalready stopped(for test)
+func (rc *raftNodePebble) IsStopped() bool {
+	select {
+	case <-rc.stopc:
+		return true
+	default:
+		return false
+	}
+}

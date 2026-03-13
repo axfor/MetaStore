@@ -24,8 +24,8 @@ MetaStore is a **distributed key-value store** with:
 
 **macOS**:
 ```bash
-# Install RocksDB
-brew install rocksdb
+# Install Pebble
+brew install pebble
 
 # Install Go 1.21+
 brew install go
@@ -33,9 +33,9 @@ brew install go
 
 **Ubuntu/Debian**:
 ```bash
-# Install RocksDB
+# Install Pebble
 sudo apt-get update
-sudo apt-get install -y librocksdb-dev libsnappy-dev zlib1g-dev libbz2-dev liblz4-dev libzstd-dev
+sudo apt-get install -y libpebble-dev libsnappy-dev zlib1g-dev libbz2-dev liblz4-dev libzstd-dev
 ```
 
 ### 2. Build MetaStore
@@ -45,11 +45,11 @@ sudo apt-get install -y librocksdb-dev libsnappy-dev zlib1g-dev libbz2-dev liblz
 git clone https://github.com/your-org/metaStore.git
 cd metaStore
 
-# Build - Memory mode (no RocksDB)
+# Build - Memory mode (no Pebble)
 CGO_ENABLED=0 go build -o metastore ./cmd/metastore
 
-# OR Build - RocksDB mode (persistent storage)
-CGO_ENABLED=1 CGO_LDFLAGS="-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2" \
+# OR Build - Pebble mode (persistent storage)
+CGO_ENABLED=1 CGO_LDFLAGS="-lpebble -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2" \
 go build -o metastore ./cmd/metastore
 ```
 
@@ -59,8 +59,8 @@ go build -o metastore ./cmd/metastore
 # Memory mode (for testing)
 ./metastore --storage memory --listen :2379
 
-# RocksDB mode (for production)
-./metastore --storage rocksdb --data-dir ./data --listen :2379
+# Pebble mode (for production)
+./metastore --storage pebble --data-dir ./data --listen :2379
 ```
 
 ### 4. Test with etcdctl
@@ -240,8 +240,8 @@ etcdctl compact $((REV - 100000))
 # Memory 模式（用于测试）
 CGO_ENABLED=0 go build -o metastore ./cmd/metastore
 
-# RocksDB 模式（用于生产）
-CGO_ENABLED=1 CGO_LDFLAGS="-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2" \
+# Pebble 模式（用于生产）
+CGO_ENABLED=1 CGO_LDFLAGS="-lpebble -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2" \
 go build -o metastore ./cmd/metastore
 ```
 
@@ -253,8 +253,8 @@ go build -o metastore ./cmd/metastore
 # Memory 模式
 ./metastore --storage memory --listen :2379
 
-# RocksDB 模式
-./metastore --storage rocksdb --data-dir ./data --listen :2379
+# Pebble 模式
+./metastore --storage pebble --data-dir ./data --listen :2379
 ```
 
 #### 2. 基本操作

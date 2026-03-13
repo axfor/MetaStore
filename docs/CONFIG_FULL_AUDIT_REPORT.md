@@ -15,7 +15,7 @@
 | 配置类别 | 配置项数 | 已使用 | 使用率 | 状态 |
 |---------|---------|--------|--------|------|
 | Server | 6 | 6 | 100% | ✅ |
-| RocksDB | 9 | 9 | 100% | ✅ |
+| Pebble | 9 | 9 | 100% | ✅ |
 | Raft | 8 | 8 | 100% | ✅ |
 | Log | 4 | 4 | 100% | ✅ |
 | Auth | 7 | 7 | 100% | ✅ |
@@ -79,7 +79,7 @@ cfg := ServerConfig{
 - `NewTestConfig()` - 创建基础测试配置
 - `WithAuthConfig()` - 自定义认证配置
 - `WithLimits()` - 自定义限制配置
-- `WithRocksDBConfig()` - 自定义RocksDB配置
+- `WithPebbleConfig()` - 自定义Pebble配置
 - `WithRaftConfig()` - 自定义Raft配置
 - `WithMonitoring()` - 启用监控
 - `WithMaintenanceConfig()` - 自定义维护配置
@@ -92,7 +92,7 @@ cfg.Server.Auth.BcryptCost = 4          // 默认10，测试用4加快速度
 cfg.Server.Auth.TokenTTL = 10 * time.Minute
 cfg.Server.Reliability.ShutdownTimeout = 5 * time.Second
 cfg.Server.Reliability.DrainTimeout = 2 * time.Second
-cfg.RocksDB.CompressionType = "none"    // 测试环境不压缩加快速度
+cfg.Pebble.CompressionType = "none"    // 测试环境不压缩加快速度
 ```
 
 #### 2. 更新测试文件使用配置
@@ -214,18 +214,18 @@ authMgr := NewAuthManager(cfg.Store, &testCfg.Server.Auth)
 
 2. **更新集成测试使用配置** - 需要更新的文件：
    - `test/etcd_memory_integration_test.go`
-   - `test/etcd_rocksdb_integration_test.go`
+   - `test/etcd_pebble_integration_test.go`
    - `test/cross_protocol_integration_test.go`
    - `test/http_api_memory_integration_test.go`
-   - `test/http_api_rocksdb_integration_test.go`
+   - `test/http_api_pebble_integration_test.go`
    - `test/http_api_memory_consistency_test.go`
-   - `test/http_api_rocksdb_consistency_test.go`
+   - `test/http_api_pebble_consistency_test.go`
    - `test/etcd_compatibility_test.go`
 
 ### P2 - 中优先级（性能测试）
 3. **性能测试使用配置**
    - `test/performance_memory_test.go`
-   - `test/performance_rocksdb_test.go`
+   - `test/performance_pebble_test.go`
    - 使用 `WithProductionLike()` 进行性能基准测试
 
 ### P3 - 低优先级（文档）

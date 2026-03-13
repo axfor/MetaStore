@@ -2,11 +2,11 @@
 
 ## Problem
 
-When MetaStore server restarts, etcd leases become unusable even though they are persisted in RocksDB.
+When MetaStore server restarts, etcd leases become unusable even though they are persisted in Pebble.
 
 ### Root Cause
 
-The `LeaseManager` (`api/etcd/lease_manager.go`) creates a fresh empty `leases` map on startup via `NewLeaseManagerWithNodeID()`. Although leases are persisted in RocksDB (with `lease:` prefix) and recovered via Raft snapshots, the `LeaseManager` never loads them into its in-memory map on startup.
+The `LeaseManager` (`api/etcd/lease_manager.go`) creates a fresh empty `leases` map on startup via `NewLeaseManagerWithNodeID()`. Although leases are persisted in Pebble (with `lease:` prefix) and recovered via Raft snapshots, the `LeaseManager` never loads them into its in-memory map on startup.
 
 This causes the following issues:
 
@@ -28,7 +28,7 @@ This causes the following issues:
 
 A new `LoadLeases()` method on `LeaseManager` that:
 
-1. Calls `store.Leases(ctx)` to read all persisted leases from RocksDB
+1. Calls `store.Leases(ctx)` to read all persisted leases from Pebble
 2. Populates the in-memory `lm.leases` map with each recovered lease
 3. Extracts the lower 48 bits of each lease ID to find the max counter value
 4. Sets `leaseIDCounter` to the max counter value to prevent ID collisions
@@ -58,11 +58,11 @@ Already-expired leases are loaded into the map and handled naturally by the `exp
 ```
 Server Restart
     │
-    ├── RocksDB opens, loads snapshot (leases persisted as "lease:ID")
+    ├── Pebble opens, loads snapshot (leases persisted as "lease:ID")
     │
     ├── LeaseManager.Start() called
     │   ├── LoadLeases()
-    │   │   ├── store.Leases() → reads all "lease:" entries from RocksDB
+    │   │   ├── store.Leases() → reads all "lease:" entries from Pebble
     │   │   ├── Populates lm.leases map
     │   │   └── Sets leaseIDCounter = max(existing counters)
     │   │

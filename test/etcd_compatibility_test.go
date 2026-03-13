@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"metaStore/internal/raft"
-	"metaStore/internal/rocksdb"
+	"metaStore/internal/pebbledb"
 	etcdapi "metaStore/api/etcd"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -52,13 +52,13 @@ func startTestServer(t *testing.T) (*etcdapi.Server, *clientv3.Client) {
 	return node.server, cli
 }
 
-// startTestServerRocksDB start RocksDB testserver(singlenode Raft)
-func startTestServerRocksDB(t *testing.T) (*etcdapi.Server, *clientv3.Client, func()) {
+// startTestServerPebble start Pebble testserver(singlenode Raft)
+func startTestServerPebble(t *testing.T) (*etcdapi.Server, *clientv3.Client, func()) {
 	// singlenode Raft clustermustuse nodeID=1，peers arrayfirstelementtoshould ID 1
 	nodeID := 1
 
-	// NewNodeRocksDB use data/rocksdb/{id} directory
-	dataDir := fmt.Sprintf("data/rocksdb/%d", nodeID)
+	// NewNodePebble use data/pebble/{id} directory
+	dataDir := fmt.Sprintf("data/pebble/%d", nodeID)
 
 	// clean upfunction
 	cleanup := func() {
@@ -68,7 +68,7 @@ func startTestServerRocksDB(t *testing.T) (*etcdapi.Server, *clientv3.Client, fu
 	// clean up
 	t.Cleanup(cleanup)
 
-	// Setup RocksDB
+	// Setup Pebble
 	// Allocate dynamic ports to avoid conflicts when running tests in parallel
 	peers, listeners := allocatePorts(1)
 	releaseListeners(listeners)
@@ -77,13 +77,13 @@ func startTestServerRocksDB(t *testing.T) (*etcdapi.Server, *clientv3.Client, fu
 	proposeC := make(chan string, 1)
 	confChangeC := make(chan raftpb.ConfChange, 1)
 
-	// Open RocksDB
+	// Open Pebble
 	dbPath := fmt.Sprintf("%s/kv", dataDir)
 	os.MkdirAll(dbPath, 0755)
-	db, err := rocksdb.Open(dbPath)
+	db, err := pebbledb.Open(dbPath)
 	require.NoError(t, err)
 
-	var kvs *rocksdb.RocksDB
+	var kvs *pebbledb.PebbleDB
 	getSnapshot := func() ([]byte, error) {
 		if kvs == nil {
 			return nil, nil
@@ -91,8 +91,8 @@ func startTestServerRocksDB(t *testing.T) (*etcdapi.Server, *clientv3.Client, fu
 		return kvs.GetSnapshot()
 	}
 
-	commitC, errorC, snapshotterReady, _ := raft.NewNodeRocksDB(nodeID, peers, false, getSnapshot, proposeC, confChangeC, db, dataDir, NewTestConfig(1, 1, ":2379"))
-	kvs = rocksdb.NewRocksDB(db, <-snapshotterReady, proposeC, commitC, errorC)
+	commitC, errorC, snapshotterReady, _ := raft.NewNodePebble(nodeID, peers, false, getSnapshot, proposeC, confChangeC, db, dataDir, NewTestConfig(1, 1, ":2379"))
+	kvs = pebbledb.NewPebbleDB(db, <-snapshotterReady, proposeC, commitC, errorC)
 
 	// create etcd compatibleserver(randomport)
 	server, err := etcdapi.NewServer(etcdapi.ServerConfig{
@@ -386,12 +386,12 @@ func TestMultipleOperations(t *testing.T) {
 }
 
 // ============================================================================
-// RocksDB versiontest
+// Pebble versiontest
 // ============================================================================
 
-// TestBasicPutGet_RocksDB testbasic Put and Get operation (RocksDB)
-func TestBasicPutGet_RocksDB(t *testing.T) {
-	_, cli, _ := startTestServerRocksDB(t)
+// TestBasicPutGet_Pebble testbasic Put and Get operation (Pebble)
+func TestBasicPutGet_Pebble(t *testing.T) {
+	_, cli, _ := startTestServerPebble(t)
 
 	ctx := context.Background()
 
@@ -408,9 +408,9 @@ func TestBasicPutGet_RocksDB(t *testing.T) {
 	assert.Equal(t, "bar", string(getResp.Kvs[0].Value))
 }
 
-// TestPrefixRange_RocksDB test special character prefixquery (RocksDB)
-func TestPrefixRange_RocksDB(t *testing.T) {
-	_, cli, _ := startTestServerRocksDB(t)
+// TestPrefixRange_Pebble test special character prefixquery (Pebble)
+func TestPrefixRange_Pebble(t *testing.T) {
+	_, cli, _ := startTestServerPebble(t)
 
 	ctx := context.Background()
 
@@ -438,9 +438,9 @@ func TestPrefixRange_RocksDB(t *testing.T) {
 	assert.Contains(t, keys, "key3")
 }
 
-// TestDelete_RocksDB testdeleteoperation (RocksDB)
-func TestDelete_RocksDB(t *testing.T) {
-	_, cli, _ := startTestServerRocksDB(t)
+// TestDelete_Pebble testdeleteoperation (Pebble)
+func TestDelete_Pebble(t *testing.T) {
+	_, cli, _ := startTestServerPebble(t)
 
 	ctx := context.Background()
 
@@ -460,9 +460,9 @@ func TestDelete_RocksDB(t *testing.T) {
 	assert.Len(t, getResp.Kvs, 0)
 }
 
-// TestTransaction_RocksDB testtransaction (RocksDB)
-func TestTransaction_RocksDB(t *testing.T) {
-	_, cli, _ := startTestServerRocksDB(t)
+// TestTransaction_Pebble testtransaction (Pebble)
+func TestTransaction_Pebble(t *testing.T) {
+	_, cli, _ := startTestServerPebble(t)
 
 	ctx := context.Background()
 
@@ -496,9 +496,9 @@ func TestTransaction_RocksDB(t *testing.T) {
 	assert.False(t, txnResp.Succeeded)
 }
 
-// TestWatch_RocksDB test Watch feature (RocksDB)
-func TestWatch_RocksDB(t *testing.T) {
-	_, cli, _ := startTestServerRocksDB(t)
+// TestWatch_Pebble test Watch feature (Pebble)
+func TestWatch_Pebble(t *testing.T) {
+	_, cli, _ := startTestServerPebble(t)
 
 	ctx := context.Background()
 
@@ -548,9 +548,9 @@ func TestWatch_RocksDB(t *testing.T) {
 	}
 }
 
-// TestLease_RocksDB test Lease feature (RocksDB)
-func TestLease_RocksDB(t *testing.T) {
-	_, cli, _ := startTestServerRocksDB(t)
+// TestLease_Pebble test Lease feature (Pebble)
+func TestLease_Pebble(t *testing.T) {
+	_, cli, _ := startTestServerPebble(t)
 
 	ctx := context.Background()
 
@@ -588,9 +588,9 @@ func TestLease_RocksDB(t *testing.T) {
 	assert.Len(t, getResp.Kvs, 0)
 }
 
-// TestLeaseExpiry_RocksDB test Lease expiration (RocksDB)
-func TestLeaseExpiry_RocksDB(t *testing.T) {
-	_, cli, _ := startTestServerRocksDB(t)
+// TestLeaseExpiry_Pebble test Lease expiration (Pebble)
+func TestLeaseExpiry_Pebble(t *testing.T) {
+	_, cli, _ := startTestServerPebble(t)
 
 	ctx := context.Background()
 
@@ -618,9 +618,9 @@ func TestLeaseExpiry_RocksDB(t *testing.T) {
 	assert.Len(t, getResp.Kvs, 0, "Key should be deleted after lease expiry")
 }
 
-// TestStatus_RocksDB test Status API (RocksDB)
-func TestStatus_RocksDB(t *testing.T) {
-	server, cli, _ := startTestServerRocksDB(t)
+// TestStatus_Pebble test Status API (Pebble)
+func TestStatus_Pebble(t *testing.T) {
+	server, cli, _ := startTestServerPebble(t)
 
 	ctx := context.Background()
 
@@ -631,11 +631,11 @@ func TestStatus_RocksDB(t *testing.T) {
 	assert.GreaterOrEqual(t, statusResp.DbSize, int64(0))
 }
 
-// TestMultipleOperations_RocksDB testscenarioscene (RocksDB)
-func TestMultipleOperations_RocksDB(t *testing.T) {
-	t.Skip("Transaction not yet implemented for RocksDB (used in this test)")
+// TestMultipleOperations_Pebble testscenarioscene (Pebble)
+func TestMultipleOperations_Pebble(t *testing.T) {
+	t.Skip("Transaction not yet implemented for Pebble (used in this test)")
 
-	_, cli, _ := startTestServerRocksDB(t)
+	_, cli, _ := startTestServerPebble(t)
 
 	ctx := context.Background()
 
@@ -685,9 +685,9 @@ func TestMultipleOperations_RocksDB(t *testing.T) {
 	assert.Len(t, resp.Kvs, 0)
 }
 
-// TestWatchPrefix_RocksDB test RocksDB Watch rangelisten
-func TestWatchPrefix_RocksDB(t *testing.T) {
-	_, cli, _ := startTestServerRocksDB(t)
+// TestWatchPrefix_Pebble test Pebble Watch rangelisten
+func TestWatchPrefix_Pebble(t *testing.T) {
+	_, cli, _ := startTestServerPebble(t)
 
 	ctx := context.Background()
 
@@ -734,9 +734,9 @@ func TestWatchPrefix_RocksDB(t *testing.T) {
 	assert.Equal(t, 3, receivedEvents)
 }
 
-// TestWatchCancel_RocksDB test RocksDB Watch cancel
-func TestWatchCancel_RocksDB(t *testing.T) {
-	_, cli, _ := startTestServerRocksDB(t)
+// TestWatchCancel_Pebble test Pebble Watch cancel
+func TestWatchCancel_Pebble(t *testing.T) {
+	_, cli, _ := startTestServerPebble(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
 

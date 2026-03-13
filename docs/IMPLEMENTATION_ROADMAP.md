@@ -112,7 +112,7 @@
 ### 2.2 P1 - 重要（影响生产可用性）
 
 #### 2.2.1 Maintenance Service 完善
-- [ ] Defragment - RocksDB compaction
+- [ ] Defragment - Pebble compaction
 - [ ] Hash/HashKV - 数据一致性哈希
 - [ ] MoveLeader - Leader 转移
 - [ ] Alarm - 告警机制
@@ -123,7 +123,7 @@
 #### 2.2.2 Store 接口扩展
 - [ ] GetRaftStatus() 接口
 - [ ] Memory 实现
-- [ ] RocksDB 实现
+- [ ] Pebble 实现
 - [ ] Raft Node 状态查询
 
 **设计文档**: [STORE_INTERFACE_EXTENSIONS.md](STORE_INTERFACE_EXTENSIONS.md)
@@ -166,7 +166,7 @@
 1. **Store 接口扩展** (4.5 小时)
    - 定义 RaftStatus 和接口
    - Raft Node 实现
-   - Memory/RocksDB 实现
+   - Memory/Pebble 实现
 
 2. **修复 Maintenance Service 缺陷** (1 小时)
    - 使用 GetRaftStatus 修复 Status API
@@ -269,7 +269,7 @@
    - 一致性验证
 
 2. **Defragment** (1-2 小时)
-   - RocksDB compaction
+   - Pebble compaction
 
 3. **MoveLeader** (2-3 小时)
    - Leader 转移实现
@@ -370,12 +370,12 @@ internal/memory/
 ├── raft_interface.go     ⏳ 新增
 └── kvstore.go            ⏳ 实现 GetRaftStatus
 
-internal/rocksdb/
+internal/pebble/
 └── kvstore.go            ⏳ 实现 GetRaftStatus
 
 internal/raft/
 ├── node_memory.go        ⏳ 实现 Status()
-└── node_rocksdb.go       ⏳ 实现 Status()
+└── node_pebble.go       ⏳ 实现 Status()
 ```
 
 ---

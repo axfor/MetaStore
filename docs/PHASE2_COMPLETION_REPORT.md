@@ -98,19 +98,19 @@ if op.SeqNum != "" {
 为支持无 CGO 构建（纯 Go，可交叉编译），添加了构建标签：
 
 **修改的文件**:
-- `internal/rocksdb/kvstore.go` - 添加 `//go:build cgo`
-- `internal/rocksdb/raftlog.go` - 添加 `//go:build cgo`
-- `internal/rocksdb/kvstore_stubs.go` - 添加 `//go:build cgo`
-- `internal/raft/node_rocksdb.go` - 添加 `//go:build cgo`
-- `test/http_api_rocksdb_*_test.go` - 添加 `//go:build cgo`
-- `cmd/metastore/main.go` - RocksDB 代码注释
+- `internal/pebble/kvstore.go` - 添加 `//go:build cgo`
+- `internal/pebble/raftlog.go` - 添加 `//go:build cgo`
+- `internal/pebble/kvstore_stubs.go` - 添加 `//go:build cgo`
+- `internal/raft/node_pebble.go` - 添加 `//go:build cgo`
+- `test/http_api_pebble_*_test.go` - 添加 `//go:build cgo`
+- `cmd/metastore/main.go` - Pebble 代码注释
 
 **构建命令**:
 ```bash
-# Memory-only 构建（无需 RocksDB）
+# Memory-only 构建（无需 Pebble）
 CGO_ENABLED=0 go build ./cmd/metastore
 
-# RocksDB 构建（需要 CGO）
+# Pebble 构建（需要 CGO）
 CGO_ENABLED=1 go build ./cmd/metastore
 ```
 
@@ -231,7 +231,7 @@ CGO_ENABLED=0 go test -v ./test/etcd_compatibility_test.go
 
 - 支持纯 Go 构建（CGO_ENABLED=0）
 - 支持交叉编译到任意平台
-- RocksDB 功能可选
+- Pebble 功能可选
 
 ## 性能特性
 
@@ -272,8 +272,8 @@ CGO_ENABLED=0 go test -v ./test/etcd_compatibility_test.go
    - [ ] 实现 Compact 压缩
    - [ ] Watch 支持历史事件回放
 
-3. **RocksDB 集成**:
-   - [ ] 实现 RocksDBEtcdRaft
+3. **Pebble 集成**:
+   - [ ] 实现 PebbleEtcdRaft
    - [ ] 支持持久化的 etcd 语义
    - [ ] 快照和恢复优化
 
@@ -293,10 +293,10 @@ CGO_ENABLED=0 go test -v ./test/etcd_compatibility_test.go
 
 ### 构建
 
-使用 Makefile 构建（自动处理 RocksDB 链接）：
+使用 Makefile 构建（自动处理 Pebble 链接）：
 
 ```bash
-# 构建支持内存和 RocksDB 两种引擎
+# 构建支持内存和 Pebble 两种引擎
 make build
 
 # 构建成功后会生成 metaStore 二进制文件
@@ -312,16 +312,16 @@ make build
 ./metaStore --id=1 --cluster=http://127.0.0.1:9021 --port=9121 --grpc-addr=:2379 --storage=memory
 ```
 
-**RocksDB 引擎（持久化存储）**:
+**Pebble 引擎（持久化存储）**:
 ```bash
-# RocksDB 会自动创建 data 目录
-./metaStore --id=1 --cluster=http://127.0.0.1:9021 --port=9121 --grpc-addr=:2379 --storage=rocksdb
+# Pebble 会自动创建 data 目录
+./metaStore --id=1 --cluster=http://127.0.0.1:9021 --port=9121 --grpc-addr=:2379 --storage=pebble
 ```
 
 或使用 Makefile:
 ```bash
 make run-memory    # 内存引擎
-make run-rocksdb   # RocksDB 引擎
+make run-pebble   # Pebble 引擎
 ```
 
 ### 启动三节点集群
@@ -338,22 +338,22 @@ make run-rocksdb   # RocksDB 引擎
 ./metaStore --id=3 --cluster=http://127.0.0.1:9021,http://127.0.0.1:9022,http://127.0.0.1:9023 --port=9123 --grpc-addr=:2381 --storage=memory
 ```
 
-**RocksDB 引擎集群**:
+**Pebble 引擎集群**:
 ```bash
 # 节点 1
-./metaStore --id=1 --cluster=http://127.0.0.1:9021,http://127.0.0.1:9022,http://127.0.0.1:9023 --port=9121 --grpc-addr=:2379 --storage=rocksdb
+./metaStore --id=1 --cluster=http://127.0.0.1:9021,http://127.0.0.1:9022,http://127.0.0.1:9023 --port=9121 --grpc-addr=:2379 --storage=pebble
 
 # 节点 2
-./metaStore --id=2 --cluster=http://127.0.0.1:9021,http://127.0.0.1:9022,http://127.0.0.1:9023 --port=9122 --grpc-addr=:2380 --storage=rocksdb
+./metaStore --id=2 --cluster=http://127.0.0.1:9021,http://127.0.0.1:9022,http://127.0.0.1:9023 --port=9122 --grpc-addr=:2380 --storage=pebble
 
 # 节点 3
-./metaStore --id=3 --cluster=http://127.0.0.1:9021,http://127.0.0.1:9022,http://127.0.0.1:9023 --port=9123 --grpc-addr=:2381 --storage=rocksdb
+./metaStore --id=3 --cluster=http://127.0.0.1:9021,http://127.0.0.1:9022,http://127.0.0.1:9023 --port=9123 --grpc-addr=:2381 --storage=pebble
 ```
 
 或使用 Makefile:
 ```bash
 make cluster-memory   # 内存引擎集群
-make cluster-rocksdb  # RocksDB 引擎集群
+make cluster-pebble  # Pebble 引擎集群
 make stop-cluster     # 停止集群
 ```
 
@@ -379,7 +379,7 @@ resp, _ := cli.Get(context.Background(), "key")
 
 - [x] `internal/memory/kvstore_etcd_raft.go` - MemoryEtcdRaft 实现
 - [x] `cmd/metastore/main.go` - 更新启动逻辑
-- [x] 构建标签添加到所有 RocksDB 相关文件
+- [x] 构建标签添加到所有 Pebble 相关文件
 
 ### 测试脚本
 
@@ -399,15 +399,15 @@ resp, _ := cli.Get(context.Background(), "key")
 - [x] 9/9 etcd 兼容性测试通过
 - [x] HTTP API 集群一致性测试通过
 
-**RocksDB 引擎（RocksDB + Raft + HTTP API）**:
+**Pebble 引擎（Pebble + Raft + HTTP API）**:
 - [x] 单节点读写测试通过
 - [x] 三节点集群一致性测试通过
 - [x] 持久化和恢复测试通过
-- [x] 8/8 RocksDB 存储层测试通过
+- [x] 8/8 Pebble 存储层测试通过
 
 **构建系统**:
-- [x] macOS RocksDB 链接问题已解决（Makefile）
-- [x] 内存和 RocksDB 引擎可同时构建
+- [x] macOS Pebble 链接问题已解决（Makefile）
+- [x] 内存和 Pebble 引擎可同时构建
 - [x] 所有测试通过（`make test`）
 
 ## 总结
@@ -418,20 +418,20 @@ Phase 2 成功实现了：
 2. ✅ **etcd 兼容**: 100% 兼容官方 clientv3 SDK（内存引擎）
 3. ✅ **强一致性**: 同步等待机制确保写操作的一致性
 4. ✅ **双协议支持**: HTTP API + etcd gRPC API
-5. ✅ **双存储引擎**: 内存引擎（Memory + WAL）+ RocksDB 引擎
-6. ✅ **集群模式**: 支持多节点分布式部署（内存和 RocksDB）
+5. ✅ **双存储引擎**: 内存引擎（Memory + WAL）+ Pebble 引擎
+6. ✅ **集群模式**: 支持多节点分布式部署（内存和 Pebble）
 7. ✅ **完整测试**: 单元测试 + 集成测试 + 集群测试（两种引擎）
 
 MetaStore 现在已经是一个功能完整的分布式键值存储，具备：
 - 分布式共识和高可用
 - etcd v3 API 完全兼容（内存引擎）
 - 强一致性保证
-- 持久化存储（RocksDB 引擎）
+- 持久化存储（Pebble 引擎）
 - 可扩展的架构设计
 
 **存储引擎特性对比**:
 
-| 特性 | 内存引擎 | RocksDB 引擎 |
+| 特性 | 内存引擎 | Pebble 引擎 |
 |-----|---------|------------|
 | Raft 共识 | ✅ | ✅ |
 | etcd gRPC API | ✅ | ❌（待实现） |
@@ -440,7 +440,7 @@ MetaStore 现在已经是一个功能完整的分布式键值存储，具备：
 | 集群支持 | ✅ | ✅ |
 | 性能 | 高（纯内存） | 中（磁盘 I/O） |
 
-下一步（Phase 3）将专注于生产就绪特性：性能优化、完整 MVCC、RocksDB etcd 兼容、集群管理等。
+下一步（Phase 3）将专注于生产就绪特性：性能优化、完整 MVCC、Pebble etcd 兼容、集群管理等。
 
 ---
 

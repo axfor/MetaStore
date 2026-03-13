@@ -25,13 +25,13 @@ Lease Read 是一种优化读取性能的机制，通过 Leader 租约避免每�
 
 3. **Raft 节点集成**
    - ✅ Memory Raft 节点集成 Lease Read
-   - ✅ RocksDB Raft 节点集成 Lease Read
+   - ✅ Pebble Raft 节点集成 Lease Read
    - ✅ 角色变更时自动管理租约状态
    - ✅ 心跳响应时自动续期租约
 
 4. **存储层优化**
    - ✅ Memory Store 的 Range() 方法添加 Lease Read 快速路径
-   - ✅ RocksDB Store 的 Range() 方法添加 Lease Read 快速路径
+   - ✅ Pebble Store 的 Range() 方法添加 Lease Read 快速路径
 
 5. **测试覆盖**
    - ✅ LeaseManager 单元测试 (12 个测试用例)
@@ -51,7 +51,7 @@ Lease Read 是一种优化读取性能的机制，通过 Leader 租约避免每�
        │
        v
 ┌─────────────────────────────────────────┐
-│  Memory/RocksDB Store Range()           │
+│  Memory/Pebble Store Range()           │
 │  ┌───────────────────────────────────┐  │
 │  │  Lease Read 优化检查              │  │
 │  │  ┌──────────────────────────────┐ │  │
@@ -245,7 +245,7 @@ Performance:        0.83x (略有下降)
   - 实现应用进度通知
   - 添加测试访问器方法
 
-- `internal/raft/node_rocksdb.go`
+- `internal/raft/node_pebble.go`
   - 同 node_memory.go 的修改
 
 #### 存储层优化
@@ -253,7 +253,7 @@ Performance:        0.83x (略有下降)
   - 扩展 RaftNode 接口添加 Lease 组件访问方法
   - 覆盖 Range() 方法添加 Lease Read 快速路径
 
-- `internal/rocksdb/kvstore.go`
+- `internal/pebble/kvstore.go`
   - 扩展 RaftNode 接口添加 Lease 组件访问方法
   - 修改 Range() 方法添加 Lease Read 检查
 

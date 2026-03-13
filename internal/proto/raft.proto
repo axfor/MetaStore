@@ -48,6 +48,7 @@ message RaftOperation {
 
   // Lease operation fields
   int64 ttl = 7;
+  int64 grant_time = 11;  // unix nano, preserves original GrantTime across WAL replay
 
   // Transaction operation fields
   repeated Compare compares = 8;

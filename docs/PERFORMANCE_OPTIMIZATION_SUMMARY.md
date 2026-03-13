@@ -17,7 +17,7 @@
 | 引擎 | 优化前（假设 JSON）| 优化后（最终）| 主要瓶颈 |
 |------|------------------|--------------|---------|
 | **Memory** | ~300 ops/sec | **~975 ops/sec** | Raft WAL fsync |
-| **RocksDB** | ~100 ops/sec | **~349 ops/sec** | Raft + RocksDB WAL fsync |
+| **Pebble** | ~100 ops/sec | **~349 ops/sec** | Raft + Pebble WAL fsync |
 
 ---
 
@@ -47,16 +47,16 @@
      - Line 620: `Txn` 序列化
      - Line 194, 207: `readCommits` 反序列化
 
-3. **RocksDB 引擎验证**
-   - 文件：[internal/rocksdb/raft_proto.go](/Users/bast/code/MetaStore/internal/rocksdb/raft_proto.go)（已存在）
-   - 结论：RocksDB 引擎已使用 Protobuf，无需修改
+3. **Pebble 引擎验证**
+   - 文件：[internal/pebble/raft_proto.go](/Users/bast/code/MetaStore/internal/pebble/raft_proto.go)（已存在）
+   - 结论：Pebble 引擎已使用 Protobuf，无需修改
 
 #### 性能测试结果
 
 | 引擎 | Protobuf 基线 | 说明 |
 |------|-------------|------|
 | **Memory** | 1,014.59 ops/sec | 相比 JSON 预计提升 3-5x |
-| **RocksDB** | 372.68 ops/sec | 已使用 Protobuf |
+| **Pebble** | 372.68 ops/sec | 已使用 Protobuf |
 
 #### 关键收益
 
@@ -75,7 +75,7 @@
 
 **修改文件**：
 1. [internal/raft/node_memory.go](/Users/bast/code/MetaStore/internal/raft/node_memory.go#L318-L337)
-2. [internal/raft/node_rocksdb.go](/Users/bast/code/MetaStore/internal/raft/node_rocksdb.go#L262-L281)
+2. [internal/raft/node_pebble.go](/Users/bast/code/MetaStore/internal/raft/node_pebble.go#L262-L281)
 
 **核心优化参数**：
 
@@ -115,7 +115,7 @@ c := &raft.Config{
 | 引擎 | Raft 优化后 | vs Protobuf 基线 | 说明 |
 |------|-----------|-----------------|------|
 | **Memory** | 1,010.41 ops/sec | -0.4% | 性能稳定 |
-| **RocksDB** | 364.94 ops/sec | -2.1% | 性能稳定 |
+| **Pebble** | 364.94 ops/sec | -2.1% | 性能稳定 |
 
 #### 关键收益
 
@@ -177,7 +177,7 @@ if c.Server.GRPC.KeepaliveTime == 0 {
 | 引擎 | gRPC 优化后（最终）| vs Protobuf 基线 | 说明 |
 |------|------------------|-----------------|------|
 | **Memory** | **974.60 ops/sec** | -3.9% | 性能稳定，波动在测试误差范围内 |
-| **RocksDB** | **348.80 ops/sec** | -6.4% | 性能稳定，波动在测试误差范围内 |
+| **Pebble** | **348.80 ops/sec** | -6.4% | 性能稳定，波动在测试误差范围内 |
 
 #### 关键收益
 
@@ -211,7 +211,7 @@ if c.Server.GRPC.KeepaliveTime == 0 {
 
 ---
 
-### RocksDB 引擎性能演进
+### Pebble 引擎性能演进
 
 | 优化阶段 | 吞吐量 (ops/sec) | 平均延迟 (ms) | vs 基线 | 测试时间 |
 |---------|-----------------|--------------|---------|---------|
@@ -226,8 +226,8 @@ if c.Server.GRPC.KeepaliveTime == 0 {
 
 **性能分析**：
 - 性能保持稳定（-6.4% 在测试误差范围 ±7% 内）
-- 主要瓶颈：**Raft WAL fsync (~5-10ms) + RocksDB WAL fsync (~5-10ms)**
-- RocksDB LSM Compaction 后台影响
+- 主要瓶颈：**Raft WAL fsync (~5-10ms) + Pebble WAL fsync (~5-10ms)**
+- Pebble LSM Compaction 后台影响
 - 单节点场景下，优化收益主要在多节点、高并发场景体现
 
 ---
@@ -253,7 +253,7 @@ if c.Server.GRPC.KeepaliveTime == 0 {
 - Apply 到 MemoryStore：~0.1-0.5ms
 - gRPC 响应：~1-2ms
 
-#### RocksDB 引擎延迟分解
+#### Pebble 引擎延迟分解
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -267,8 +267,8 @@ if c.Server.GRPC.KeepaliveTime == 0 {
 **延迟分解**（总延迟 ~142ms）：
 - gRPC 网络 + 序列化：~1-2ms
 - Raft Propose + **WAL fsync**：**~5-10ms**（主瓶颈1）
-- Apply 到 RocksDB + **WAL fsync**：**~5-10ms**（主瓶颈2）
-- RocksDB LSM Compaction：后台异步
+- Apply 到 Pebble + **WAL fsync**：**~5-10ms**（主瓶颈2）
+- Pebble LSM Compaction：后台异步
 - gRPC 响应：~1-2ms
 
 ---
@@ -331,7 +331,7 @@ if c.Server.GRPC.KeepaliveTime == 0 {
 
 **预期性能**：
 - **Memory 引擎**：~975 ops/sec
-- **RocksDB 引擎**：~349 ops/sec
+- **Pebble 引擎**：~349 ops/sec
 
 **优化重点**：
 - 使用 **NVMe SSD** 降低 WAL fsync 延迟（从 5-10ms 降至 0.5-1ms）
@@ -345,7 +345,7 @@ if c.Server.GRPC.KeepaliveTime == 0 {
 
 **预期性能**：
 - **Memory 引擎**：~850-900 ops/sec（因跨节点复制下降 10-15%）
-- **RocksDB 引擎**：~300-330 ops/sec
+- **Pebble 引擎**：~300-330 ops/sec
 
 **优化收益**：
 - **PreVote**：减少选举次数 60-80%
@@ -365,7 +365,7 @@ if c.Server.GRPC.KeepaliveTime == 0 {
 
 **预期性能**：
 - **Memory 引擎**：~750-850 ops/sec
-- **RocksDB 引擎**：~260-300 ops/sec
+- **Pebble 引擎**：~260-300 ops/sec
 
 **优化收益**：
 - **MaxSizePerMsg（4MB）**：跨数据中心场景减少网络往返
@@ -409,7 +409,7 @@ if c.Server.GRPC.KeepaliveTime == 0 {
 | 优化项 | 预期收益 | 实施难度 | 优先级 |
 |--------|---------|---------|--------|
 | **Memory WriteBatch** | +5-10% | 低 | 高 |
-| **RocksDB WriteBatch** | +10-15% | 中 | 高 |
+| **Pebble WriteBatch** | +10-15% | 中 | 高 |
 | **gRPC 连接池** | +10-20% | 低 | 中 |
 | **批量 Propose** | +15-25% | 中 | 中 |
 
@@ -422,7 +422,7 @@ if c.Server.GRPC.KeepaliveTime == 0 {
 | **Follower Read** | 读取 3x | 中 | 高 |
 | **Raft Pipeline 批处理** | +20-30% | 高 | 中 |
 | **gRPC Streaming 优化** | +15-25% | 中 | 中 |
-| **RocksDB Column Family** | +10-20% | 高 | 低 |
+| **Pebble Column Family** | +10-20% | 高 | 低 |
 
 ---
 
@@ -461,7 +461,7 @@ if c.Server.GRPC.KeepaliveTime == 0 {
 | 指标 | 说明 | 告警阈值 |
 |------|------|---------|
 | `storage_fsync_duration_ms` | WAL fsync 延迟 | P99 > 50ms |
-| `rocksdb_compaction_pending` | 待压缩 SST 数量 | > 10 |
+| `pebble_compaction_pending` | 待压缩 SST 数量 | > 10 |
 | `memory_usage_bytes` | 内存使用量 | > 80% 系统内存 |
 
 ---
@@ -521,7 +521,7 @@ groups:
 
 所有性能测试通过：
 - ✅ **Memory 引擎**：974.60 ops/sec（50 并发客户端，50,000 操作）
-- ✅ **RocksDB 引擎**：348.80 ops/sec（50 并发客户端，50,000 操作）
+- ✅ **Pebble 引擎**：348.80 ops/sec（50 并发客户端，50,000 操作）
 - ✅ **成功率**：100%
 - ✅ **稳定性**：性能波动 < ±7%
 
@@ -531,7 +531,7 @@ groups:
 
 所有集成测试通过：
 - ✅ `TestEtcdMemory_Integration`
-- ✅ `TestEtcdRocksDB_Integration`
+- ✅ `TestEtcdPebble_Integration`
 - ✅ `TestCrossProtocol_Integration`
 
 ---
@@ -580,7 +580,7 @@ groups:
 | 引擎 | 优化前（假设）| 优化后（最终）| 提升幅度 |
 |------|-------------|--------------|---------|
 | **Memory** | ~300 ops/sec | **~975 ops/sec** | **~3.2x** |
-| **RocksDB** | ~100 ops/sec | **~349 ops/sec** | **~3.5x** |
+| **Pebble** | ~100 ops/sec | **~349 ops/sec** | **~3.5x** |
 
 ### 适用场景
 

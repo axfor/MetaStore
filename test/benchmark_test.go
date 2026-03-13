@@ -473,9 +473,9 @@ func BenchmarkHighConcurrency(b *testing.B) {
 	})
 }
 
-// BenchmarkRocksDBPut benchmarks RocksDB PUT operations
-func BenchmarkRocksDBPut(b *testing.B) {
-	node, cleanup := startRocksDBNode(b, 1)
+// BenchmarkPebblePut benchmarks Pebble PUT operations
+func BenchmarkPebblePut(b *testing.B) {
+	node, cleanup := startPebbleNode(b, 1)
 	defer cleanup()
 
 	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
@@ -488,17 +488,17 @@ func BenchmarkRocksDBPut(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		key := fmt.Sprintf("/bench/rocksdb-put-%d", i)
-		_, err := cli.Put(ctx, key, "rocksdb-value")
+		key := fmt.Sprintf("/bench/pebble-put-%d", i)
+		_, err := cli.Put(ctx, key, "pebble-value")
 		if err != nil {
 			b.Fatalf("Put failed: %v", err)
 		}
 	}
 }
 
-// BenchmarkRocksDBPutParallel benchmarks parallel RocksDB PUT operations
-func BenchmarkRocksDBPutParallel(b *testing.B) {
-	node, cleanup := startRocksDBNode(b, 1)
+// BenchmarkPebblePutParallel benchmarks parallel Pebble PUT operations
+func BenchmarkPebblePutParallel(b *testing.B) {
+	node, cleanup := startPebbleNode(b, 1)
 	defer cleanup()
 
 	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
@@ -513,8 +513,8 @@ func BenchmarkRocksDBPutParallel(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		i := 0
 		for pb.Next() {
-			key := fmt.Sprintf("/bench/rocksdb-parallel-%d", i)
-			_, err := cli.Put(ctx, key, "parallel-rocksdb-value")
+			key := fmt.Sprintf("/bench/pebble-parallel-%d", i)
+			_, err := cli.Put(ctx, key, "parallel-pebble-value")
 			if err != nil {
 				b.Fatalf("Put failed: %v", err)
 			}
@@ -523,9 +523,9 @@ func BenchmarkRocksDBPutParallel(b *testing.B) {
 	})
 }
 
-// BenchmarkRocksDBMixedOperations benchmarks mixed RocksDB workload
-func BenchmarkRocksDBMixedOperations(b *testing.B) {
-	node, cleanup := startRocksDBNode(b, 1)
+// BenchmarkPebbleMixedOperations benchmarks mixed Pebble workload
+func BenchmarkPebbleMixedOperations(b *testing.B) {
+	node, cleanup := startPebbleNode(b, 1)
 	defer cleanup()
 
 	cli, err := NewEtcdClient([]string{node.clientAddr}, 5*time.Second)
@@ -538,7 +538,7 @@ func BenchmarkRocksDBMixedOperations(b *testing.B) {
 
 	// Pre-populate some keys
 	for i := 0; i < 100; i++ {
-		key := fmt.Sprintf("/bench/rocksdb-mixed-%d", i)
+		key := fmt.Sprintf("/bench/pebble-mixed-%d", i)
 		_, _ = cli.Put(ctx, key, "initial-value")
 	}
 
@@ -547,7 +547,7 @@ func BenchmarkRocksDBMixedOperations(b *testing.B) {
 	// Mixed workload: 50% GET, 30% PUT, 20% DELETE
 	for i := 0; i < b.N; i++ {
 		op := i % 10
-		key := fmt.Sprintf("/bench/rocksdb-mixed-%d", i%100)
+		key := fmt.Sprintf("/bench/pebble-mixed-%d", i%100)
 
 		switch {
 		case op < 5: // 50% GET

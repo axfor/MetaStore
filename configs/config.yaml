@@ -192,10 +192,10 @@ server:
         # 跨大洲部署建议：500ms（需相应增大 election_timeout）
       read_timeout: 5s # 读超时时间（防止读请求永久挂起）
 
-  # RocksDB 性能配置（仅在使用 RocksDB 存储引擎时生效）
+  # Pebble performance configuration (only effective when using Pebble storage engine)
   # 默认配置针对轻量化优化（~10MB 内存占用）
   # 如需高性能，可增大 block_cache_size 和 write_buffer_size
-  rocksdb:
+  pebble:
     # Block Cache 配置（影响读性能）
     block_cache_size: 8388608 # 8MB（轻量默认），高性能建议 256MB-512MB
 

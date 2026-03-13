@@ -68,8 +68,7 @@ run_test() {
     echo "========================================" >> "$RESULT_FILE"
 
     # 运行测试并捕获结果
-    if CGO_ENABLED=1 CGO_LDFLAGS="-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain" \
-       go test -v -timeout=15m ./test -run="TestMemoryPerformance" 2>&1 | tee -a "$RESULT_FILE" | grep -E "(PASS|FAIL|吞吐量|ops/sec|延迟|Latency)"; then
+    if CGO_ENABLED=0 go test -v -timeout=15m ./test -run="TestMemoryPerformance" 2>&1 | tee -a "$RESULT_FILE" | grep -E "(PASS|FAIL|吞吐量|ops/sec|延迟|Latency)"; then
         echo -e "${GREEN}✓ 测试完成${NC}"
     else
         echo -e "${RED}✗ 测试失败或超时${NC}"

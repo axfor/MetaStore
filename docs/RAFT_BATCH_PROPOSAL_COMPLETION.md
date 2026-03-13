@@ -166,18 +166,18 @@ server:
 
 ---
 
-### 5. RocksDB Raft 节点集成
+### 5. Pebble Raft 节点集成
 
-#### 📁 [internal/raft/node_rocksdb.go](../internal/raft/node_rocksdb.go)
+#### 📁 [internal/raft/node_pebble.go](../internal/raft/node_pebble.go)
 
 **集成点** (与 Memory 节点相同):
 
-1. **导入批量包** ([line 28](../internal/raft/node_rocksdb.go#L28))
-2. **添加批量字段** ([lines 78-80](../internal/raft/node_rocksdb.go#L78-L80))
-3. **初始化批量器** ([lines 314-335](../internal/raft/node_rocksdb.go#L314-L335))
-4. **提案路由** ([lines 492-536](../internal/raft/node_rocksdb.go#L492-L536))
-5. **批量解码** ([lines 157-172](../internal/raft/node_rocksdb.go#L157-L172))
-6. **优雅停止** ([lines 371-374](../internal/raft/node_rocksdb.go#L371-L374))
+1. **导入批量包** ([line 28](../internal/raft/node_pebble.go#L28))
+2. **添加批量字段** ([lines 78-80](../internal/raft/node_pebble.go#L78-L80))
+3. **初始化批量器** ([lines 314-335](../internal/raft/node_pebble.go#L314-L335))
+4. **提案路由** ([lines 492-536](../internal/raft/node_pebble.go#L492-L536))
+5. **批量解码** ([lines 157-172](../internal/raft/node_pebble.go#L157-L172))
+6. **优雅停止** ([lines 371-374](../internal/raft/node_pebble.go#L371-L374))
 
 **状态**: ✅ 完整集成，与 Memory 节点功能一致
 
@@ -333,7 +333,7 @@ go build ./pkg/config/...      ✅
 
 **测试内容**:
 - 端到端批量提案流程
-- Memory 和 RocksDB 节点验证
+- Memory 和 Pebble 节点验证
 - 集群环境测试
 
 **预计时间**: 1-2 小时
@@ -401,7 +401,7 @@ fmt.printf("当前超时: %v\n", stats.CurrentTimeout)
 **核心成果**:
 1. ✅ 动态批量提案系统（基于 TiKV/etcd 最佳实践）
 2. ✅ 完整配置系统集成
-3. ✅ Memory 和 RocksDB 节点全面支持
+3. ✅ Memory 和 Pebble 节点全面支持
 4. ✅ 向后兼容和优雅降级
 5. ✅ 详细文档和配置示例
 

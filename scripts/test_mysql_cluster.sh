@@ -43,7 +43,7 @@ cd $pre_dir
 
 cp $pre_dir/../metaStore mysql-cluster-test/
 cd mysql-cluster-test
-mkdir -p data/rocksdb/{1,2,3}
+mkdir -p data/pebble/{1,2,3}
 
 # Create config files for each node
 cat > config1.yaml << 'EOF'
@@ -132,7 +132,7 @@ CLUSTER="http://127.0.0.1:9021,http://127.0.0.1:9022,http://127.0.0.1:9023"
   -member-id=1 \
   -cluster=$CLUSTER \
   -port=9121 \
-  -storage=rocksdb \
+  -storage=pebble \
   > node1/log.txt 2>&1 &
 PID1=$!
 echo "Node 1 started (PID: $PID1, HTTP: 9121, gRPC: 12379, MySQL: 13306)"
@@ -144,7 +144,7 @@ sleep 5
   -member-id=2 \
   -cluster=$CLUSTER \
   -port=9122 \
-  -storage=rocksdb \
+  -storage=pebble \
   > node2/log.txt 2>&1 &
 PID2=$!
 echo "Node 2 started (PID: $PID2, HTTP: 9122, gRPC: 12380, MySQL: 13307)"
@@ -156,7 +156,7 @@ sleep 5
   -member-id=3 \
   -cluster=$CLUSTER \
   -port=9123 \
-  -storage=rocksdb \
+  -storage=pebble \
   > node3/log.txt 2>&1 &
 PID3=$!
 echo "Node 3 started (PID: $PID3, HTTP: 9123, gRPC: 12381, MySQL: 13308)"

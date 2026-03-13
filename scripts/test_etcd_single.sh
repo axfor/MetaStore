@@ -35,7 +35,7 @@ cd $pre_dir
 
 cp $pre_dir/../metaStore raft-cluster-test/
 cd raft-cluster-test
-mkdir -p data/rocksdb/1
+mkdir -p data/pebble/1
 
 
 # 启动单节点
@@ -45,7 +45,7 @@ echo "2. 启动单节点集群（后台）..."
   --cluster=http://127.0.0.1:9021 \
   --port=9121 \
   --grpc-addr=:12379 \
-  --storage=rocksdb \
+  --storage=pebble \
   > node1/log.txt 2>&1 &
 
 PID=$!

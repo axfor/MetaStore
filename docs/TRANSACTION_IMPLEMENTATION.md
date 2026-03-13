@@ -2,7 +2,7 @@
 
 ## 概述
 
-本文档记录了 MetaStore 项目中 etcd Transaction（事务）功能的完整实现，包括 Memory 和 RocksDB 两种存储引擎在单节点和集群环境下的事务支持。
+本文档记录了 MetaStore 项目中 etcd Transaction（事务）功能的完整实现，包括 Memory 和 Pebble 两种存储引擎在单节点和集群环境下的事务支持。
 
 **实现日期**: 2025-10-27
 **实现者**: Claude Code
@@ -119,14 +119,14 @@ type RaftOperation struct {
 
 ---
 
-### 2. RocksDB 引擎实现
+### 2. Pebble 引擎实现
 
-#### 文件: `internal/rocksdb/kvstore.go`
+#### 文件: `internal/pebble/kvstore.go`
 
 **新增结构体字段**:
 ```go
-type RocksDB struct {
-    db          *grocksdb.DB
+type Pebble struct {
+    db          *gpebble.DB
     proposeC    chan<- string
     snapshotter *snap.Snapshotter
 
@@ -151,10 +151,10 @@ type RocksDB struct {
 2. **txnUnlocked() - 无锁事务执行** (+112 行)
    - 评估 Compare 条件
    - 执行 Range/Put/Delete 操作
-   - 处理 RocksDB 特定的迭代器和批量写入
+   - 处理 Pebble 特定的迭代器和批量写入
 
 3. **evaluateCompare() - 条件评估** (+38 行)
-   - 从 RocksDB 读取键值
+   - 从 Pebble 读取键值
    - 支持所有比较类型和操作
 
 4. **compareInt() / compareBytes()** (+30 行)
@@ -165,7 +165,7 @@ type RocksDB struct {
    - 调用 `txnUnlocked()` 并保存结果
 
 **代码行数统计**:
-- `internal/rocksdb/kvstore.go`: +282 行
+- `internal/pebble/kvstore.go`: +282 行
 
 ---
 
@@ -235,22 +235,22 @@ if op.SeqNum != "" && txnResp != nil {
 
 1. **test/etcd_compatibility_test.go**
    - `TestTransaction` - Memory 单节点事务测试
-   - `TestTransaction_RocksDB` - RocksDB 单节点事务测试
+   - `TestTransaction_Pebble` - Pebble 单节点事务测试
 
 2. **test/etcd_memory_consistency_test.go**
    - `TestEtcdMemoryClusterTransactionConsistency` - Memory 3节点集群测试
 
-3. **test/etcd_rocksdb_consistency_test.go** (新增)
-   - `TestEtcdRocksDBClusterTransactionConsistency` - RocksDB 3节点集群测试
+3. **test/etcd_pebble_consistency_test.go** (新增)
+   - `TestEtcdPebbleClusterTransactionConsistency` - Pebble 3节点集群测试
 
 ### 测试结果
 
 | 测试名称 | 存储引擎 | 部署模式 | 耗时 | 状态 |
 |---------|---------|---------|------|------|
 | `TestTransaction` | Memory | 单节点 | 0.11s | ✅ 通过 |
-| `TestTransaction_RocksDB` | RocksDB | 单节点 | 4.52s | ✅ 通过 |
+| `TestTransaction_Pebble` | Pebble | 单节点 | 4.52s | ✅ 通过 |
 | `TestEtcdMemoryClusterTransactionConsistency` | Memory | 3节点集群 | 7.52s | ✅ 通过 |
-| `TestEtcdRocksDBClusterTransactionConsistency` | RocksDB | 3节点集群 | 8.66s | ✅ 通过 |
+| `TestEtcdPebbleClusterTransactionConsistency` | Pebble | 3节点集群 | 8.66s | ✅ 通过 |
 
 **总计**: 4 个测试，全部通过 ✅
 
@@ -294,16 +294,16 @@ if op.SeqNum != "" && txnResp != nil {
 |------|---------|---------|--------|
 | `internal/memory/kvstore.go` | +81 | 0 | +81 |
 | `internal/memory/store.go` | +73 | -68 | +5 |
-| `internal/rocksdb/kvstore.go` | +282 | 0 | +282 |
+| `internal/pebble/kvstore.go` | +282 | 0 | +282 |
 | `test/etcd_memory_consistency_test.go` | 0 | -4 | -4 |
 | `test/etcd_compatibility_test.go` | 0 | -2 | -2 |
-| `test/etcd_rocksdb_consistency_test.go` | +38 | 0 | +38 |
+| `test/etcd_pebble_consistency_test.go` | +38 | 0 | +38 |
 | **总计** | **+474** | **-74** | **+400** |
 
 ### 新增功能点
 
 - ✅ Memory 引擎事务支持
-- ✅ RocksDB 引擎事务支持
+- ✅ Pebble 引擎事务支持
 - ✅ Compare-Then-Else 语义
 - ✅ Raft 共识集成
 - ✅ 事务结果同步机制
@@ -350,10 +350,10 @@ resp, _ := txn.Commit()
 - **单节点**: < 1ms (测试平均 0.11s / 多次操作)
 - **3节点集群**: 2-3s (包含 Raft 复制和等待时间)
 
-### RocksDB 引擎
+### Pebble 引擎
 
 - **单节点**: 1-5ms (测试平均 4.52s / 多次操作)
-- **3节点集群**: 3-5s (包含 Raft 复制、RocksDB 写入和等待时间)
+- **3节点集群**: 3-5s (包含 Raft 复制、Pebble 写入和等待时间)
 
 **注意**: 集群模式下的延迟主要来自：
 1. Raft 共识协议的网络往返
@@ -467,7 +467,7 @@ func versionControlTransaction(client *clientv3.Client) {
 - ✅ **原子性**: 事务中的所有操作要么全部成功，要么全部失败
 - ✅ **一致性**: 通过 Raft 保证所有节点状态一致
 - ✅ **隔离性**: 事务执行期间持有锁，避免并发冲突
-- ✅ **持久性**: RocksDB 引擎通过 fsync 保证持久化
+- ✅ **持久性**: Pebble 引擎通过 fsync 保证持久化
 
 ---
 
@@ -534,7 +534,7 @@ log.Printf("Transaction responses: %+v", txnResp.Responses)
 ### 代码位置
 
 - Memory 实现: `internal/memory/kvstore.go`, `internal/memory/store.go`
-- RocksDB 实现: `internal/rocksdb/kvstore.go`
+- Pebble 实现: `internal/pebble/kvstore.go`
 - 测试代码: `test/etcd_*_test.go`
 
 ---
@@ -543,7 +543,7 @@ log.Printf("Transaction responses: %+v", txnResp.Responses)
 
 本次实现为 MetaStore 项目添加了完整的 etcd Transaction 功能支持：
 
-✅ **完整实现**: Memory 和 RocksDB 两种引擎
+✅ **完整实现**: Memory 和 Pebble 两种引擎
 ✅ **全面测试**: 单节点和集群环境
 ✅ **完全兼容**: etcd v3 客户端 SDK
 ✅ **分布式一致性**: Raft 共识保证

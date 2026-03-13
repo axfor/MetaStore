@@ -305,7 +305,7 @@ func (s *MaintenanceServer) Defragment(...) (*pb.DefragmentResponse, error) {
 **问题**: 仅返回成功响应，未执行任何碎片整理
 
 **影响**:
-- RocksDB 长期运行后可能出现碎片
+- Pebble 长期运行后可能出现碎片
 - 无法优化存储空间使用
 
 #### 2.2 Hash / HashKV - 未实现
@@ -390,9 +390,9 @@ Hash:   0, // 占位
 
 #### 5.1 已有测试
 - ✅ Memory 引擎单节点测试
-- ✅ RocksDB 引擎单节点测试
+- ✅ Pebble 引擎单节点测试
 - ✅ Memory 引擎集群一致性测试
-- ✅ RocksDB 引擎集群一致性测试
+- ✅ Pebble 引擎集群一致性测试
 
 #### 5.2 测试覆盖的功能
 - ✅ KV 基本操作：Put, Get, Delete
@@ -467,7 +467,7 @@ Hash:   0, // 占位
 
 4. **修复 RaftTerm 硬编码** - 影响客户端判断
 5. **修复 Leader 检测** - Status API 应返回真实 leader
-6. **实现 Defragment** - RocksDB 长期运行必需
+6. **实现 Defragment** - Pebble 长期运行必需
 7. **实现 Hash/HashKV** - 数据一致性校验必需
 8. **实现 Alarm 机制** - 生产监控必需
 
@@ -497,7 +497,7 @@ MetaStore 成功实现了 etcd v3 协议的**核心数据面**功能：
 ✅ **事务支持**：Txn 语义完整实现，Compare-Then-Else 原子性保证
 ✅ **实时监听**：Watch 服务功能完整，支持历史回放和过滤
 ✅ **租约管理**：Lease 生命周期管理完整，自动过期清理
-✅ **双引擎支持**：Memory 和 RocksDB 两种引擎均通过测试
+✅ **双引擎支持**：Memory 和 Pebble 两种引擎均通过测试
 ✅ **集群一致性**：Raft 共识保证集群数据一致
 ✅ **跨协议访问**：HTTP API 和 etcd API 共享存储
 

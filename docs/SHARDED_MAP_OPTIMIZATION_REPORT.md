@@ -226,21 +226,21 @@ No functional regressions detected:
 
 ---
 
-## 6. Comparison with RocksDB
+## 6. Comparison with Pebble
 
 ### 6.1 Performance Gap Analysis
 
 | Storage Backend | MixedWorkload | Notes |
 |----------------|---------------|-------|
-| RocksDB | 4,921 ops/s | C++ native, LSM tree, optimized for writes |
+| Pebble | 4,921 ops/s | C++ native, LSM tree, optimized for writes |
 | Memory (After) | 3,385.99 ops/s | Pure Go, in-memory, limited by Raft |
 | Memory (Before) | 1,455 ops/s | Global lock bottleneck |
 
 **Gap Analysis:**
-- **Remaining gap:** 4,921 / 3,386 = **1.45x** (RocksDB still 45% faster)
+- **Remaining gap:** 4,921 / 3,386 = **1.45x** (Pebble still 45% faster)
 - **Progress:** Closed the gap from 3.4x to 1.45x
 
-**Why RocksDB is still faster:**
+**Why Pebble is still faster:**
 1. **Native C++ implementation** with highly optimized lock-free data structures
 2. **LSM tree architecture** designed for high write throughput
 3. **Better cache locality** with block-based storage
@@ -248,7 +248,7 @@ No functional regressions detected:
 
 **When to use each:**
 - **Memory:** Development, testing, small datasets (<1GB), simplicity
-- **RocksDB:** Production, large datasets (>1GB), maximum performance
+- **Pebble:** Production, large datasets (>1GB), maximum performance
 
 ---
 
@@ -283,13 +283,13 @@ Based on `MEMORY_STORAGE_PERFORMANCE_ANALYSIS.md`:
 
 ### 7.3 Recommendation
 
-**Current Status:** Memory storage is now performant enough for most development and testing scenarios. The remaining performance gap vs RocksDB is acceptable given the simplicity trade-off.
+**Current Status:** Memory storage is now performant enough for most development and testing scenarios. The remaining performance gap vs Pebble is acceptable given the simplicity trade-off.
 
 **Recommendation:**
 1. **Document the optimization** ✅ (this report)
 2. **Monitor production usage** to identify real bottlenecks
 3. **Consider WriteBatch** only if write throughput becomes a proven bottleneck
-4. **Focus on RocksDB** for production deployments requiring maximum performance
+4. **Focus on Pebble** for production deployments requiring maximum performance
 
 ---
 

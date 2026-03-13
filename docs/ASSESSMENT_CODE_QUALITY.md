@@ -33,8 +33,8 @@
 │   ├── kvstore.go            ← Memory Store
 │   └── watch.go              ← Watch 实现
 │
-└── internal/rocksdb/         ← RocksDB 实现
-    ├── kvstore.go            ← RocksDB Store
+└── internal/pebble/         ← Pebble 实现
+    ├── kvstore.go            ← Pebble Store
     └── watch.go              ← Watch 实现
 ```
 

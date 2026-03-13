@@ -55,7 +55,7 @@ configs/
 
 internal/raft/
 ├── node_memory.go       # Memory 节点批量支持（已完成）
-└── node_rocksdb.go      # RocksDB 节点批量支持（进行中）
+└── node_pebble.go      # Pebble 节点批量支持（进行中）
 ```
 
 ### 核心组件
@@ -182,9 +182,9 @@ if rc.batcher != nil {
 }
 ```
 
-#### RocksDB 节点集成（待完成）
+#### Pebble 节点集成（待完成）
 
-**文件**: `internal/raft/node_rocksdb.go`
+**文件**: `internal/raft/node_pebble.go`
 
 **状态**: 已添加导入和字段，需要应用与 Memory 节点相同的修改
 
@@ -340,5 +340,5 @@ batch:
 ## 变更历史
 
 - **2025-11-02**: 初始实现，完成核心批量系统和 Memory 节点集成
-- **待定**: RocksDB 节点集成完成
+- **待定**: Pebble 节点集成完成
 - **待定**: 性能测试验证

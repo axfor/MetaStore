@@ -116,12 +116,12 @@ type RaftStatusInfo struct {
 }
 ```
 
-### 2.2 RocksDB 引擎实现
+### 2.2 Pebble 引擎实现
 
-#### 文件：internal/rocksdb/kvstore.go
+#### 文件：internal/pebble/kvstore.go
 
 ```go
-func (r *RocksDB) GetRaftStatus() kvstore.RaftStatus {
+func (r *Pebble) GetRaftStatus() kvstore.RaftStatus {
     if r.raftNode == nil {
         return kvstore.RaftStatus{
             NodeID:   r.id,
@@ -183,7 +183,7 @@ func (rc *raftNode) State() string {
 
 ```
 Server
-  └─ Store (Memory/RocksDB)
+  └─ Store (Memory/Pebble)
        └─ proposeC channel
             └─ raftNode (创建时分离)
 ```
@@ -192,7 +192,7 @@ Server
 
 ```
 Server
-  └─ Store (Memory/RocksDB)
+  └─ Store (Memory/Pebble)
        ├─ proposeC channel
        └─ raftNode reference (新增)
             └─ raftNode
@@ -237,7 +237,7 @@ store := memory.NewMemoryWithRaft(proposeC, commitC, raftNode)
 
 4. **添加 Status() 等方法到 raftNode**
    - [ ] node_memory.go
-   - [ ] node_rocksdb.go
+   - [ ] node_pebble.go
 
 ### 阶段 3：Store 实现（1-2 小时）
 
@@ -246,7 +246,7 @@ store := memory.NewMemoryWithRaft(proposeC, commitC, raftNode)
    - [ ] 实现 GetRaftStatus()
    - [ ] 修改构造函数
 
-6. **RocksDB 实现**
+6. **Pebble 实现**
    - [ ] 添加 raftNode 字段
    - [ ] 实现 GetRaftStatus()
    - [ ] 修改构造函数
@@ -431,15 +431,15 @@ func TestRaftStatusInCluster(t *testing.T) {
 - [ ] internal/kvstore/store.go - 扩展 Store 接口
 - [ ] internal/memory/raft_interface.go - 新文件，定义接口
 - [ ] internal/memory/kvstore.go - 实现 GetRaftStatus
-- [ ] internal/rocksdb/kvstore.go - 实现 GetRaftStatus
+- [ ] internal/pebble/kvstore.go - 实现 GetRaftStatus
 - [ ] internal/raft/node_memory.go - 实现 Status()
-- [ ] internal/raft/node_rocksdb.go - 实现 Status()
+- [ ] internal/raft/node_pebble.go - 实现 Status()
 - [ ] api/etcd/maintenance.go - 使用 GetRaftStatus
 
 ### 8.2 新增的文件
 
 - [ ] internal/memory/raft_interface.go
-- [ ] internal/rocksdb/raft_interface.go (可能与 memory 共用)
+- [ ] internal/pebble/raft_interface.go (可能与 memory 共用)
 
 ---
 
@@ -450,7 +450,7 @@ func TestRaftStatusInCluster(t *testing.T) {
 | 定义接口和数据模型 | 30 分钟 |
 | Raft Node 实现 | 1 小时 |
 | Memory 实现 | 1 小时 |
-| RocksDB 实现 | 1 小时 |
+| Pebble 实现 | 1 小时 |
 | 集成和测试 | 1 小时 |
 | **总计** | **4.5 小时** |
 
@@ -468,7 +468,7 @@ func TestRaftStatusInCluster(t *testing.T) {
 ### 实现
 - [ ] raftNode.Status()
 - [ ] Memory.GetRaftStatus()
-- [ ] RocksDB.GetRaftStatus()
+- [ ] Pebble.GetRaftStatus()
 
 ### 集成
 - [ ] 修改初始化代码注入 raftNode

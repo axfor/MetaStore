@@ -38,7 +38,7 @@ Successfully implemented a production-ready MySQL protocol access layer for Meta
 
 ✅ **Storage Engine Support**
 - ✅ Memory engine - Full support
-- ✅ RocksDB engine - Full support
+- ✅ Pebble engine - Full support
 - Unified storage interface
 - Engine-agnostic protocol layer
 
@@ -63,7 +63,7 @@ Successfully implemented a production-ready MySQL protocol access layer for Meta
 
 ✅ **Testing**
 - Integration tests for memory engine
-- Integration tests for RocksDB engine
+- Integration tests for Pebble engine
 - Cross-protocol consistency tests
 - MySQL client compatibility validation
 
@@ -156,7 +156,7 @@ server:
 Modified files:
 - ✅ `cmd/metastore/main.go` - Added MySQL server startup
 - ✅ `pkg/config/config.go` - Added MySQL configuration
-- ✅ Both memory and RocksDB modes supported
+- ✅ Both memory and Pebble modes supported
 
 ### Dependencies
 
@@ -237,7 +237,7 @@ Created test files:
 | ✅ No breaking changes | Complete | All existing tests pass |
 | ✅ Storage layer sharing | Complete | Uses `kvstore.Store` interface |
 | ✅ Cross-protocol consistency | Complete | Integration tests verify |
-| ✅ Both storage engines | Complete | Memory & RocksDB supported |
+| ✅ Both storage engines | Complete | Memory & Pebble supported |
 | ✅ Configuration support | Complete | `config.go` updated |
 | ✅ Documentation | Complete | 3 comprehensive documents |
 | ✅ Integration tests | Complete | `test/mysql_api_*.go` |
@@ -386,7 +386,7 @@ The MySQL protocol access layer implementation is **complete and production-read
 1. ✅ **Full Protocol Compatibility** - Works with any MySQL client
 2. ✅ **Zero Breaking Changes** - Existing APIs unaffected
 3. ✅ **Cross-Protocol Consistency** - Data accessible from all protocols
-4. ✅ **Dual Engine Support** - Memory and RocksDB both supported
+4. ✅ **Dual Engine Support** - Memory and Pebble both supported
 5. ✅ **Production Quality** - Proper error handling, logging, testing
 6. ✅ **Well Documented** - Comprehensive guides and examples
 

@@ -29,8 +29,8 @@ func TestMaintenance_Status(t *testing.T) {
 	t.Run("Memory", func(t *testing.T) {
 		testMaintenanceStatus(t, "memory")
 	})
-	t.Run("RocksDB", func(t *testing.T) {
-		testMaintenanceStatus(t, "rocksdb")
+	t.Run("Pebble", func(t *testing.T) {
+		testMaintenanceStatus(t, "pebble")
 	})
 }
 
@@ -43,7 +43,7 @@ func testMaintenanceStatus(t *testing.T, storageType string) {
 		clientAddr = node.clientAddr
 		cleanup = c
 	} else {
-		node, c := startRocksDBNode(t, 1)
+		node, c := startPebbleNode(t, 1)
 		clientAddr = node.clientAddr
 		cleanup = c
 	}
@@ -116,8 +116,8 @@ func TestMaintenance_Hash(t *testing.T) {
 	t.Run("Memory", func(t *testing.T) {
 		testMaintenanceHash(t, "memory")
 	})
-	t.Run("RocksDB", func(t *testing.T) {
-		testMaintenanceHash(t, "rocksdb")
+	t.Run("Pebble", func(t *testing.T) {
+		testMaintenanceHash(t, "pebble")
 	})
 }
 
@@ -130,7 +130,7 @@ func testMaintenanceHash(t *testing.T, storageType string) {
 		clientAddr = node.clientAddr
 		cleanup = c
 	} else {
-		node, c := startRocksDBNode(t, 1)
+		node, c := startPebbleNode(t, 1)
 		clientAddr = node.clientAddr
 		cleanup = c
 	}
@@ -171,7 +171,7 @@ func testMaintenanceHash(t *testing.T, storageType string) {
 		t.Error("Hash should not be zero")
 	}
 
-	// Note: For RocksDB, background compaction may change the snapshot,
+	// Note: For Pebble, background compaction may change the snapshot,
 	// so we don't test hash immutability. We only test that hash changes
 	// after adding new data.
 
@@ -190,7 +190,7 @@ func testMaintenanceHash(t *testing.T, storageType string) {
 	}
 
 	// For Memory storage, hash should change after adding data
-	// For RocksDB, we just verify hash is valid (not zero)
+	// For Pebble, we just verify hash is valid (not zero)
 	if storageType == "memory" && resp2.Hash == resp1.Hash {
 		t.Error("Hash should change after adding data for memory storage")
 	}
@@ -206,8 +206,8 @@ func TestMaintenance_HashKV(t *testing.T) {
 	t.Run("Memory", func(t *testing.T) {
 		testMaintenanceHashKV(t, "memory")
 	})
-	t.Run("RocksDB", func(t *testing.T) {
-		testMaintenanceHashKV(t, "rocksdb")
+	t.Run("Pebble", func(t *testing.T) {
+		testMaintenanceHashKV(t, "pebble")
 	})
 }
 
@@ -220,7 +220,7 @@ func testMaintenanceHashKV(t *testing.T, storageType string) {
 		clientAddr = node.clientAddr
 		cleanup = c
 	} else {
-		node, c := startRocksDBNode(t, 1)
+		node, c := startPebbleNode(t, 1)
 		clientAddr = node.clientAddr
 		cleanup = c
 	}
@@ -288,8 +288,8 @@ func TestMaintenance_Alarm(t *testing.T) {
 	t.Run("Memory", func(t *testing.T) {
 		testMaintenanceAlarm(t, "memory")
 	})
-	t.Run("RocksDB", func(t *testing.T) {
-		testMaintenanceAlarm(t, "rocksdb")
+	t.Run("Pebble", func(t *testing.T) {
+		testMaintenanceAlarm(t, "pebble")
 	})
 }
 
@@ -302,7 +302,7 @@ func testMaintenanceAlarm(t *testing.T, storageType string) {
 		clientAddr = node.clientAddr
 		cleanup = c
 	} else {
-		node, c := startRocksDBNode(t, 1)
+		node, c := startPebbleNode(t, 1)
 		clientAddr = node.clientAddr
 		cleanup = c
 	}
@@ -431,8 +431,8 @@ func TestMaintenance_Snapshot(t *testing.T) {
 	t.Run("Memory", func(t *testing.T) {
 		testMaintenanceSnapshot(t, "memory")
 	})
-	t.Run("RocksDB", func(t *testing.T) {
-		testMaintenanceSnapshot(t, "rocksdb")
+	t.Run("Pebble", func(t *testing.T) {
+		testMaintenanceSnapshot(t, "pebble")
 	})
 }
 
@@ -445,7 +445,7 @@ func testMaintenanceSnapshot(t *testing.T, storageType string) {
 		clientAddr = node.clientAddr
 		cleanup = c
 	} else {
-		node, c := startRocksDBNode(t, 1)
+		node, c := startPebbleNode(t, 1)
 		clientAddr = node.clientAddr
 		cleanup = c
 	}
@@ -514,8 +514,8 @@ func TestMaintenance_Defragment(t *testing.T) {
 	t.Run("Memory", func(t *testing.T) {
 		testMaintenanceDefragment(t, "memory")
 	})
-	t.Run("RocksDB", func(t *testing.T) {
-		testMaintenanceDefragment(t, "rocksdb")
+	t.Run("Pebble", func(t *testing.T) {
+		testMaintenanceDefragment(t, "pebble")
 	})
 }
 
@@ -528,7 +528,7 @@ func testMaintenanceDefragment(t *testing.T, storageType string) {
 		clientAddr = node.clientAddr
 		cleanup = c
 	} else {
-		node, c := startRocksDBNode(t, 1)
+		node, c := startPebbleNode(t, 1)
 		clientAddr = node.clientAddr
 		cleanup = c
 	}

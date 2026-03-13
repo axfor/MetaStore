@@ -184,8 +184,8 @@ func (m *Mutex) watchKeyDeletion(ctx context.Context, key string, revision int64
 
 **当前测试**:
 ```go
-func startRocksDBLockTestServer(t *testing.T) (*clientv3.Client, func()) {
-    node, cleanup := startRocksDBNode(t, 1) // ❌ 单节点
+func startPebbleLockTestServer(t *testing.T) (*clientv3.Client, func()) {
+    node, cleanup := startPebbleNode(t, 1) // ❌ 单节点
 
     cli, err := clientv3.New(clientv3.Config{
         Endpoints:   []string{node.clientAddr}, // ❌ 单 endpoint
@@ -199,12 +199,12 @@ func startRocksDBLockTestServer(t *testing.T) (*clientv3.Client, func()) {
 
 ```go
 // 新增: 启动 3 节点集群用于故障测试
-func startRocksDBClusterForLockTest(t *testing.T) ([]*testNode, *clientv3.Client, func()) {
+func startPebbleClusterForLockTest(t *testing.T) ([]*testNode, *clientv3.Client, func()) {
     nodes := make([]*testNode, 3)
     endpoints := make([]string, 3)
 
     for i := 0; i < 3; i++ {
-        node, _ := startRocksDBNode(t, i+1)
+        node, _ := startPebbleNode(t, i+1)
         nodes[i] = node
         endpoints[i] = node.clientAddr
     }
@@ -227,8 +227,8 @@ func startRocksDBClusterForLockTest(t *testing.T) ([]*testNode, *clientv3.Client
 }
 
 // 新测试: 主节点故障时的锁行为
-func TestRocksDB_MutexDuringLeaderFailover(t *testing.T) {
-    nodes, cli, cleanup := startRocksDBClusterForLockTest(t)
+func TestPebble_MutexDuringLeaderFailover(t *testing.T) {
+    nodes, cli, cleanup := startPebbleClusterForLockTest(t)
     defer cleanup()
     ctx := context.Background()
 
@@ -293,8 +293,8 @@ func TestRocksDB_MutexDuringLeaderFailover(t *testing.T) {
 
 ### 阶段 2: 多节点集群测试
 
-1. ✅ 实现 startRocksDBClusterForLockTest
-2. ✅ 添加 TestRocksDB_MutexDuringLeaderFailover
+1. ✅ 实现 startPebbleClusterForLockTest
+2. ✅ 添加 TestPebble_MutexDuringLeaderFailover
 3. ✅ 验证主节点故障时客户端无感知
 
 ### 阶段 3: 高级功能 (可选)

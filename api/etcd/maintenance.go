@@ -105,7 +105,7 @@ func (s *MaintenanceServer) Status(ctx context.Context, req *pb.StatusRequest) (
 // Defragment complete(compatible etcd interface)
 func (s *MaintenanceServer) Defragment(ctx context.Context, req *pb.DefragmentRequest) (*pb.DefragmentResponse, error) {
 	// Defragment for completedata
-	// for RocksDB：storageenginehandlecompress，nomanuallytrigger
+	// for PebbleDB：storageenginehandlecompress，nomanuallytrigger
 	// for Memory：memorystorageno
 	// returnsuccessresponse，hold etcd API compatible
 

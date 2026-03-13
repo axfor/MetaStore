@@ -4,7 +4,7 @@
 
 将 Phase 1 的 etcd 兼容层与现有的 Raft 实现集成，实现：
 - 分布式共识（多节点集群）
-- 数据持久化（RocksDB）
+- 数据持久化（Pebble）
 - 完整的 etcd 兼容存储系统
 
 ## 架构设计
@@ -200,9 +200,9 @@ func main() {
 }
 ```
 
-### Step 5: RocksDB 实现
+### Step 5: Pebble 实现
 
-创建 `RocksDBEtcdRaft`，类似 MemoryEtcdRaft。
+创建 `PebbleEtcdRaft`，类似 MemoryEtcdRaft。
 
 ## 测试策略
 
@@ -292,7 +292,7 @@ Phase 2 完成标准：
 4. ✅ Watch 在所有节点上工作
 5. ✅ Lease 在集群中正常工作
 6. ✅ 节点故障后自动故障转移
-7. ✅ 数据在重启后持久化（RocksDB）
+7. ✅ 数据在重启后持久化（Pebble）
 8. ✅ 所有 Phase 1 测试在集群模式下通过
 
 ## 时间估算
@@ -300,7 +300,7 @@ Phase 2 完成标准：
 - Step 1-2: MemoryEtcdRaft 实现 - 2-3 小时
 - Step 3: 同步机制 - 1-2 小时
 - Step 4: main.go 集成 - 1 小时
-- Step 5: RocksDB 实现 - 2-3 小时
+- Step 5: Pebble 实现 - 2-3 小时
 - 测试和调试 - 2-3 小时
 
 **总计**: 8-12 小时

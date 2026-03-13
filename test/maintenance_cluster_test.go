@@ -34,7 +34,7 @@ func TestMaintenance_MoveLeader_3NodeCluster(t *testing.T) {
 	t.Run("Memory", func(t *testing.T) {
 		testMoveLeader3Node(t, "memory")
 	})
-	// Note: RocksDB 3-node cluster test would require more complex setup
+	// Note: Pebble 3-node cluster test would require more complex setup
 	// and is more suitable for integration tests. Skipping for now.
 }
 

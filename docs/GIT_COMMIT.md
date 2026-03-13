@@ -3,53 +3,53 @@
 ## Commit Message
 
 ```
-feat: Add RocksDB persistent storage engine support
+feat: Add Pebble persistent storage engine support
 
-Implement a production-grade RocksDB storage backend for the distributed
+Implement a production-grade Pebble storage backend for the distributed
 KV store while maintaining backward compatibility with memory+WAL mode.
 
 Major changes:
 
 1. Core Components
-   - Add RocksDBStorage implementing complete raft.Storage interface
-   - Add kvstoreRocks for RocksDB-backed key-value storage
-   - Add raftNodeRocks for RocksDB-integrated raft node
+   - Add PebbleStorage implementing complete raft.Storage interface
+   - Add kvstorePebble for Pebble-backed key-value storage
+   - Add raftNodePebble for Pebble-integrated raft node
    - Implement atomic write operations using WriteBatch
    - Add comprehensive snapshot and compaction support
 
 2. Build System
    - Implement conditional compilation using build tags
-   - Support two build modes: default (memory+WAL) and rocksdb
-   - Split main.go into main_memory.go and main_rocksdb.go
+   - Support two build modes: default (memory+WAL) and pebble
+   - Split main.go into main_memory.go and main_pebble.go
    - No external dependencies for default build
 
 3. Storage Features
-   - Complete raft log persistence in RocksDB
+   - Complete raft log persistence in Pebble
    - HardState and ConfState persistence
    - Snapshot creation and application
    - Log compaction with atomic cleanup
-   - Optimized RocksDB configuration (LRU cache, Bloom filter, compression)
+   - Optimized Pebble configuration (LRU cache, Bloom filter, compression)
 
 4. Testing
-   - Add comprehensive RocksDB storage test suite (rocksdb_storage_test.go)
+   - Add comprehensive Pebble storage test suite (pebble_storage_test.go)
    - 9 test cases covering all storage operations
    - All existing tests continue to pass
 
 5. Documentation
-   - Update README.md with RocksDB build instructions
+   - Update README.md with Pebble build instructions
    - Add IMPLEMENTATION.md with technical details
    - Add QUICKSTART.md for quick start guide
    - Document storage mode comparison and performance considerations
 
 File Statistics:
-- New files: 6 (rocksdb_storage.go, kvstore_rocks.go, raft_rocks.go, etc.)
+- New files: 6 (pebble_storage.go, kvstore_pebble.go, raft_pebble.go, etc.)
 - Modified files: 3 (httpapi.go, go.mod, README.md)
 - Total new code: ~2400 lines
 - Test code: ~400 lines
 
 Build and Test:
 ✅ Default build: go build (no external deps)
-✅ RocksDB build: CGO_ENABLED=1 go build -tags=rocksdb
+✅ Pebble build: CGO_ENABLED=1 go build -tags=pebble
 ✅ All tests passing
 ✅ Single 24MB binary
 
@@ -68,12 +68,12 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 ### 新增文件
 ```bash
-git add rocksdb_storage.go
-git add kvstore_rocks.go
-git add raft_rocks.go
+git add pebble_storage.go
+git add kvstore_pebble.go
+git add raft_pebble.go
 git add main_memory.go
-git add main_rocksdb.go
-git add rocksdb_storage_test.go
+git add main_pebble.go
+git add pebble_storage_test.go
 git add IMPLEMENTATION.md
 git add QUICKSTART.md
 ```
@@ -89,67 +89,67 @@ git add README.md
 ### 删除文件
 ```bash
 git rm main.go
-git rm rocksDB.gos
+git rm pebble.gos
 ```
 
 ## Commit Commands
 
 ```bash
 # Stage all changes
-git add rocksdb_storage.go kvstore_rocks.go raft_rocks.go main_memory.go main_rocksdb.go rocksdb_storage_test.go
+git add pebble_storage.go kvstore_pebble.go raft_pebble.go main_memory.go main_pebble.go pebble_storage_test.go
 git add IMPLEMENTATION.md QUICKSTART.md
 git add httpapi.go go.mod go.sum README.md
-git rm main.go rocksDB.gos
+git rm main.go pebble.gos
 
 # Create commit
 git commit -m "$(cat <<'EOF'
-feat: Add RocksDB persistent storage engine support
+feat: Add Pebble persistent storage engine support
 
-Implement a production-grade RocksDB storage backend for the distributed
+Implement a production-grade Pebble storage backend for the distributed
 KV store while maintaining backward compatibility with memory+WAL mode.
 
 Major changes:
 
 1. Core Components
-   - Add RocksDBStorage implementing complete raft.Storage interface
-   - Add kvstoreRocks for RocksDB-backed key-value storage
-   - Add raftNodeRocks for RocksDB-integrated raft node
+   - Add PebbleStorage implementing complete raft.Storage interface
+   - Add kvstorePebble for Pebble-backed key-value storage
+   - Add raftNodePebble for Pebble-integrated raft node
    - Implement atomic write operations using WriteBatch
    - Add comprehensive snapshot and compaction support
 
 2. Build System
    - Implement conditional compilation using build tags
-   - Support two build modes: default (memory+WAL) and rocksdb
-   - Split main.go into main_memory.go and main_rocksdb.go
+   - Support two build modes: default (memory+WAL) and pebble
+   - Split main.go into main_memory.go and main_pebble.go
    - No external dependencies for default build
 
 3. Storage Features
-   - Complete raft log persistence in RocksDB
+   - Complete raft log persistence in Pebble
    - HardState and ConfState persistence
    - Snapshot creation and application
    - Log compaction with atomic cleanup
-   - Optimized RocksDB configuration (LRU cache, Bloom filter, compression)
+   - Optimized Pebble configuration (LRU cache, Bloom filter, compression)
 
 4. Testing
-   - Add comprehensive RocksDB storage test suite (rocksdb_storage_test.go)
+   - Add comprehensive Pebble storage test suite (pebble_storage_test.go)
    - 9 test cases covering all storage operations
    - All existing tests continue to pass
 
 5. Documentation
-   - Update README.md with RocksDB build instructions
+   - Update README.md with Pebble build instructions
    - Add IMPLEMENTATION.md with technical details
    - Add QUICKSTART.md for quick start guide
    - Document storage mode comparison and performance considerations
 
 File Statistics:
-- New files: 6 (rocksdb_storage.go, kvstore_rocks.go, raft_rocks.go, etc.)
+- New files: 6 (pebble_storage.go, kvstore_pebble.go, raft_pebble.go, etc.)
 - Modified files: 3 (httpapi.go, go.mod, README.md)
 - Total new code: ~2400 lines
 - Test code: ~400 lines
 
 Build and Test:
 ✅ Default build: go build (no external deps)
-✅ RocksDB build: CGO_ENABLED=1 go build -tags=rocksdb
+✅ Pebble build: CGO_ENABLED=1 go build -tags=pebble
 ✅ All tests passing
 ✅ Single 24MB binary
 
@@ -187,5 +187,5 @@ git ls-files | wc -l
 ## Optional: Create Tag
 
 ```bash
-git tag -a v1.0.0-rocksdb -m "RocksDB storage engine support"
+git tag -a v1.0.0-pebble -m "Pebble storage engine support"
 ```

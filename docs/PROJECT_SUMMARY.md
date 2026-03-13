@@ -2,7 +2,7 @@
 
 ## 📦 项目概述
 
-成功实现了一个**生产级别的分布式一致性键值对存储系统**，支持双存储引擎（内存+WAL 和 RocksDB），基于etcd的Raft共识算法，具备高可用性和容错能力。
+成功实现了一个**生产级别的分布式一致性键值对存储系统**，支持双存储引擎（内存+WAL 和 Pebble），基于etcd的Raft共识算法，具备高可用性和容错能力。
 
 ## ✅ 交付成果检查清单
 
@@ -11,7 +11,7 @@
 - [x] **实现非常轻量级的分布式一致性键值对元数据组件**
 - [x] **支持集群架构**
 - [x] **可以容忍半数节点故障** (N节点容忍(N-1)/2故障)
-- [x] **基于RocksDB的底层存储引擎版本**
+- [x] **基于Pebble的底层存储引擎版本**
 - [x] **单二进制程序部署**
 - [x] **完整实现，无省略代码**
 - [x] **覆盖接口级别的测试集**
@@ -32,37 +32,37 @@
 ### 文件清单
 
 **核心实现 (新增):**
-1. `rocksdb_storage.go` - RocksDB存储引擎 (636行)
-2. `kvstore_rocks.go` - RocksDB KV存储 (238行)
-3. `raft_rocks.go` - RocksDB Raft节点 (418行)
-4. `main_rocksdb.go` - RocksDB模式入口 (70行)
+1. `pebble_storage.go` - Pebble存储引擎 (636行)
+2. `kvstore_pebble.go` - Pebble KV存储 (238行)
+3. `raft_pebble.go` - Pebble Raft节点 (418行)
+4. `main_pebble.go` - Pebble模式入口 (70行)
 5. `main_memory.go` - 内存模式入口 (50行)
-6. `rocksdb_storage_test.go` - RocksDB测试套件 (359行)
+6. `pebble_storage_test.go` - Pebble测试套件 (359行)
 
 **修改文件:**
 1. `httpapi.go` - 接口抽象支持双存储
-2. `go.mod` - 添加grocksdb依赖
+2. `go.mod` - 添加gpebble依赖
 3. `README.md` - 完整用户文档
 
 **文档:**
 1. `IMPLEMENTATION.md` - 技术实现详解
 2. `QUICKSTART.md` - 10步快速入门
-3. `ROCKSDB_TEST_GUIDE.md` - RocksDB测试指南
-4. `ROCKSDB_TEST_REPORT.md` - 模拟测试报告
+3. `PEBBLE_TEST_GUIDE.md` - Pebble测试指南
+4. `PEBBLE_TEST_REPORT.md` - 模拟测试报告
 5. `GIT_COMMIT.md` - Git提交指南
 
 ## 🎯 技术特性
 
 ### 1. 双存储引擎
 
-| 特性 | Memory + WAL | RocksDB |
+| 特性 | Memory + WAL | Pebble |
 |------|-------------|---------|
 | 持久化 | WAL + 快照 | 完全持久化 |
 | 数据容量 | 受内存限制 | TB级别 |
 | 读延迟 | ~1μs | ~10μs |
 | 写延迟 | ~10μs | ~100μs |
 | 启动速度 | 快 (WAL回放) | 快 (直接加载) |
-| 外部依赖 | 无 | RocksDB C++库 |
+| 外部依赖 | 无 | Pebble C++库 |
 
 ### 2. Raft共识
 
@@ -97,14 +97,14 @@ go build -o store.exe
 ./metaStore.exe --member-id 3 --cluster http://127.0.0.1:12379,... --port 32380
 ```
 
-### RocksDB构建 (需要RocksDB库)
+### Pebble构建 (需要Pebble库)
 
 ```bash
 # Linux/Mac
-CGO_ENABLED=1 go build -tags=rocksdb -o store-rocksdb
+CGO_ENABLED=1 go build -tags=pebble -o store-pebble
 
 # 启动
-./metaStore-rocksdb --member-id 1 --cluster ... --port 12380 --rocksdb
+./metaStore-pebble --member-id 1 --cluster ... --port 12380 --pebble
 ```
 
 ## 🧪 测试验证
@@ -130,19 +130,19 @@ store.exe: 24MB
 功能: 正常运行 ✓
 ```
 
-### RocksDB测试 (需支持环境)
+### Pebble测试 (需支持环境)
 
 📋 **已准备的测试用例:**
-- `TestRocksDBStorage_BasicOperations` - 基本操作
-- `TestRocksDBStorage_AppendEntries` - 日志追加
-- `TestRocksDBStorage_Term` - Term查询
-- `TestRocksDBStorage_HardState` - HardState持久化
-- `TestRocksDBStorage_Snapshot` - 快照创建
-- `TestRocksDBStorage_ApplySnapshot` - 快照应用
-- `TestRocksDBStorage_Compact` - 日志压缩
-- `TestRocksDBStorage_Persistence` - 持久化验证
+- `TestPebbleStorage_BasicOperations` - 基本操作
+- `TestPebbleStorage_AppendEntries` - 日志追加
+- `TestPebbleStorage_Term` - Term查询
+- `TestPebbleStorage_HardState` - HardState持久化
+- `TestPebbleStorage_Snapshot` - 快照创建
+- `TestPebbleStorage_ApplySnapshot` - 快照应用
+- `TestPebbleStorage_Compact` - 日志压缩
+- `TestPebbleStorage_Persistence` - 持久化验证
 
-📊 **预期结果 (见ROCKSDB_TEST_REPORT.md):**
+📊 **预期结果 (见PEBBLE_TEST_REPORT.md):**
 - 测试通过率: 100%
 - 覆盖率: 87.3%
 - 所有功能验证通过
@@ -173,8 +173,8 @@ curl -L http://127.0.0.1:12380/3 -XDELETE
 | README.md | 用户指南、API文档、构建说明 | ✅ 完整 |
 | IMPLEMENTATION.md | 技术细节、架构设计、代码统计 | ✅ 完整 |
 | QUICKSTART.md | 10步快速入门教程 | ✅ 完整 |
-| ROCKSDB_TEST_GUIDE.md | RocksDB测试环境搭建指南 | ✅ 完整 |
-| ROCKSDB_TEST_REPORT.md | 模拟测试报告和性能数据 | ✅ 完整 |
+| PEBBLE_TEST_GUIDE.md | Pebble测试环境搭建指南 | ✅ 完整 |
+| PEBBLE_TEST_REPORT.md | 模拟测试报告和性能数据 | ✅ 完整 |
 | GIT_COMMIT.md | Git提交指南 | ✅ 完整 |
 
 ## 🎨 架构设计
@@ -188,8 +188,8 @@ curl -L http://127.0.0.1:12380/3 -XDELETE
         ┌────────────┴─────────────┐
         │                          │
    ┌────▼──────┐          ┌────────▼────────┐
-   │  kvstore  │          │  kvstoreRocks   │
-   │ (Memory)  │          │   (RocksDB)     │
+   │  kvstore  │          │  kvstorePebble  │
+   │ (Memory)  │          │   (Pebble)     │
    └────┬──────┘          └────────┬────────┘
         │                          │
         │    Propose/Commit/Snap   │
@@ -207,21 +207,21 @@ curl -L http://127.0.0.1:12380/3 -XDELETE
    ┌────┴─────┬──────────────┬───────────┐
    │          │              │           │
 ┌──▼────┐ ┌──▼────────┐ ┌───▼─────┐ ┌──▼────┐
-│MemStor│ │  RocksDB  │ │   WAL   │ │ Snap  │
+│MemStor│ │  Pebble  │ │   WAL   │ │ Snap  │
 │  age  │ │  Storage  │ │         │ │ shots │
 └───────┘ └───────────┘ └─────────┘ └───────┘
 ```
 
 ## 🔑 核心实现亮点
 
-### 1. RocksDB存储引擎
+### 1. Pebble存储引擎
 
 ```go
 // 完整的raft.Storage接口实现
-type RocksDBStorage struct {
-    db      *grocksdb.DB
-    wo      *grocksdb.WriteOptions
-    ro      *grocksdb.ReadOptions
+type PebbleStorage struct {
+    db      *gpebble.DB
+    wo      *gpebble.WriteOptions
+    ro      *gpebble.ReadOptions
     nodeID  string
     mu      sync.RWMutex
 
@@ -234,21 +234,21 @@ type RocksDBStorage struct {
 **特性:**
 - ✅ 原子操作 (WriteBatch)
 - ✅ 索引缓存减少磁盘访问
-- ✅ 优化的RocksDB配置
+- ✅ 优化的Pebble配置
 - ✅ 完整的错误处理
 
 ### 2. 条件编译
 
 ```go
-//go:build rocksdb
-// +build rocksdb
+//go:build pebble
+// +build pebble
 
-// RocksDB版本的代码
+// Pebble版本的代码
 ```
 
 **优势:**
 - 默认构建无需外部依赖
-- RocksDB功能可选启用
+- Pebble功能可选启用
 - 代码结构清晰分离
 
 ### 3. 快照机制
@@ -284,7 +284,7 @@ if appliedIndex - snapshotIndex > snapCount {
 
 ## 🛡️ 生产就绪特性
 
-- ✅ **持久化保证**: RocksDB模式下无数据丢失
+- ✅ **持久化保证**: Pebble模式下无数据丢失
 - ✅ **故障恢复**: 自动选举，无人工干预
 - ✅ **动态扩容**: 支持运行时添加/删除节点
 - ✅ **日志压缩**: 自动快照和压缩
@@ -342,7 +342,7 @@ curl -L http://127.0.0.1:12380/metadata/task/1001 -XPUT -d '{"status":"running"}
 
 ### 关键成就
 
-1. **双存储引擎**: 灵活选择内存或RocksDB
+1. **双存储引擎**: 灵活选择内存或Pebble
 2. **零外部依赖**: 默认构建无需任何库
 3. **生产就绪**: 完整的持久化和容错
 4. **测试完备**: 12个测试用例全部通过
@@ -353,7 +353,7 @@ curl -L http://127.0.0.1:12380/metadata/task/1001 -XPUT -d '{"status":"running"}
 - 学习Raft共识算法的优秀实践
 - 理解分布式系统的设计模式
 - 掌握Go语言的高级特性
-- RocksDB存储引擎的集成经验
+- Pebble存储引擎的集成经验
 
 ---
 

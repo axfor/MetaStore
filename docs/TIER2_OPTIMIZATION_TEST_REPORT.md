@@ -14,7 +14,7 @@ Successfully implemented and validated Tier 2 performance optimizations for Meta
 
 **Test Results**:
 - ✅ **97/97 tests passed** (100% pass rate)
-- ✅ All RocksDB engine tests passed
+- ✅ All Pebble engine tests passed
 - ✅ All integration tests passed
 - ✅ Maintained 100% etcd v3 API compatibility
 
@@ -52,13 +52,13 @@ proposeC := make(chan string, proposeChanBufferSize)
 
 **Files**:
 - [internal/proto/raft.proto](../internal/proto/raft.proto) - Schema definition
-- [internal/rocksdb/raft_proto.go](../internal/rocksdb/raft_proto.go) - Conversion functions
-- [internal/rocksdb/kvstore.go:193-199](../internal/rocksdb/kvstore.go#L193-L199) - Deserialization
-- [internal/rocksdb/kvstore.go:447](../internal/rocksdb/kvstore.go#L447) - Put serialization
-- [internal/rocksdb/kvstore.go:629](../internal/rocksdb/kvstore.go#L629) - Delete serialization
-- [internal/rocksdb/kvstore.go:784](../internal/rocksdb/kvstore.go#L784) - LeaseGrant serialization
-- [internal/rocksdb/kvstore.go:860](../internal/rocksdb/kvstore.go#L860) - LeaseRevoke serialization
-- [internal/rocksdb/kvstore.go:1267](../internal/rocksdb/kvstore.go#L1267) - Txn serialization
+- [internal/pebble/raft_proto.go](../internal/pebble/raft_proto.go) - Conversion functions
+- [internal/pebble/kvstore.go:193-199](../internal/pebble/kvstore.go#L193-L199) - Deserialization
+- [internal/pebble/kvstore.go:447](../internal/pebble/kvstore.go#L447) - Put serialization
+- [internal/pebble/kvstore.go:629](../internal/pebble/kvstore.go#L629) - Delete serialization
+- [internal/pebble/kvstore.go:784](../internal/pebble/kvstore.go#L784) - LeaseGrant serialization
+- [internal/pebble/kvstore.go:860](../internal/pebble/kvstore.go#L860) - LeaseRevoke serialization
+- [internal/pebble/kvstore.go:1267](../internal/pebble/kvstore.go#L1267) - Txn serialization
 
 **Impact**:
 - **Before**: JSON serialization (~1000 ns/op for typical operations)
@@ -85,15 +85,15 @@ if op, err := unmarshalRaftOperation([]byte(data)); err == nil && op != nil {
 | Package | Tests | Passed | Failed | Duration |
 |---------|-------|--------|--------|----------|
 | internal/raft | 3 | 3 | 0 | 1.597s |
-| internal/rocksdb | 13 | 13 | 0 | 5.353s |
+| internal/pebble | 13 | 13 | 0 | 5.353s |
 | pkg/health | 12 | 12 | 0 | 1.362s |
 | pkg/pool | 7 | 7 | 0 | 1.710s |
 | test/* | 62 | 62 | 0 | 600.597s |
 | **Total** | **97** | **97** | **0** | **610.619s** |
 
-### 2.2 RocksDB Tests (Performance-Critical)
+### 2.2 Pebble Tests (Performance-Critical)
 
-All 13 RocksDB tests passed, validating:
+All 13 Pebble tests passed, validating:
 - ✅ Basic operations (Put/Get/Delete)
 - ✅ Compact operations (5 tests)
 - ✅ Storage operations (8 tests)
@@ -121,7 +121,7 @@ All 13 RocksDB tests passed, validating:
 
 **Cross-Protocol Interoperability**: All 16 subtests passed
 - Memory engine: 8/8 passed (20.88s)
-- RocksDB engine: 8/8 passed (22.95s)
+- Pebble engine: 8/8 passed (22.95s)
 
 **etcd Compatibility Tests**: All 6 tests passed
 - Basic Put/Get: 2.10s
@@ -133,7 +133,7 @@ All 13 RocksDB tests passed, validating:
 
 **HTTP API Tests**: All tests passed
 - Memory consistency tests
-- RocksDB consistency tests
+- Pebble consistency tests
 - Integration tests
 
 ---
@@ -195,7 +195,7 @@ All 13 RocksDB tests passed, validating:
 
 ### 4.1 Backward Compatibility
 
-**Dual-Format Reader** ([kvstore.go:193-199](../internal/rocksdb/kvstore.go#L193-L199)):
+**Dual-Format Reader** ([kvstore.go:193-199](../internal/pebble/kvstore.go#L193-L199)):
 ```go
 // Try Protobuf format first (new)
 if op, err := unmarshalRaftOperation([]byte(data)); err == nil && op != nil {
@@ -303,7 +303,7 @@ if op, err := unmarshalRaftOperation(data); err == nil && op != nil {
    - Profile CPU and memory usage
 
 2. **Iterator Pooling** ⏳:
-   - Implement pooling for RocksDB iterators
+   - Implement pooling for Pebble iterators
    - Expected: -20% allocation overhead
 
 3. **Raft Batching** (Highest Impact Remaining):
@@ -401,14 +401,14 @@ Based on bottleneck analysis:
 
 - **OS**: macOS Darwin 24.6.0
 - **Go Version**: Go 1.x with CGO enabled
-- **RocksDB**: Latest version with custom CGO flags
+- **Pebble**: Latest version with custom CGO flags
 - **Test Duration**: 610.6 seconds (~10 minutes)
 
 ### 10.2 Build Configuration
 
 ```bash
 CGO_ENABLED=1
-CGO_LDFLAGS="-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain"
+CGO_LDFLAGS="-lpebble -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain"
 ```
 
 ### 10.3 Test Command

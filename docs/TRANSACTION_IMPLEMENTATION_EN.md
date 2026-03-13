@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document records the complete implementation of etcd Transaction functionality in the MetaStore project, including transaction support for both Memory and RocksDB storage engines in single-node and cluster environments.
+This document records the complete implementation of etcd Transaction functionality in the MetaStore project, including transaction support for both Memory and Pebble storage engines in single-node and cluster environments.
 
 **Implementation Date**: 2025-10-27
 **Implementer**: Claude Code
@@ -119,14 +119,14 @@ type RaftOperation struct {
 
 ---
 
-### 2. RocksDB Engine Implementation
+### 2. Pebble Engine Implementation
 
-#### File: `internal/rocksdb/kvstore.go`
+#### File: `internal/pebble/kvstore.go`
 
 **New Struct Fields**:
 ```go
-type RocksDB struct {
-    db          *grocksdb.DB
+type Pebble struct {
+    db          *gpebble.DB
     proposeC    chan<- string
     snapshotter *snap.Snapshotter
 
@@ -151,10 +151,10 @@ type RocksDB struct {
 2. **txnUnlocked() - Unlocked Transaction Execution** (+112 lines)
    - Evaluate Compare conditions
    - Execute Range/Put/Delete operations
-   - Handle RocksDB-specific iterators and batch writes
+   - Handle Pebble-specific iterators and batch writes
 
 3. **evaluateCompare() - Condition Evaluation** (+38 lines)
-   - Read key-value from RocksDB
+   - Read key-value from Pebble
    - Support all compare types and operations
 
 4. **compareInt() / compareBytes()** (+30 lines)
@@ -165,7 +165,7 @@ type RocksDB struct {
    - Call `txnUnlocked()` and save result
 
 **Code Statistics**:
-- `internal/rocksdb/kvstore.go`: +282 lines
+- `internal/pebble/kvstore.go`: +282 lines
 
 ---
 
@@ -235,22 +235,22 @@ Transaction operations ensure distributed consistency via Raft:
 
 1. **test/etcd_compatibility_test.go**
    - `TestTransaction` - Memory single-node transaction test
-   - `TestTransaction_RocksDB` - RocksDB single-node transaction test
+   - `TestTransaction_Pebble` - Pebble single-node transaction test
 
 2. **test/etcd_memory_consistency_test.go**
    - `TestEtcdMemoryClusterTransactionConsistency` - Memory 3-node cluster test
 
-3. **test/etcd_rocksdb_consistency_test.go** (new)
-   - `TestEtcdRocksDBClusterTransactionConsistency` - RocksDB 3-node cluster test
+3. **test/etcd_pebble_consistency_test.go** (new)
+   - `TestEtcdPebbleClusterTransactionConsistency` - Pebble 3-node cluster test
 
 ### Test Results
 
 | Test Name | Storage Engine | Deployment Mode | Duration | Status |
 |-----------|---------------|-----------------|----------|--------|
 | `TestTransaction` | Memory | Single-node | 0.11s | ✅ Passed |
-| `TestTransaction_RocksDB` | RocksDB | Single-node | 4.52s | ✅ Passed |
+| `TestTransaction_Pebble` | Pebble | Single-node | 4.52s | ✅ Passed |
 | `TestEtcdMemoryClusterTransactionConsistency` | Memory | 3-node cluster | 7.52s | ✅ Passed |
-| `TestEtcdRocksDBClusterTransactionConsistency` | RocksDB | 3-node cluster | 8.66s | ✅ Passed |
+| `TestEtcdPebbleClusterTransactionConsistency` | Pebble | 3-node cluster | 8.66s | ✅ Passed |
 
 **Total**: 4 tests, all passed ✅
 
@@ -294,16 +294,16 @@ Each test verifies:
 |------|-------------|---------------|------------|
 | `internal/memory/kvstore.go` | +81 | 0 | +81 |
 | `internal/memory/store.go` | +73 | -68 | +5 |
-| `internal/rocksdb/kvstore.go` | +282 | 0 | +282 |
+| `internal/pebble/kvstore.go` | +282 | 0 | +282 |
 | `test/etcd_memory_consistency_test.go` | 0 | -4 | -4 |
 | `test/etcd_compatibility_test.go` | 0 | -2 | -2 |
-| `test/etcd_rocksdb_consistency_test.go` | +38 | 0 | +38 |
+| `test/etcd_pebble_consistency_test.go` | +38 | 0 | +38 |
 | **Total** | **+474** | **-74** | **+400** |
 
 ### New Features
 
 - ✅ Memory engine transaction support
-- ✅ RocksDB engine transaction support
+- ✅ Pebble engine transaction support
 - ✅ Compare-Then-Else semantics
 - ✅ Raft consensus integration
 - ✅ Transaction result synchronization mechanism
@@ -350,10 +350,10 @@ resp, _ := txn.Commit()
 - **Single-node**: < 1ms (test average 0.11s / multiple operations)
 - **3-node cluster**: 2-3s (includes Raft replication and wait time)
 
-### RocksDB Engine
+### Pebble Engine
 
 - **Single-node**: 1-5ms (test average 4.52s / multiple operations)
-- **3-node cluster**: 3-5s (includes Raft replication, RocksDB writes, and wait time)
+- **3-node cluster**: 3-5s (includes Raft replication, Pebble writes, and wait time)
 
 **Note**: Latency in cluster mode primarily comes from:
 1. Raft consensus protocol network round-trips
@@ -467,7 +467,7 @@ func versionControlTransaction(client *clientv3.Client) {
 - ✅ **Atomicity**: All operations in a transaction either succeed or fail together
 - ✅ **Consistency**: Raft ensures all nodes have consistent state
 - ✅ **Isolation**: Transactions hold locks during execution to avoid conflicts
-- ✅ **Durability**: RocksDB engine ensures persistence via fsync
+- ✅ **Durability**: Pebble engine ensures persistence via fsync
 
 ---
 
@@ -534,7 +534,7 @@ log.Printf("Transaction responses: %+v", txnResp.Responses)
 ### Code Locations
 
 - Memory Implementation: `internal/memory/kvstore.go`, `internal/memory/store.go`
-- RocksDB Implementation: `internal/rocksdb/kvstore.go`
+- Pebble Implementation: `internal/pebble/kvstore.go`
 - Test Code: `test/etcd_*_test.go`
 
 ---
@@ -543,7 +543,7 @@ log.Printf("Transaction responses: %+v", txnResp.Responses)
 
 This implementation adds complete etcd Transaction functionality to the MetaStore project:
 
-✅ **Complete Implementation**: Both Memory and RocksDB engines
+✅ **Complete Implementation**: Both Memory and Pebble engines
 ✅ **Comprehensive Testing**: Single-node and cluster environments
 ✅ **Full Compatibility**: etcd v3 client SDK
 ✅ **Distributed Consistency**: Guaranteed by Raft consensus

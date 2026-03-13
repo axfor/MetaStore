@@ -30,7 +30,7 @@
 
 ### 1.1 Binary Encoding for KeyValue
 
-**文件**: [internal/rocksdb/pools.go](../internal/rocksdb/pools.go)
+**文件**: [internal/pebble/pools.go](../internal/pebble/pools.go)
 
 **优化内容**:
 - 替换 gob 编码为固定大小二进制编码
@@ -42,13 +42,13 @@
 - 存储大小: 约 -10%
 
 **影响范围**:
-- `internal/rocksdb/kvstore.go:365` - Range 查询解码
-- `internal/rocksdb/kvstore.go:499` - Put 操作编码
-- `internal/rocksdb/kvstore.go:1317` - Get 操作解码
+- `internal/pebble/kvstore.go:365` - Range 查询解码
+- `internal/pebble/kvstore.go:499` - Put 操作编码
+- `internal/pebble/kvstore.go:1317` - Get 操作解码
 
 ### 1.2 Object Pooling (sync.Pool)
 
-**文件**: [internal/rocksdb/pools.go](../internal/rocksdb/pools.go)
+**文件**: [internal/pebble/pools.go](../internal/pebble/pools.go)
 
 **优化内容**:
 - `bufferPool`: 重用 bytes.Buffer (最大 64KB)
@@ -61,7 +61,7 @@
 
 ### 1.3 Pre-allocated Slices
 
-**文件**: [internal/rocksdb/kvstore.go:338-343](../internal/rocksdb/kvstore.go#L338-L343)
+**文件**: [internal/pebble/kvstore.go:338-343](../internal/pebble/kvstore.go#L338-L343)
 
 **优化内容**:
 ```go
@@ -79,7 +79,7 @@ kvs := make([]*kvstore.KeyValue, 0, estimatedCap)
 
 ### 1.4 CurrentRevision Caching
 
-**文件**: [internal/rocksdb/kvstore.go:71,306-329](../internal/rocksdb/kvstore.go#L71)
+**文件**: [internal/pebble/kvstore.go:71,306-329](../internal/pebble/kvstore.go#L71)
 
 **优化内容**:
 - 添加 `atomic.Int64` 字段缓存 revision
@@ -93,11 +93,11 @@ kvs := make([]*kvstore.KeyValue, 0, estimatedCap)
 
 ### 1.5 WriteBatch for Atomic Operations
 
-**文件**: [internal/rocksdb/kvstore.go:518-551](../internal/rocksdb/kvstore.go#L518-L551)
+**文件**: [internal/pebble/kvstore.go:518-551](../internal/pebble/kvstore.go#L518-L551)
 
 **优化内容**:
 ```go
-batch := grocksdb.NewWriteBatch()
+batch := gpebble.NewWriteBatch()
 defer batch.Destroy()
 batch.Put(dbKey, encodedKV)
 batch.Put(leaseKey, leaseBuf.Bytes())
@@ -111,7 +111,7 @@ r.db.Write(r.wo, batch)
 
 ### 1.6 Atomic seqNum Counter
 
-**文件**: [internal/rocksdb/kvstore.go:64](../internal/rocksdb/kvstore.go#L64)
+**文件**: [internal/pebble/kvstore.go:64](../internal/pebble/kvstore.go#L64)
 
 **优化内容**:
 ```go
@@ -148,8 +148,8 @@ proposeC := make(chan string, proposeChanBufferSize)
 
 **文件**:
 - [internal/proto/raft.proto](../internal/proto/raft.proto) - Schema 定义
-- [internal/rocksdb/raft_proto.go](../internal/rocksdb/raft_proto.go) - 类型转换
-- [internal/rocksdb/kvstore.go](../internal/rocksdb/kvstore.go) - 6 处集成点
+- [internal/pebble/raft_proto.go](../internal/pebble/raft_proto.go) - 类型转换
+- [internal/pebble/kvstore.go](../internal/pebble/kvstore.go) - 6 处集成点
 
 **优化内容**:
 - 替换所有 JSON 序列化为 Protobuf
@@ -182,12 +182,12 @@ if op, err := unmarshalRaftOperation([]byte(data)); err == nil && op != nil {
 
 ### 2.3 Iterator Pooling 评估 ❌
 
-**结论**: **不推荐** 用于 RocksDB
+**结论**: **不推荐** 用于 Pebble
 
 **原因**:
-1. RocksDB iterators 持有快照
+1. Pebble iterators 持有快照
 2. 无 Reset() 方法可重用
-3. Iterator 创建成本低（RocksDB 内部已优化）
+3. Iterator 创建成本低（Pebble 内部已优化）
 4. 池化会增加内存压力（持有旧快照）
 5. 当前模式已是最佳实践：创建→使用→立即销毁
 
@@ -208,7 +208,7 @@ defer it.Close()
 
 **当前状态**:
 - ✅ 设计完成
-- ✅ `BatchProposer` 实现完成 ([internal/rocksdb/batch_proposer.go](../internal/rocksdb/batch_proposer.go))
+- ✅ `BatchProposer` 实现完成 ([internal/pebble/batch_proposer.go](../internal/pebble/batch_proposer.go))
 - ⏳ 集成待完成
 
 **设计特性**:
@@ -231,7 +231,7 @@ type BatchConfig struct {
 - **Phase 2** (未来): 物理批处理 - 将多个操作编码为单个 Raft entry
 
 **需要的额外工作**:
-1. 集成 BatchProposer 到 RocksDB struct
+1. 集成 BatchProposer 到 Pebble struct
 2. 更新所有写入路径使用 BatchProposer.Propose()
 3. 修改 commit 处理逻辑以处理批量条目（Phase 2）
 4. 添加批量相关的监控指标
@@ -356,11 +356,11 @@ type BatchConfig struct {
 
 | 文件 | 行数 | 用途 |
 |------|-----|------|
-| `internal/rocksdb/pools.go` | 144 | 对象池和二进制编码 |
+| `internal/pebble/pools.go` | 144 | 对象池和二进制编码 |
 | `internal/proto/raft.proto` | 82 | Protobuf schema |
 | `internal/proto/raft.pb.go` | 600+ | 生成的 Protobuf 代码 |
-| `internal/rocksdb/raft_proto.go` | 189 | Protobuf 类型转换 |
-| `internal/rocksdb/batch_proposer.go` | 200+ | Raft 批处理（设计就绪）|
+| `internal/pebble/raft_proto.go` | 189 | Protobuf 类型转换 |
+| `internal/pebble/batch_proposer.go` | 200+ | Raft 批处理（设计就绪）|
 | `docs/PERFORMANCE_OPTIMIZATION_REPORT.md` | 446 | Tier 1 报告 |
 | `docs/WRITE_PATH_ANALYSIS.md` | ~500 | 写入路径分析 |
 | `docs/TIER2_OPTIMIZATION_TEST_REPORT.md` | 650+ | Tier 2 测试报告 |
@@ -370,7 +370,7 @@ type BatchConfig struct {
 
 | 文件 | 修改点 | 主要变更 |
 |------|-------|---------|
-| `internal/rocksdb/kvstore.go` | 15+ | 所有 Tier 1 + Tier 2 优化 |
+| `internal/pebble/kvstore.go` | 15+ | 所有 Tier 1 + Tier 2 优化 |
 | `cmd/metastore/main.go` | 1 | Buffered proposeC channel |
 | `go.mod` / `go.sum` | - | 添加 Protobuf 依赖 |
 
@@ -388,7 +388,7 @@ type BatchConfig struct {
 ### 立即可执行
 
 1. **完成 Raft 批处理集成** (最高优先级):
-   - 集成 BatchProposer 到 RocksDB struct
+   - 集成 BatchProposer 到 Pebble struct
    - 更新写入路径
    - 添加性能测试
    - **预期时间**: 1-2 天

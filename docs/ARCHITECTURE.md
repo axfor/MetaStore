@@ -16,7 +16,7 @@
 MetaStore is a lightweight distributed KV storage system based on the etcd Raft consensus protocol. It supports two storage engines:
 
 1. **Memory Mode** (Memory + WAL) - Default mode, fast and lightweight
-2. **RocksDB Mode** - Full persistence, suitable for large datasets
+2. **Pebble Mode** - Full persistence, suitable for large datasets
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -28,8 +28,8 @@ MetaStore is a lightweight distributed KV storage system based on the etcd Raft 
 ┌─────────────────────────────────────────────────┐
 │       KV Store Layer (Application Layer)        │
 │  ┌──────────────────┐  ┌──────────────────────┐ │
-│  │ Memory KV Store  │  │ RocksDB KV Store     │ │
-│  │ (Memory Mode)    │  │ (RocksDB Mode)       │ │
+│  │ Memory KV Store  │  │ Pebble KV Store     │ │
+│  │ (Memory Mode)    │  │ (Pebble Mode)       │ │
 │  └──────────────────┘  └──────────────────────┘ │
 └──────────────────┬──────────────────────────────┘
                    │
@@ -37,8 +37,8 @@ MetaStore is a lightweight distributed KV storage system based on the etcd Raft 
 ┌─────────────────────────────────────────────────┐
 │      Raft Consensus Layer (Consensus Layer)     │
 │  ┌──────────────────┐  ┌──────────────────────┐ │
-│  │ raftNode         │  │ raftNodeRocks        │ │
-│  │ (Memory Node)    │  │ (RocksDB Node)       │ │
+│  │ raftNode         │  │ raftNodePebble        │ │
+│  │ (Memory Node)    │  │ (Pebble Node)       │ │
 │  └──────────────────┘  └──────────────────────┘ │
 └──────────────────┬──────────────────────────────┘
                    │
@@ -46,7 +46,7 @@ MetaStore is a lightweight distributed KV storage system based on the etcd Raft 
 ┌─────────────────────────────────────────────────┐
 │      Raft Storage Layer (Raft Storage)          │
 │  ┌──────────────────┐  ┌──────────────────────┐ │
-│  │ MemoryStorage    │  │ RocksDBStorage       │ │
+│  │ MemoryStorage    │  │ PebbleStorage       │ │
 │  │ + WAL            │  │ (raftlog.go)         │ │
 │  └──────────────────┘  └──────────────────────┘ │
 └─────────────────────────────────────────────────┘
@@ -65,14 +65,14 @@ internal/
 │   ├── kvstore.go        # Memory KV store implementation
 │   └── kvstore_test.go   # Unit tests
 │
-├── rocksdb/              # RocksDB Implementation Layer
-│   ├── kvstore.go        # RocksDB KV store (application data)
-│   ├── raftlog.go        # RocksDB Raft storage (Raft internal data) ⭐
+├── pebble/              # Pebble Implementation Layer
+│   ├── kvstore.go        # Pebble KV store (application data)
+│   ├── raftlog.go        # Pebble Raft storage (Raft internal data) ⭐
 │   └── raftlog_test.go   # Raft storage tests
 │
 ├── raft/                 # Raft Consensus Layer
 │   ├── node.go           # Memory mode Raft node
-│   ├── node_rocksdb.go   # RocksDB mode Raft node
+│   ├── node_pebble.go   # Pebble mode Raft node
 │   ├── node_test.go      # Raft tests
 │   └── listener.go       # Network listener
 │
@@ -86,8 +86,8 @@ internal/
 |---------|---------------|--------------|-----------|
 | `kvstore` | Define KV store interface | None | `Store`, `Commit`, `KV` |
 | `memory` | Implement memory KV store | `kvstore` | `Memory` |
-| `rocksdb` | Implement RocksDB KV + Raft storage | `kvstore` | `RocksDB`, `RocksDBStorage` |
-| `raft` | Implement Raft consensus protocol | `kvstore`, `rocksdb` | `raftNode`, `raftNodeRocks` |
+| `pebble` | Implement Pebble KV + Raft storage | `kvstore` | `Pebble`, `PebbleStorage` |
+| `raft` | Implement Raft consensus protocol | `kvstore`, `pebble` | `raftNode`, `raftNodePebble` |
 | `http` | Provide HTTP REST API | `kvstore` | `httpKVAPI` |
 
 ---
@@ -96,15 +96,15 @@ internal/
 
 ### Mode Comparison
 
-| Feature | Memory Mode (Memory + WAL) | RocksDB Mode |
+| Feature | Memory Mode (Memory + WAL) | Pebble Mode |
 |---------|---------------------------|--------------|
-| **Application KV Storage** | `internal/memory/kvstore.go` | `internal/rocksdb/kvstore.go` |
-| **Raft Node** | `internal/raft/node.go` | `internal/raft/node_rocksdb.go` |
-| **Raft Log Storage** | `raft.MemoryStorage` (etcd) | `rocksdb.RocksDBStorage` ⭐ |
-| **WAL Persistence** | `wal.WAL` (etcd) | ✅ Built-in RocksDB |
-| **Snapshot Storage** | Filesystem | RocksDB |
-| **Data Location** | Memory + WAL files | All in RocksDB |
-| **CLI Flag** | `--storage=memory` | `--storage=rocksdb` |
+| **Application KV Storage** | `internal/memory/kvstore.go` | `internal/pebble/kvstore.go` |
+| **Raft Node** | `internal/raft/node.go` | `internal/raft/node_pebble.go` |
+| **Raft Log Storage** | `raft.MemoryStorage` (etcd) | `pebble.PebbleStorage` ⭐ |
+| **WAL Persistence** | `wal.WAL` (etcd) | ✅ Built-in Pebble |
+| **Snapshot Storage** | Filesystem | Pebble |
+| **Data Location** | Memory + WAL files | All in Pebble |
+| **CLI Flag** | `--storage=memory` | `--storage=pebble` |
 | **Use Case** | Fast, lightweight deployment | Large datasets, full persistence |
 
 ### Memory Mode Architecture
@@ -136,30 +136,30 @@ internal/
 └─────────────────────────────────────────────────┘
 ```
 
-### RocksDB Mode Architecture
+### Pebble Mode Architecture
 
 ```
 ┌─────────────────────────────────────────────────┐
-│         internal/rocksdb/kvstore.go             │
-│                 RocksDB                         │
+│         internal/pebble/kvstore.go             │
+│                 Pebble                         │
 │    (User KV data, key prefix: kv_data_)         │
 └──────────────────┬──────────────────────────────┘
                    ↓ Propose to Raft
 ┌─────────────────────────────────────────────────┐
-│        internal/raft/node_rocksdb.go            │
-│             raftNodeRocks                       │
+│        internal/raft/node_pebble.go            │
+│             raftNodePebble                       │
 │          (Raft consensus node)                  │
 └──────────────────┬──────────────────────────────┘
                    ↓ Raft log storage
 ┌─────────────────────────────────────────────────┐
-│       internal/rocksdb/raftlog.go ⭐            │
-│           RocksDBStorage                        │
+│       internal/pebble/raftlog.go ⭐            │
+│           PebbleStorage                        │
 │  (Raft log data, key prefix: raft_log_, etc.)  │
 │  Replaces MemoryStorage + WAL combination       │
 └──────────────────┬──────────────────────────────┘
                    ↓
 ┌─────────────────────────────────────────────────┐
-│       RocksDB Database (all data)               │
+│       Pebble Database (all data)               │
 │         Directory: ./data/{id}/                 │
 │                                                 │
 │  Contains:                                      │
@@ -175,18 +175,18 @@ internal/
 
 ## Raft Storage Layer Deep Dive
 
-### ⭐ The Role of `internal/rocksdb/raftlog.go`
+### ⭐ The Role of `internal/pebble/raftlog.go`
 
 **This is the most confusing part of the project!**
 
-`raftlog.go` implements the `raft.Storage` interface, providing **Raft log storage for RocksDB mode**.
+`raftlog.go` implements the `raft.Storage` interface, providing **Raft log storage for Pebble mode**.
 
 #### Why is this file needed?
 
 1. **etcd Raft Library Requirement**
    - etcd Raft library requires a storage backend that implements `raft.Storage` interface
    - etcd provides `raft.MemoryStorage` (in-memory implementation)
-   - But the project needs RocksDB persistence, so we must implement it ourselves
+   - But the project needs Pebble persistence, so we must implement it ourselves
 
 2. **Different from kvstore.go**
    - `kvstore.go` = **Application layer** KV storage (stores user data)
@@ -194,8 +194,8 @@ internal/
 
 3. **Replaces MemoryStorage + WAL**
    - Memory mode needs `raft.MemoryStorage` + `wal.WAL` combination
-   - RocksDB mode uses `RocksDBStorage` to replace the entire combination
-   - All data is in RocksDB, no separate WAL files needed
+   - Pebble mode uses `PebbleStorage` to replace the entire combination
+   - All data is in Pebble, no separate WAL files needed
 
 #### Data Types Stored
 
@@ -215,26 +215,26 @@ These are all **Raft consensus protocol internal states**, not user data!
 #### Implemented Interface Methods
 
 ```go
-type RocksDBStorage struct {
-    db     *grocksdb.DB
+type PebbleStorage struct {
+    db     *gpebble.DB
     nodeID string
     // ...
 }
 
 // Required by raft.Storage interface:
-func (s *RocksDBStorage) InitialState() (HardState, ConfState, error)
-func (s *RocksDBStorage) Entries(lo, hi, maxSize uint64) ([]Entry, error)
-func (s *RocksDBStorage) Term(index uint64) (uint64, error)
-func (s *RocksDBStorage) FirstIndex() (uint64, error)
-func (s *RocksDBStorage) LastIndex() (uint64, error)
-func (s *RocksDBStorage) Snapshot() (Snapshot, error)
+func (s *PebbleStorage) InitialState() (HardState, ConfState, error)
+func (s *PebbleStorage) Entries(lo, hi, maxSize uint64) ([]Entry, error)
+func (s *PebbleStorage) Term(index uint64) (uint64, error)
+func (s *PebbleStorage) FirstIndex() (uint64, error)
+func (s *PebbleStorage) LastIndex() (uint64, error)
+func (s *PebbleStorage) Snapshot() (Snapshot, error)
 
 // Additional persistence methods:
-func (s *RocksDBStorage) Append(entries []Entry) error
-func (s *RocksDBStorage) SetHardState(st HardState) error
-func (s *RocksDBStorage) CreateSnapshot(...) (Snapshot, error)
-func (s *RocksDBStorage) ApplySnapshot(snap Snapshot) error
-func (s *RocksDBStorage) Compact(compactIndex uint64) error
+func (s *PebbleStorage) Append(entries []Entry) error
+func (s *PebbleStorage) SetHardState(st HardState) error
+func (s *PebbleStorage) CreateSnapshot(...) (Snapshot, error)
+func (s *PebbleStorage) ApplySnapshot(snap Snapshot) error
+func (s *PebbleStorage) Compact(compactIndex uint64) error
 ```
 
 ### How Raft Nodes Use Storage
@@ -261,24 +261,24 @@ func NewNode(...) {
 }
 ```
 
-#### RocksDB Mode (node_rocksdb.go)
+#### Pebble Mode (node_pebble.go)
 
 ```go
-type raftNodeRocks struct {
+type raftNodePebble struct {
     node        raft.Node
-    raftStorage *rocksdb.RocksDBStorage  // ← raftlog.go implementation!
-    rocksDB     *grocksdb.DB
+    raftStorage *pebble.PebbleStorage  // ← raftlog.go implementation!
+    pebble     *gpebble.DB
     // No WAL needed!
 }
 
 // Initialization
-func NewNodeRocksDB(..., rocksDB *grocksdb.DB) {
-    // Create RocksDBStorage
-    rc.raftStorage = rocksdb.NewRocksDBStorage(rocksDB, "node_1")
+func NewNodePebble(..., pebble *gpebble.DB) {
+    // Create PebbleStorage
+    rc.raftStorage = pebble.NewPebbleStorage(pebble, "node_1")
 
     // Start Raft
     raft.NewRawNode(&raft.Config{
-        Storage: rc.raftStorage,  // ← Use RocksDBStorage
+        Storage: rc.raftStorage,  // ← Use PebbleStorage
     })
 }
 ```
@@ -297,7 +297,7 @@ func NewNodeRocksDB(..., rocksDB *grocksdb.DB) {
 2. Call KV Store's Propose method
    ↓
    Memory:  internal/memory/kvstore.go:Propose()
-   RocksDB: internal/rocksdb/kvstore.go:Propose()
+   Pebble: internal/pebble/kvstore.go:Propose()
 
 3. Send to Raft proposal channel
    ↓
@@ -306,12 +306,12 @@ func NewNodeRocksDB(..., rocksDB *grocksdb.DB) {
 4. Raft node receives proposal
    ↓
    Memory:  internal/raft/node.go:serveChannels()
-   RocksDB: internal/raft/node_rocksdb.go:serveChannels()
+   Pebble: internal/raft/node_pebble.go:serveChannels()
 
 5. Raft reaches consensus, writes to log
    ↓
    Memory:  raftStorage.Append() → MemoryStorage + WAL
-   RocksDB: raftStorage.Append() → RocksDBStorage (raftlog.go)
+   Pebble: raftStorage.Append() → PebbleStorage (raftlog.go)
 
 6. Commit applied entries
    ↓
@@ -321,8 +321,8 @@ func NewNodeRocksDB(..., rocksDB *grocksdb.DB) {
    ↓
    Memory:  internal/memory/kvstore.go:readCommits()
             → Write to memory map
-   RocksDB: internal/rocksdb/kvstore.go:readCommits()
-            → Write to RocksDB (kv_data_ prefix)
+   Pebble: internal/pebble/kvstore.go:readCommits()
+            → Write to Pebble (kv_data_ prefix)
 
 8. Return success response
 ```
@@ -338,8 +338,8 @@ func NewNodeRocksDB(..., rocksDB *grocksdb.DB) {
    ↓
    Memory:  internal/memory/kvstore.go:Lookup()
             → Read from memory map
-   RocksDB: internal/rocksdb/kvstore.go:Lookup()
-            → Read from RocksDB (kv_data_ prefix)
+   Pebble: internal/pebble/kvstore.go:Lookup()
+            → Read from Pebble (kv_data_ prefix)
 
 3. Return result
 ```
@@ -371,31 +371,31 @@ func NewNodeRocksDB(..., rocksDB *grocksdb.DB) {
 5. Continue processing new requests
 ```
 
-#### RocksDB Mode Recovery
+#### Pebble Mode Recovery
 
 ```
 1. Start node
    ↓
-   internal/raft/node_rocksdb.go:NewNodeRocksDB()
+   internal/raft/node_pebble.go:NewNodePebble()
 
-2. Open RocksDB
+2. Open Pebble
    ↓
-   rocksdb.Open("data/1")
+   pebble.Open("data/1")
 
-3. Create RocksDBStorage
+3. Create PebbleStorage
    ↓
-   internal/rocksdb/raftlog.go:NewRocksDBStorage()
-   → Automatically load firstIndex, lastIndex from RocksDB
+   internal/pebble/raftlog.go:NewPebbleStorage()
+   → Automatically load firstIndex, lastIndex from Pebble
 
 4. Load snapshot (if exists)
    ↓
    snapshotter.Load()
    raftStorage.ApplySnapshot(snapshot)
 
-5. KV Store recovers from RocksDB
+5. KV Store recovers from Pebble
    ↓
-   internal/rocksdb/kvstore.go:recoverFromSnapshot()
-   → All data already in RocksDB, no additional recovery needed
+   internal/pebble/kvstore.go:recoverFromSnapshot()
+   → All data already in Pebble, no additional recovery needed
 
 6. Continue processing new requests
 ```
@@ -404,20 +404,20 @@ func NewNodeRocksDB(..., rocksDB *grocksdb.DB) {
 
 ## Key Component Relationships
 
-### 1. Same RocksDB, Two Purposes
+### 1. Same Pebble, Two Purposes
 
-In RocksDB mode, **the same RocksDB database instance** is shared by two components:
+In Pebble mode, **the same Pebble database instance** is shared by two components:
 
 ```go
 // cmd/metastore/main.go
-db := rocksdb.Open("data/1")
+db := pebble.Open("data/1")
 
 // Purpose 1: Application layer KV storage
-kvs := rocksdb.NewRocksDB(db, "node_1", ...)
+kvs := pebble.NewPebble(db, "node_1", ...)
 // Writes key: "kv_data_mykey" → value: "myvalue"
 
 // Purpose 2: Raft log storage
-raftStorage := rocksdb.NewRocksDBStorage(db, "node_1")
+raftStorage := pebble.NewPebbleStorage(db, "node_1")
 // Writes key: "raft_log_123" → value: <raft entry>
 // Writes key: "hard_state" → value: <term, vote, commit>
 ```
@@ -426,11 +426,11 @@ Data types are distinguished by **different key prefixes**:
 
 | Prefix | Purpose | Defined In |
 |--------|---------|------------|
-| `kv_data_*` | User KV data | `internal/rocksdb/kvstore.go` |
-| `raft_log_*` | Raft log entries | `internal/rocksdb/raftlog.go` |
-| `hard_state` | Raft HardState | `internal/rocksdb/raftlog.go` |
-| `conf_state` | Raft ConfState | `internal/rocksdb/raftlog.go` |
-| `snapshot_meta` | Snapshot metadata | `internal/rocksdb/raftlog.go` |
+| `kv_data_*` | User KV data | `internal/pebble/kvstore.go` |
+| `raft_log_*` | Raft log entries | `internal/pebble/raftlog.go` |
+| `hard_state` | Raft HardState | `internal/pebble/raftlog.go` |
+| `conf_state` | Raft ConfState | `internal/pebble/raftlog.go` |
+| `snapshot_meta` | Snapshot metadata | `internal/pebble/raftlog.go` |
 
 ### 2. Raft Node and Storage Binding
 
@@ -458,9 +458,9 @@ Data types are distinguished by **different key prefixes**:
                OR
 
 ┌──────────────────────────────────────┐
-│        RocksDB Mode                  │
+│        Pebble Mode                  │
 │  ┌────────────────────────────┐     │
-│  │ rocksdb.RocksDBStorage     │     │
+│  │ pebble.PebbleStorage     │     │
 │  │ (raftlog.go custom impl)   │     │
 │  │                            │     │
 │  │ Replaces MemoryStorage+WAL │     │
@@ -474,12 +474,12 @@ Data types are distinguished by **different key prefixes**:
 kvstore.Store interface
     ↑ implemented by
     ├── internal/memory/Memory
-    └── internal/rocksdb/RocksDB
+    └── internal/pebble/Pebble
 
 raft.Storage interface (defined by etcd)
     ↑ implemented by
     ├── raft.MemoryStorage (etcd built-in)
-    └── rocksdb.RocksDBStorage (raftlog.go custom)
+    └── pebble.PebbleStorage (raftlog.go custom)
 ```
 
 ---
@@ -489,26 +489,26 @@ raft.Storage interface (defined by etcd)
 ### Core Design Principles
 
 1. **Layered Architecture**: HTTP → KV Store → Raft → Storage
-2. **Dual Mode Support**: Memory mode (fast) vs RocksDB mode (persistent)
+2. **Dual Mode Support**: Memory mode (fast) vs Pebble mode (persistent)
 3. **Interface Abstraction**: Pluggable storage engines through interfaces
-4. **Shared Storage**: In RocksDB mode, user data and Raft data share the same database
+4. **Shared Storage**: In Pebble mode, user data and Raft data share the same database
 
 ### Key File Responsibilities
 
 | File | Responsibility | Interface |
 |------|---------------|-----------|
 | `internal/memory/kvstore.go` | Memory mode user KV storage | `kvstore.Store` |
-| `internal/rocksdb/kvstore.go` | RocksDB mode user KV storage | `kvstore.Store` |
-| `internal/rocksdb/raftlog.go` | RocksDB mode Raft log storage | `raft.Storage` |
+| `internal/pebble/kvstore.go` | Pebble mode user KV storage | `kvstore.Store` |
+| `internal/pebble/raftlog.go` | Pebble mode Raft log storage | `raft.Storage` |
 | `internal/raft/node.go` | Memory mode Raft node | - |
-| `internal/raft/node_rocksdb.go` | RocksDB mode Raft node | - |
+| `internal/raft/node_pebble.go` | Pebble mode Raft node | - |
 
 ### Why It's Not Confusing
 
-Although package and file names appear to have duplicates (memory, rocksdb), each file has **a clear and unique responsibility**:
+Although package and file names appear to have duplicates (memory, pebble), each file has **a clear and unique responsibility**:
 
 - **Application Layer Storage** vs **Raft Layer Storage** - Completely different layers
-- **Memory Mode** vs **RocksDB Mode** - Two optional implementation approaches
+- **Memory Mode** vs **Pebble Mode** - Two optional implementation approaches
 - **Interface Definition** vs **Interface Implementation** - Clear abstraction levels
 
 This is a well-designed, distributed system architecture that follows Go best practices!

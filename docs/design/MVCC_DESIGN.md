@@ -13,7 +13,7 @@ MetaStore 需要实现与 etcd 兼容的 MVCC 机制，支持：
 1. **etcd 兼容性**：与 etcd 的 MVCC 语义完全一致
 2. **性能**：最小化版本管理的性能开销
 3. **可配置**：版本保留数量可配置（默认 1000）
-4. **存储引擎适配**：Memory 和 RocksDB 引擎使用不同的实现策略
+4. **存储引擎适配**：Memory 和 Pebble 引擎使用不同的实现策略
 
 ## 核心概念
 
@@ -99,15 +99,15 @@ type KeyValue struct {
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### RocksDB 引擎 MVCC
+### Pebble 引擎 MVCC
 
-RocksDB 方案：利用 RocksDB 的 **User-defined Timestamp** 或 **Key 编码** 实现 MVCC。
+Pebble 方案：利用 Pebble 的 **User-defined Timestamp** 或 **Key 编码** 实现 MVCC。
 
 #### 方案 A：Key 编码 MVCC（推荐，与 etcd/bbolt 一致）
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                RocksDB Key 编码方案                          │
+│                Pebble Key 编码方案                          │
 ├─────────────────────────────────────────────────────────────┤
 │                                                              │
 │  Key 格式: <bucket>/<user_key>/<revision>                   │
@@ -134,20 +134,20 @@ RocksDB 方案：利用 RocksDB 的 **User-defined Timestamp** 或 **Key 编码*
 └─────────────────────────────────────────────────────────────┘
 ```
 
-#### 方案 B：RocksDB User-defined Timestamp（备选）
+#### 方案 B：Pebble User-defined Timestamp（备选）
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│            RocksDB Timestamp 方案（RocksDB 6.x+）            │
+│            Pebble Timestamp 方案（Pebble 6.x+）            │
 ├─────────────────────────────────────────────────────────────┤
 │                                                              │
 │  优点：                                                      │
-│  - RocksDB 原生支持，性能最优                                │
+│  - Pebble 原生支持，性能最优                                │
 │  - 自动 GC 旧版本                                           │
 │  - 读取时指定 timestamp 即可获取历史版本                     │
 │                                                              │
 │  缺点：                                                      │
-│  - 需要 RocksDB 6.x+                                        │
+│  - 需要 Pebble 6.x+                                        │
 │  - API 与 etcd 有差异，需要适配                              │
 │  - Column Family 级别的 timestamp 比较器                    │
 │                                                              │
@@ -238,7 +238,7 @@ type Revision struct {
     Sub  int64 // 子版本号
 }
 
-// 编码为 16 字节（用于 RocksDB key）
+// 编码为 16 字节（用于 Pebble key）
 func (r Revision) Bytes() []byte {
     buf := make([]byte, 16)
     binary.BigEndian.PutUint64(buf[0:8], uint64(r.Main))
@@ -272,10 +272,10 @@ func ParseRevision(b []byte) Revision {
 - [x] 实现 `Generation` 管理
 - [x] 单元测试 (29 tests)
 
-### Phase 3: RocksDB 引擎 MVCC ✅
+### Phase 3: Pebble 引擎 MVCC ✅
 
 - [x] 设计 Key 编码格式: `mvcc:kv:<user_key>/<16-byte revision>`
-- [x] 实现 `RocksDBMVCCStore` (`internal/mvcc/rocksdb_store.go`)
+- [x] 实现 `PebbleMVCCStore` (`internal/mvcc/pebble_store.go`)
 - [x] 实现版本化 Put/Get/Delete
 - [x] 实现 Range 查询（使用 Iterator）
 - [x] 单元测试 (25 tests) + 持久化测试
@@ -285,7 +285,7 @@ func ParseRevision(b []byte) Revision {
 - [x] 实现手动 Compact API (`Store.Compact()`)
 - [x] 实现自动压缩调度器 (`internal/mvcc/compaction.go`)
 - [x] Memory 引擎：删除旧版本数据
-- [x] RocksDB 引擎：删除旧版本 + 触发 RocksDB Compaction
+- [x] Pebble 引擎：删除旧版本 + 触发 Pebble Compaction
 - [x] 压缩进度 Metrics (`CompactorMetrics`)
 
 ### Phase 5: 集成与测试 ✅
@@ -307,7 +307,7 @@ Range：O(log N + M) - M 为返回的 key 数量
 Compact：O(K × V) - K 为 key 数量，V 为需删除的版本数
 ```
 
-### RocksDB 引擎
+### Pebble 引擎
 
 ```
 写入：O(1) 摊销 - LSM-Tree 写入
@@ -315,15 +315,15 @@ Compact：O(K × V) - K 为 key 数量，V 为需删除的版本数
 Range：O(log N + M) - Iterator 扫描
 Compact：
   - 删除旧版本：O(K × V) DeleteRange
-  - RocksDB Compaction：后台异步执行
+  - Pebble Compaction：后台异步执行
 ```
 
 ### 内存优化
 
 1. **版本数限制**：默认 1000 版本，防止内存无限增长
-2. **懒加载**：RocksDB 引擎不需要全量加载索引
+2. **懒加载**：Pebble 引擎不需要全量加载索引
 3. **压缩批处理**：分批压缩，避免长时间阻塞
-4. **Bloom Filter**：RocksDB 使用 Bloom Filter 加速点查询
+4. **Bloom Filter**：Pebble 使用 Bloom Filter 加速点查询
 
 ## 与 etcd 的兼容性
 
@@ -350,8 +350,8 @@ internal/
 │   ├── store.go              # MVCCStore 接口定义
 │   ├── memory_store.go       # Memory MVCC 实现
 │   ├── memory_store_test.go  # Memory Store 单元测试 (29 tests)
-│   ├── rocksdb_store.go      # RocksDB MVCC 实现 (CGO)
-│   ├── rocksdb_store_test.go # RocksDB Store 单元测试 (25 tests)
+│   ├── pebble_store.go      # Pebble MVCC 实现 (CGO)
+│   ├── pebble_store_test.go # Pebble Store 单元测试 (25 tests)
 │   ├── compaction.go         # 自动压缩调度器
 │   └── compaction_test.go    # 压缩器单元测试
 └── ...
@@ -366,5 +366,5 @@ pkg/
 |------|------|----------|
 | 内存增长过快 | OOM | 版本数限制 + 自动压缩 |
 | Compact 影响性能 | 延迟抖动 | 分批压缩 + 限流 |
-| RocksDB 版本过多 | 空间膨胀 | 定期触发 RocksDB Compaction |
+| Pebble 版本过多 | 空间膨胀 | 定期触发 Pebble Compaction |
 | 历史版本查询慢 | 高延迟 | 添加二级索引 |

@@ -67,7 +67,7 @@ message BatchOperation {
 
 ### 1.3 编码逻辑 / Encoding Logic
 
-**文件**: [internal/rocksdb/raft_proto.go](../internal/rocksdb/raft_proto.go)
+**文件**: [internal/pebble/raft_proto.go](../internal/pebble/raft_proto.go)
 
 新增函数：
 
@@ -96,7 +96,7 @@ if len(batch) == 1 {
 
 ### 1.4 解码和执行 / Decoding and Execution
 
-**文件**: [internal/rocksdb/kvstore.go](../internal/rocksdb/kvstore.go) (Lines 204-216)
+**文件**: [internal/pebble/kvstore.go](../internal/pebble/kvstore.go) (Lines 204-216)
 
 三层 fallback 策略：
 
@@ -120,7 +120,7 @@ for _, data := range commit.Data {
 
 ### 1.5 BatchProposer 集成 / BatchProposer Integration
 
-**文件**: [internal/rocksdb/batch_proposer.go](../internal/rocksdb/batch_proposer.go)
+**文件**: [internal/pebble/batch_proposer.go](../internal/pebble/batch_proposer.go)
 
 关键修改：
 
@@ -169,7 +169,7 @@ if len(batch) == 1 {
 
 ### 2.2 配置扩展 / Configuration Extension
 
-**文件**: [internal/rocksdb/batch_proposer.go](../internal/rocksdb/batch_proposer.go) (Lines 27-32)
+**文件**: [internal/pebble/batch_proposer.go](../internal/pebble/batch_proposer.go) (Lines 27-32)
 
 ```go
 type BatchConfig struct {
@@ -273,7 +273,7 @@ func (bp *BatchProposer) adjustWaitTime() {
 ### 3.1 功能测试 / Functional Tests
 
 **所有测试 100% 通过**:
-- ✅ RocksDB 核心测试：13/13
+- ✅ Pebble 核心测试：13/13
 - ✅ 跨协议集成测试：19/19
 - ✅ 单节点操作测试：3/3
 
@@ -646,10 +646,10 @@ BatchConfig{
 | 功能 | 文件 | 行数 |
 |------|------|------|
 | Protobuf 定义 | internal/proto/raft.proto | 21-34 |
-| 批量编码函数 | internal/rocksdb/raft_proto.go | 191-233 |
-| 自适应逻辑 | internal/rocksdb/batch_proposer.go | 255-291 |
-| 批量解码 | internal/rocksdb/kvstore.go | 204-216 |
-| BatchProposer 集成 | internal/rocksdb/batch_proposer.go | 196-231 |
+| 批量编码函数 | internal/pebble/raft_proto.go | 191-233 |
+| 自适应逻辑 | internal/pebble/batch_proposer.go | 255-291 |
+| 批量解码 | internal/pebble/kvstore.go | 204-216 |
+| BatchProposer 集成 | internal/pebble/batch_proposer.go | 196-231 |
 
 ### 11.2 相关文档
 
@@ -667,11 +667,11 @@ Tier 3 基础版:     5.92s
 + 自适应批处理:    4.67s (-21%)
 ```
 
-**RocksDB 核心测试**:
+**Pebble 核心测试**:
 ```
-TestRocksDB_Compact_Basic:           54ms (vs 150ms baseline, -64%)
-TestRocksDB_Compact_Sequential:     115ms first, <1ms subsequent
-TestCrossProtocolRocksDB/Concurrent: 4.67s (vs 5.92s, -21%)
+TestPebble_Compact_Basic:           54ms (vs 150ms baseline, -64%)
+TestPebble_Compact_Sequential:     115ms first, <1ms subsequent
+TestCrossProtocolPebble/Concurrent: 4.67s (vs 5.92s, -21%)
 ```
 
 ---

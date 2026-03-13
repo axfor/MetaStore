@@ -139,7 +139,7 @@ r.pendingOps[seqNum] = waitCh
 
 **优化** (Line 518-551):
 ```go
-batch := grocksdb.NewWriteBatch()
+batch := gpebble.NewWriteBatch()
 batch.Put(kvKey, encodedKV)        // KV 数据
 batch.Put(leaseKey, leaseData)     // 租约数据
 r.db.Write(r.wo, batch)            // 原子提交
@@ -339,7 +339,7 @@ var channelPool = sync.Pool{
     },
 }
 
-func (r *RocksDB) PutWithLease(...) {
+func (r *Pebble) PutWithLease(...) {
     waitCh := channelPool.Get().(chan struct{})
     defer channelPool.Put(waitCh)
 

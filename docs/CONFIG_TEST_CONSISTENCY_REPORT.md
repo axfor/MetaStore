@@ -58,10 +58,10 @@ server, err := etcdapi.NewServer(etcdapi.ServerConfig{
 - LeaseManager 使用默认 MaxLeaseCount（无限制）
 - MaintenanceServer 使用默认 SnapshotChunkSize（4MB）
 
-#### 案例 3: etcd_rocksdb_integration_test.go
+#### 案例 3: etcd_pebble_integration_test.go
 ```go
 // 当前代码 - 直接创建存储，不使用配置
-kvs := rocksdb.NewRocksDB(
+kvs := pebble.NewPebble(
     <-clus.snapshotterReady[i],
     clus.proposeC[i],
     clus.commitC[i],
@@ -71,7 +71,7 @@ kvs := rocksdb.NewRocksDB(
 ```
 
 **问题**：
-- RocksDB 使用硬编码的默认配置
+- Pebble 使用硬编码的默认配置
 - BlockCacheSize、WriteBufferSize 等配置无法测试
 - 生产环境可能使用不同配置，测试无法覆盖
 
@@ -89,7 +89,7 @@ kvs := rocksdb.NewRocksDB(
 | Limits.MaxLeaseCount | 从配置读取 | 使用默认值 | 无法验证 lease 限制 |
 | Monitoring.PrometheusPort | 从配置读取 | 未测试 | 无法验证指标服务器 |
 | Maintenance.SnapshotChunkSize | 从配置读取 | 使用默认值 | 无法测试不同块大小 |
-| RocksDB.* (9项) | 从配置读取 | 使用默认值 | 无法测试性能优化 |
+| Pebble.* (9项) | 从配置读取 | 使用默认值 | 无法测试性能优化 |
 
 ### 2. 潜在风险
 
@@ -98,7 +98,7 @@ kvs := rocksdb.NewRocksDB(
    - 配置错误只能在生产环境发现
 
 2. **无法进行配置相关的性能测试**
-   - 不同 RocksDB 配置的性能差异
+   - 不同 Pebble 配置的性能差异
    - 不同 SnapshotChunkSize 的网络行为
 
 3. **配置文档可能过时**
@@ -157,11 +157,11 @@ func WithLimits(maxWatch, maxLease int) func(*config.Config) {
     }
 }
 
-// WithRocksDBConfig 自定义 RocksDB 配置
-func WithRocksDBConfig(blockCache, writeBuffer int64) func(*config.Config) {
+// WithPebbleConfig 自定义 Pebble 配置
+func WithPebbleConfig(blockCache, writeBuffer int64) func(*config.Config) {
     return func(cfg *config.Config) {
-        cfg.RocksDB.BlockCacheSize = blockCache
-        cfg.RocksDB.WriteBufferSize = writeBuffer
+        cfg.Pebble.BlockCacheSize = blockCache
+        cfg.Pebble.WriteBufferSize = writeBuffer
     }
 }
 ```
@@ -284,7 +284,7 @@ func TestMaintenanceSnapshotChunkSize(t *testing.T) {
 2. ✅ 更新 `api/etcd/auth_test.go` 使用配置
 3. ✅ 更新集成测试使用配置：
    - `test/etcd_memory_integration_test.go`
-   - `test/etcd_rocksdb_integration_test.go`
+   - `test/etcd_pebble_integration_test.go`
 
 ### P1 - 高优先级（配置验证）
 4. ✅ 添加配置功能测试
@@ -311,12 +311,12 @@ func TestMaintenanceSnapshotChunkSize(t *testing.T) {
 需要更新的文件列表：
 - `api/etcd/auth_test.go`
 - `test/etcd_memory_integration_test.go`
-- `test/etcd_rocksdb_integration_test.go`
+- `test/etcd_pebble_integration_test.go`
 - `test/cross_protocol_integration_test.go`
 - `test/http_api_memory_integration_test.go`
-- `test/http_api_rocksdb_integration_test.go`
+- `test/http_api_pebble_integration_test.go`
 - `test/http_api_memory_consistency_test.go`
-- `test/http_api_rocksdb_consistency_test.go`
+- `test/http_api_pebble_consistency_test.go`
 - `test/etcd_compatibility_test.go`
 
 ### Step 3: 添加配置功能测试

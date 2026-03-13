@@ -2,7 +2,7 @@
 
 **文档版本**: v1.0
 **分析日期**: 2025-11-01
-**当前性能**: Memory ~975 ops/sec, RocksDB ~349 ops/sec
+**当前性能**: Memory ~975 ops/sec, Pebble ~349 ops/sec
 **问题描述**: CPU 和磁盘使用效率提升不上来,并发扩展性受限
 
 ---
@@ -425,13 +425,13 @@ gRPC Requests (concurrent)
     ↓
 [Apply: Async Apply] ← ⚠️ 异步批量应用
     ↓
-[RocksDB] ← LSM-tree, WriteBatch
+[Pebble] ← LSM-tree, WriteBatch
 ```
 
 **关键区别**:
 1. ✅ **Multi-Raft**: 数据分片到多个 Raft 组,并行处理
 2. ✅ **异步 apply**: Apply 和 propose 解耦,提升吞吐
-3. ✅ **WriteBatch**: RocksDB 原生支持批量写入
+3. ✅ **WriteBatch**: Pebble 原生支持批量写入
 
 ### MetaStore 当前架构问题
 
@@ -712,7 +712,7 @@ for i := 0; i < runtime.NumCPU(); i++ {
 
 **预期结果**:
 - Memory: 975 → 10,000 ops/sec (**10x**)
-- RocksDB: 349 → 2,000 ops/sec (**5.7x**)
+- Pebble: 349 → 2,000 ops/sec (**5.7x**)
 - CPU 利用率: 15% → 60%+
 - 磁盘利用率: 5% → 30%+
 
@@ -728,13 +728,13 @@ for i := 0; i < runtime.NumCPU(); i++ {
    - 读操作不阻塞写操作
    - 预期收益: +2x 读吞吐量
 
-3. ✅ **RocksDB WriteBatch 优化**
-   - 批量写入 RocksDB
-   - 预期收益: +10x RocksDB 吞吐量
+3. ✅ **Pebble WriteBatch 优化**
+   - 批量写入 Pebble
+   - 预期收益: +10x Pebble 吞吐量
 
 **预期结果**:
 - Memory: 10,000 → 50,000 ops/sec (**50x**)
-- RocksDB: 2,000 → 20,000 ops/sec (**57x**)
+- Pebble: 2,000 → 20,000 ops/sec (**57x**)
 - CPU 利用率: 60% → 80%+
 - 磁盘利用率: 30% → 70%+
 
@@ -756,7 +756,7 @@ for i := 0; i < runtime.NumCPU(); i++ {
 
 **预期结果**:
 - Memory: 50,000 → 500,000 ops/sec (**500x**)
-- RocksDB: 20,000 → 200,000 ops/sec (**570x**)
+- Pebble: 20,000 → 200,000 ops/sec (**570x**)
 
 ---
 

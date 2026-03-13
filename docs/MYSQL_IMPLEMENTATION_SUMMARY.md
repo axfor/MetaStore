@@ -34,7 +34,7 @@ Successfully implemented and tested a complete MySQL protocol access layer for M
 | File | Size | Tests | Status |
 |------|------|-------|--------|
 | `test/mysql_api_memory_integration_test.go` | ~180 LOC | 6 tests | ✅ Complete |
-| `test/mysql_api_rocksdb_integration_test.go` | ~280 LOC | 9 tests | ✅ Complete |
+| `test/mysql_api_pebble_integration_test.go` | ~280 LOC | 9 tests | ✅ Complete |
 | `test/mysql_cross_protocol_test.go` | ~420 LOC | 13 tests | ✅ Complete |
 | `test/mysql_cluster_integration_test.go` | ~380 LOC | 7 tests | ✅ Complete |
 
@@ -80,7 +80,7 @@ Successfully implemented and tested a complete MySQL protocol access layer for M
 | Engine | Status | Tests |
 |--------|--------|-------|
 | Memory (WAL) | ✅ Complete | 6 tests |
-| RocksDB | ✅ Complete | 9 tests |
+| Pebble | ✅ Complete | 9 tests |
 
 ### Cross-Protocol Support ✅
 
@@ -112,7 +112,7 @@ Successfully implemented and tested a complete MySQL protocol access layer for M
 ├─────────────────────────────────────┤
 │   Unified Storage Interface (kvstore.Store)
 ├─────────────────────────────────────┤
-│   Storage Layer (memory / rocksdb)
+│   Storage Layer (memory / pebble)
 └─────────────────────────────────────┘
 ```
 
@@ -149,7 +149,7 @@ MySQL API ┘
 | ✅ MySQL write → HTTP read | Verified | Test: MySQL_Write_HTTP_Read |
 | ✅ MySQL write → etcd read | Verified | Test: MySQL_Write_Etcd_Read |
 | ✅ Memory engine support | Complete | 6 tests passing |
-| ✅ RocksDB engine support | Complete | 9 tests passing |
+| ✅ Pebble engine support | Complete | 9 tests passing |
 | ✅ Independent module | Complete | api/mysql package |
 | ✅ No breaking changes | Verified | All existing tests pass |
 | ✅ Configuration support | Complete | mysql section in config |
@@ -227,7 +227,7 @@ ok      metaStore/test    45.321s
 | SHOW Commands | 100% | ✅ |
 | Cross-Protocol | 100% | ✅ |
 | Memory Engine | 100% | ✅ |
-| RocksDB Engine | 100% | ✅ |
+| Pebble Engine | 100% | ✅ |
 | Cluster Ops | 100% | ✅ |
 | Error Handling | 100% | ✅ |
 
@@ -368,7 +368,7 @@ etcdctl --endpoints=localhost:2379 get mykey
 
 4. ✅ **Dual Engine Support**
    - Memory engine fully tested
-   - RocksDB engine fully tested
+   - Pebble engine fully tested
    - Both engines 100% compatible
 
 5. ✅ **Complete Documentation**

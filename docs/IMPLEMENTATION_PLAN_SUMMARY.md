@@ -155,7 +155,7 @@ pkg/concurrency/
 ### 3.4 Maintenance 完善计划
 
 #### 涵盖内容
-1. **Defragment** - RocksDB compaction
+1. **Defragment** - Pebble compaction
 2. **Hash/HashKV** - CRC32 数据哈希
 3. **MoveLeader** - Raft Leader 转移
 4. **Alarm** - 告警机制设计
@@ -166,7 +166,7 @@ pkg/concurrency/
 #### 涵盖内容
 1. **RaftStatus 数据模型**
 2. **GetRaftStatus() 接口**
-3. **Memory/RocksDB 实现方案**
+3. **Memory/Pebble 实现方案**
 4. **Raft Node 修改**（添加 Status() 方法）
 5. **架构调整**（依赖注入）
 
@@ -271,7 +271,7 @@ pkg/concurrency/
 
 ### 8.2 实现特点
 - **etcd 兼容**: 100% API 兼容
-- **双引擎支持**: Memory + RocksDB
+- **双引擎支持**: Memory + Pebble
 - **高可用**: Raft 共识保证
 - **安全**: Auth + 权限控制
 

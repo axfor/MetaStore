@@ -25,11 +25,11 @@ import (
 	"metaStore/internal/kvstore"
 	"metaStore/internal/memory"
 	"metaStore/internal/raft"
-	"metaStore/internal/rocksdb"
+	"metaStore/internal/pebbledb"
 	"metaStore/pkg/config"
 	etcdapi "metaStore/api/etcd"
 
-	"github.com/linxGnu/grocksdb"
+	"github.com/cockroachdb/pebble"
 	"go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/server/v3/etcdserver/api/snap"
 	"go.etcd.io/raft/v3/raftpb"
@@ -90,12 +90,12 @@ type testNode struct {
 	commitC          <-chan *kvstore.Commit
 	errorC           <-chan error
 	snapshotterReady <-chan *snap.Snapshotter
-	kvStore          interface{} // *memory.Memory or *rocksdb.RocksDB
+	kvStore          interface{} // *memory.Memory or *pebbledb.PebbleDB
 	server           *etcdapi.Server
 	clientAddr       string
 	dataDir          string
 	raftNode         interface{} // *raftNode (internal type)
-	db               *grocksdb.DB // Only for RocksDB nodes
+	db               *pebble.DB // Only for Pebble nodes
 }
 
 // startMemoryNode starts a single-node cluster for testing
@@ -223,30 +223,30 @@ func startMemoryNode(t testing.TB, nodeID int, configOpts ...func(*config.Config
 	return node, cleanup
 }
 
-// testRocksDBNode represents a RocksDB node for testing
-type testRocksDBNode struct {
+// testPebbleNode represents a Pebble node for testing
+type testPebbleNode struct {
 	*testNode
-	rocksKVStore *rocksdb.RocksDB
+	pebbleKVStore *pebbledb.PebbleDB
 }
 
-// startRocksDBNode starts a single-node RocksDB cluster for performance testing
+// startPebbleNode starts a single-node Pebble cluster for performance testing
 // Accepts optional configuration functions (e.g., WithBatchProposal, WithoutBatchProposal)
-func startRocksDBNode(t testing.TB, nodeID int, configOpts ...func(*config.Config)) (*testRocksDBNode, func()) {
+func startPebbleNode(t testing.TB, nodeID int, configOpts ...func(*config.Config)) (*testPebbleNode, func()) {
 	// Create data directory
-	dataDir := fmt.Sprintf("data/perf-test-rocksdb/%d", nodeID)
+	dataDir := fmt.Sprintf("data/perf-test-pebble/%d", nodeID)
 	os.RemoveAll(dataDir)
 
-	// Create RocksDB directory
+	// Create Pebble directory
 	dbPath := fmt.Sprintf("%s/kv", dataDir)
 	err := os.MkdirAll(dbPath, 0755)
 	if err != nil {
-		t.Fatalf("Failed to create RocksDB directory: %v", err)
+		t.Fatalf("Failed to create Pebble directory: %v", err)
 	}
 
-	// Open RocksDB
-	db, err := rocksdb.Open(dbPath)
+	// Open Pebble
+	db, err := pebbledb.Open(dbPath)
 	if err != nil {
-		t.Fatalf("Failed to open RocksDB: %v", err)
+		t.Fatalf("Failed to open Pebble: %v", err)
 	}
 
 	// Allocate dynamic ports to avoid conflicts when running tests in parallel
@@ -259,8 +259,8 @@ func startRocksDBNode(t testing.TB, nodeID int, configOpts ...func(*config.Confi
 	// Create test config with optional configuration functions
 	cfg := NewTestConfig(uint64(nodeID), 1, fmt.Sprintf(":910%d", nodeID), configOpts...)
 
-	// Create Raft node with RocksDB
-	var kvs *rocksdb.RocksDB
+	// Create Raft node with Pebble
+	var kvs *pebbledb.PebbleDB
 	getSnapshot := func() ([]byte, error) {
 		if kvs == nil {
 			return nil, nil
@@ -268,12 +268,12 @@ func startRocksDBNode(t testing.TB, nodeID int, configOpts ...func(*config.Confi
 		return kvs.GetSnapshot()
 	}
 
-	commitC, errorC, snapshotterReady, raftNode := raft.NewNodeRocksDB(
+	commitC, errorC, snapshotterReady, raftNode := raft.NewNodePebble(
 		nodeID, peers, false, getSnapshot, proposeC, confChangeC, db, dataDir, cfg,
 	)
 
-	// Create RocksDB KV store
-	kvs = rocksdb.NewRocksDB(
+	// Create Pebble KV store
+	kvs = pebbledb.NewPebbleDB(
 		db,
 		<-snapshotterReady,
 		proposeC,
@@ -330,9 +330,9 @@ func startRocksDBNode(t testing.TB, nodeID int, configOpts ...func(*config.Confi
 		db:               db,
 	}
 
-	node := &testRocksDBNode{
+	node := &testPebbleNode{
 		testNode:     baseNode,
-		rocksKVStore: kvs,
+		pebbleKVStore: kvs,
 	}
 
 	// Cleanup function
@@ -359,7 +359,7 @@ func startRocksDBNode(t testing.TB, nodeID int, configOpts ...func(*config.Confi
 			t.Errorf("Timeout waiting for Raft node to stop - this indicates a shutdown issue")
 		}
 
-		// Close RocksDB
+		// Close Pebble
 		if db != nil {
 			db.Close()
 		}

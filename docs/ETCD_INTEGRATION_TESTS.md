@@ -128,18 +128,18 @@ type etcdCluster struct {
 - 测试数据清理需要正确（etcd-test-data 目录）
 - 单节点测试在不干净的环境中可能卡在选举阶段
 
-## RocksDB 引擎测试（未来工作）
+## Pebble 引擎测试（未来工作）
 
-由于 RocksDB 引擎目前只支持 HTTP API，没有 etcd 兼容层，需要先实现 `RocksDBEtcdRaft`（类似 `MemoryEtcdRaft`），然后才能创建对应的测试文件：
+由于 Pebble 引擎目前只支持 HTTP API，没有 etcd 兼容层，需要先实现 `PebbleEtcdRaft`（类似 `MemoryEtcdRaft`），然后才能创建对应的测试文件：
 
 **待创建**:
-- `etcd_rocksdb_integration_test.go` - RocksDB 单节点和集群测试
-- `etcd_rocksdb_consistency_test.go` - RocksDB 一致性测试
+- `etcd_pebble_integration_test.go` - Pebble 单节点和集群测试
+- `etcd_pebble_consistency_test.go` - Pebble 一致性测试
 
 **实现步骤**（Phase 3）:
-1. 创建 `RocksDBEtcdRaft` - 集成 RocksDB + Raft + etcd 语义
+1. 创建 `PebbleEtcdRaft` - 集成 Pebble + Raft + etcd 语义
 2. 实现所有 etcd 接口方法（参考 MemoryEtcdRaft）
-3. 添加持久化的 etcd 语义（在 RocksDB 中存储 KeyValue 结构）
+3. 添加持久化的 etcd 语义（在 Pebble 中存储 KeyValue 结构）
 4. 创建对应的测试文件（复制 memory 测试并适配）
 
 ## 测试覆盖率
@@ -175,7 +175,7 @@ make test  # 包含所有测试
 
 ### 只运行 etcd 内存测试
 ```bash
-CGO_ENABLED=1 CGO_LDFLAGS="-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain" \
+CGO_ENABLED=1 CGO_LDFLAGS="-lpebble -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain" \
   go test -v ./test -run TestEtcdMemory
 ```
 
@@ -204,7 +204,7 @@ rm -rf etcd-test-data data
 2. ✅ **集群一致性** - 多场景验证
 3. ✅ **并发操作** - 压力测试
 4. ✅ **同步等待修复** - 所有写操作现在都正确等待 Raft 提交
-5. ⏸️ **RocksDB 引擎** - 待 Phase 3 实现 RocksDBEtcdRaft 后添加
+5. ⏸️ **Pebble 引擎** - 待 Phase 3 实现 PebbleEtcdRaft 后添加
 
 测试框架完全参考 HTTP API 测试模式，确保：
 - 测试结构一致

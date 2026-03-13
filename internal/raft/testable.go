@@ -30,5 +30,5 @@ type TestableNode interface {
 // Ensure raftNode implements TestableNode
 var _ TestableNode = (*raftNode)(nil)
 
-// Ensure raftNodeRocks implements TestableNode
-var _ TestableNode = (*raftNodeRocks)(nil)
+// Ensure raftNodePebble implements TestableNode
+var _ TestableNode = (*raftNodePebble)(nil)

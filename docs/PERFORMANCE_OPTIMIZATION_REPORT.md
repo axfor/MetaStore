@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-This report documents the high-performance optimization initiative for MetaStore, focusing primarily on the RocksDB engine. The optimization targets identified bottlenecks in serialization, memory allocation, and lock contention.
+This report documents the high-performance optimization initiative for MetaStore, focusing primarily on the Pebble engine. The optimization targets identified bottlenecks in serialization, memory allocation, and lock contention.
 
 **Key Achievements**:
 - ✅ Replaced slow gob encoding with fast binary encoding (2-5x faster)
@@ -32,7 +32,7 @@ This report documents the high-performance optimization initiative for MetaStore
 - Creates new encoder/decoder for every operation
 - Allocates buffers without reuse
 
-**Solution** ([internal/rocksdb/pools.go](../internal/rocksdb/pools.go)):
+**Solution** ([internal/pebble/pools.go](../internal/pebble/pools.go)):
 ```go
 // Fixed-size binary encoding format
 // [keyLen(4)][key][valueLen(4)][value][createRev(8)][modRev(8)][version(8)][lease(8)]
@@ -47,10 +47,10 @@ func decodeKeyValue(data []byte) (*kvstore.KeyValue, error)
 - **Size**: ~10% smaller than gob
 
 **Files Modified**:
-- `internal/rocksdb/pools.go` (NEW) - Binary encoding/decoding
-- `internal/rocksdb/kvstore.go:365` - Range query decoding
-- `internal/rocksdb/kvstore.go:499` - Put operation encoding
-- `internal/rocksdb/kvstore.go:1317` - Get operation decoding
+- `internal/pebble/pools.go` (NEW) - Binary encoding/decoding
+- `internal/pebble/kvstore.go:365` - Range query decoding
+- `internal/pebble/kvstore.go:499` - Put operation encoding
+- `internal/pebble/kvstore.go:1317` - Get operation decoding
 
 ### 1.2 Object Pooling with sync.Pool (COMPLETED ✅)
 
@@ -59,7 +59,7 @@ func decodeKeyValue(data []byte) (*kvstore.KeyValue, error)
 - GC pressure from short-lived objects
 - No reuse of common data structures
 
-**Solution** ([internal/rocksdb/pools.go](../internal/rocksdb/pools.go)):
+**Solution** ([internal/pebble/pools.go](../internal/pebble/pools.go)):
 ```go
 var bufferPool = sync.Pool{
     New: func() interface{} {
@@ -92,7 +92,7 @@ var kvSlicePool = sync.Pool{
 - Repeated reallocation as slice grows
 - O(N log N) growth pattern wastes CPU
 
-**Solution** ([internal/rocksdb/kvstore.go:338-343](../internal/rocksdb/kvstore.go#L338-L343)):
+**Solution** ([internal/pebble/kvstore.go:338-343](../internal/pebble/kvstore.go#L338-L343)):
 ```go
 // Pre-allocate with estimated capacity
 estimatedCap := 100
@@ -117,7 +117,7 @@ kvs := make([]*kvstore.KeyValue, 0, estimatedCap)
 
 ### 2.1 Identified Bottlenecks
 
-**RocksDB Engine** ([internal/rocksdb/kvstore.go](../internal/rocksdb/kvstore.go)):
+**Pebble Engine** ([internal/pebble/kvstore.go](../internal/pebble/kvstore.go)):
 
 1. **Lock Contention** (Lines 60-64):
    - Multiple mutexes: `mu`, `pendingMu`, `watchMu`
@@ -132,7 +132,7 @@ kvs := make([]*kvstore.KeyValue, 0, estimatedCap)
 3. **I/O Patterns**:
    - Individual Put operations without batching
    - Two writes per Put (kv + lease update)
-   - **Solution**: Use RocksDB WriteBatch
+   - **Solution**: Use Pebble WriteBatch
 
 4. **Missing Caching**:
    - CurrentRevision reads DB on every call
@@ -180,12 +180,12 @@ kvs := make([]*kvstore.KeyValue, 0, estimatedCap)
 **Remaining Tasks**:
 
 1. **CurrentRevision Caching** (PENDING):
-   - Add `atomic.Int64` field to RocksDB struct
+   - Add `atomic.Int64` field to Pebble struct
    - Cache revision in memory
    - Update on increment
    - **Impact**: -100% DB reads for revision queries
 
-2. **RocksDB WriteBatch** (PENDING):
+2. **Pebble WriteBatch** (PENDING):
    - Batch Put + Lease update into single write
    - Atomic multi-key operations
    - **Impact**: 2x faster writes, better consistency
@@ -202,7 +202,7 @@ kvs := make([]*kvstore.KeyValue, 0, estimatedCap)
    - **Impact**: 5-10x faster serialization
 
 3. **Iterator Object Pooling**:
-   - Reuse RocksDB iterators
+   - Reuse Pebble iterators
    - **Impact**: -20% allocation overhead
 
 ### 3.3 Tier 3 (Medium Impact, High Effort)
@@ -365,18 +365,18 @@ BenchmarkRange-8    5000      300,000 ns/op     100,000 B/op      500 allocs/op
 
 ```bash
 # CPU profiling
-go test -bench=. -cpuprofile=cpu.prof ./internal/rocksdb
+go test -bench=. -cpuprofile=cpu.prof ./internal/pebble
 go tool pprof cpu.prof
 
 # Memory profiling
-go test -bench=. -memprofile=mem.prof ./internal/rocksdb
+go test -bench=. -memprofile=mem.prof ./internal/pebble
 go tool pprof -alloc_space mem.prof
 
 # Benchmark with memory stats
 go test -bench=BenchmarkRange -benchmem -benchtime=10s
 
 # Race detection
-go test -race ./internal/rocksdb
+go test -race ./internal/pebble
 ```
 
 ---
@@ -434,7 +434,7 @@ The initial Tier 1 optimizations have laid a strong foundation for high-performa
 - Testing to ensure correctness and stability
 
 **Long-term Vision**:
-- Achieve 10x performance improvement for RocksDB engine
+- Achieve 10x performance improvement for Pebble engine
 - Position MetaStore as the fastest etcd-compatible store
 - Maintain 100% API compatibility while optimizing internals
 

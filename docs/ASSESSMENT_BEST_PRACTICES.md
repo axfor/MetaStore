@@ -562,9 +562,9 @@ func (am *AuthManager) AddUser(name, password string) error {
 
 根据 `test/` 目录：
 - ✅ etcd_memory_integration_test.go
-- ✅ etcd_rocksdb_integration_test.go
+- ✅ etcd_pebble_integration_test.go
 - ✅ etcd_memory_consistency_test.go
-- ✅ etcd_rocksdb_consistency_test.go
+- ✅ etcd_pebble_consistency_test.go
 - ✅ etcd_compatibility_test.go
 - ✅ cross_protocol_integration_test.go
 
