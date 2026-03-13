@@ -1,5 +1,5 @@
 # MetaStore 性能对比测试报告
-## Memory vs RocksDB 存储引擎
+## Memory vs Pebble 存储引擎
 
 **日期**: 2025-01-29
 **测试时长**: 约 2 小时
@@ -12,7 +12,7 @@
 本报告对 MetaStore 的两种存储引擎进行了全面的性能对比测试：
 
 1. **Memory 存储引擎** - 基于内存的高性能存储
-2. **RocksDB 存储引擎** - 基于磁盘的持久化存储
+2. **Pebble 存储引擎** - 基于磁盘的持久化存储
 
 测试涵盖：
 - 大规模并发负载测试（50个客户端，50,000次操作）
@@ -31,7 +31,7 @@
 - **操作系统**: macOS Darwin 24.6.0
 - **CPU 架构**: x86_64
 - **Go 版本**: Go 1.21+
-- **RocksDB 版本**: 最新稳定版
+- **Pebble 版本**: 最新稳定版
 - **测试模式**: 单节点 Raft 共识
 
 ### 系统配置
@@ -81,7 +81,7 @@ Raft 配置:
 - 稳定的吞吐量
 - 可预测的延迟
 
-#### RocksDB 存储引擎
+#### Pebble 存储引擎
 
 ```
 [待测试完成后填充]
@@ -93,7 +93,7 @@ Raft 配置:
 测试时长: [PENDING]
 ```
 
-**预期**: RocksDB 由于磁盘 I/O 开销，吞吐量可能为 Memory 的 60-80%
+**预期**: Pebble 由于磁盘 I/O 开销，吞吐量可能为 Memory 的 60-80%
 
 ---
 
@@ -102,7 +102,7 @@ Raft 配置:
 **测试参数**:
 - 测试时长: 30 秒
 - 并发客户端: 20
-- 目标速率: Memory 100 ops/sec/client, RocksDB 50 ops/sec/client
+- 目标速率: Memory 100 ops/sec/client, Pebble 50 ops/sec/client
 
 #### Memory 存储引擎
 
@@ -115,7 +115,7 @@ Raft 配置:
 
 **评价**: ✅ 优秀稳定性
 
-#### RocksDB 存储引擎
+#### Pebble 存储引擎
 
 ```
 [待测试完成后填充]
@@ -153,7 +153,7 @@ Raft 配置:
 - 吞吐量在混合负载下提升 40%（相比大规模负载测试）
 - 零错误率展示优秀可靠性
 
-#### RocksDB 存储引擎
+#### Pebble 存储引擎
 
 ```
 [待测试完成后填充]
@@ -178,7 +178,7 @@ Raft 配置:
 事件吞吐量: [PENDING]
 ```
 
-#### RocksDB 存储引擎
+#### Pebble 存储引擎
 
 ```
 [待测试完成后填充]
@@ -199,7 +199,7 @@ Raft 配置:
 [待测试完成后填充]
 ```
 
-#### RocksDB 存储引擎
+#### Pebble 存储引擎
 
 ```
 [待测试完成后填充]
@@ -209,7 +209,7 @@ Raft 配置:
 
 ## 性能对比总表
 
-| 测试项目 | Memory | RocksDB | 性能差异 | 优胜者 |
+| 测试项目 | Memory | Pebble | 性能差异 | 优胜者 |
 |---------|--------|---------|---------|--------|
 | **大规模负载** |  |  |  |  |
 | 吞吐量 (ops/sec) | 921.47 | [PENDING] | [PENDING] | [PENDING] |
@@ -284,7 +284,7 @@ Raft 配置:
 
 ---
 
-### RocksDB 存储引擎
+### Pebble 存储引擎
 
 #### 优势（预期）
 
@@ -350,7 +350,7 @@ Raft 配置:
    - 自定义存储引擎调优
    - 高级缓存策略
 
-### RocksDB 存储引擎优化
+### Pebble 存储引擎优化
 
 1. **配置调优**
    - Block cache 大小
@@ -386,7 +386,7 @@ Raft 配置:
 
 **建议**: 每节点保持 80% 容量（800 ops/sec）以应对峰值
 
-#### RocksDB 引擎
+#### Pebble 引擎
 
 ```
 [待测试完成后补充]
@@ -405,7 +405,7 @@ Raft 配置:
    - GC 压力
    - WAL 大小
 
-3. **RocksDB 特定**
+3. **Pebble 特定**
    - 压缩进度
    - 磁盘使用率
    - Block cache 命中率
@@ -419,7 +419,7 @@ Raft 配置:
 | P99 延迟 | > 150ms | > 300ms |
 | 错误率 | > 0.1% | > 1% |
 | Memory 内存 | > 80% | > 95% |
-| RocksDB 磁盘 | > 80% | > 90% |
+| Pebble 磁盘 | > 80% | > 90% |
 
 ---
 
@@ -427,7 +427,7 @@ Raft 配置:
 
 ### 与 etcd v3 对比
 
-| 指标 | etcd v3 | MetaStore (Memory) | MetaStore (RocksDB) | 状态 |
+| 指标 | etcd v3 | MetaStore (Memory) | MetaStore (Pebble) | 状态 |
 |-----|---------|-------------------|-------------------|------|
 | 单键 PUT | ~2,000 ops/sec | 921 ops/sec | [PENDING] | ⚠️ 50% |
 | 混合负载 | ~1,500 ops/sec | 1,300 ops/sec | [PENDING] | ✅ 87% |
@@ -452,7 +452,7 @@ Raft 配置:
 
 **推荐工作负载**: 每节点最多 800 ops/sec（80% 容量），配置 20% 冗余应对峰值
 
-### RocksDB 存储引擎
+### Pebble 存储引擎
 
 **生产就绪度**: [待测试完成后评估]
 
@@ -470,9 +470,9 @@ Raft 配置:
    - [test/performance_test.go](test/performance_test.go)
    - 输出: `/tmp/perf_test_results.txt`
 
-2. **RocksDB 测试**:
-   - [test/performance_rocksdb_test.go](test/performance_rocksdb_test.go)
-   - 输出: `/tmp/rocksdb_perf_test_results.txt`
+2. **Pebble 测试**:
+   - [test/performance_pebble_test.go](test/performance_pebble_test.go)
+   - 输出: `/tmp/pebble_perf_test_results.txt`
 
 3. **测试脚本**:
    - [scripts/run_load_test.sh](scripts/run_load_test.sh)
@@ -485,9 +485,9 @@ Raft 配置:
 CGO_ENABLED=1 CGO_LDFLAGS="..." \
 go test -timeout=20m -v -run="^TestPerformance_" ./test
 
-# RocksDB 性能测试
+# Pebble 性能测试
 CGO_ENABLED=1 CGO_LDFLAGS="..." \
-go test -timeout=20m -v -run="^TestPerformanceRocksDB_" ./test
+go test -timeout=20m -v -run="^TestPerformancePebble_" ./test
 
 # 对比测试（自动化）
 ./scripts/run_comparison_test.sh
@@ -497,13 +497,13 @@ go test -timeout=20m -v -run="^TestPerformanceRocksDB_" ./test
 
 完整测试日志:
 - Memory: `test-reports/memory_performance_[timestamp].txt`
-- RocksDB: `test-reports/rocksdb_performance_[timestamp].txt`
+- Pebble: `test-reports/pebble_performance_[timestamp].txt`
 
 ---
 
 **报告生成时间**: 2025-01-29
 **版本**: 1.0 - 进行中
-**状态**: 🔄 测试运行中，等待 RocksDB 测试完成
+**状态**: 🔄 测试运行中，等待 Pebble 测试完成
 
 ---
 

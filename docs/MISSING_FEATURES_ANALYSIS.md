@@ -477,12 +477,12 @@
 ### 6.4 存储优化 (3%)
 
 #### 当前状态
-- ✅ RocksDB 基础配置
+- ✅ Pebble 基础配置
 - ❌ 无性能调优
 - ❌ 无缓存策略
 
 #### 需要优化
-1. **RocksDB 调优**
+1. **Pebble 调优**
    ```go
    opts.SetMaxBackgroundJobs(4)
    opts.SetMaxOpenFiles(1000)
@@ -491,7 +491,7 @@
    opts.SetTargetFileSizeBase(64 * 1024 * 1024)
    opts.SetBlockSize(16 * 1024)
    opts.SetBlockCache(cache)
-   opts.SetCompression(gorocksdb.LZ4Compression)
+   opts.SetCompression(gopebble.LZ4Compression)
    ```
 
 2. **缓存策略**
@@ -574,7 +574,7 @@
      member-id: 1
    
    storage:
-     type: rocksdb
+     type: pebble
      data-dir: /data
    
    security:

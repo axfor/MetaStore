@@ -13,7 +13,7 @@ Successfully completed **all critical Phase 1 & Phase 2 tasks**, bringing MetaSt
 **Key Achievements**:
 - ✅ **Complete Observability** (20+ Prometheus metrics)
 - ✅ **99% Allocation Reduction** (object pooling)
-- ✅ **Production-Grade Compaction** (RocksDB integration)
+- ✅ **Production-Grade Compaction** (Pebble integration)
 - ✅ **Health Check System** (Kubernetes-ready)
 - ✅ **Comprehensive Documentation** (5 major guides)
 
@@ -102,23 +102,23 @@ Improvement: 99.7% memory reduction, 99% allocation reduction
 **Time**: ~2 hours | **Files**: 2 | **Lines**: 388
 
 **Achievements**:
-- Lightweight design leveraging RocksDB features
+- Lightweight design leveraging Pebble features
 - Records compacted revision for query validation
-- Triggers RocksDB physical compaction (SST merging)
+- Triggers Pebble physical compaction (SST merging)
 - Cleans up expired Lease metadata
 - **Performance**: <200ms typical compaction
 
 **Files Created**:
-- `internal/rocksdb/kvstore.go` (+130 lines)
-- `internal/rocksdb/compact_test.go` (258 lines)
+- `internal/pebble/kvstore.go` (+130 lines)
+- `internal/pebble/compact_test.go` (258 lines)
 
 **Test Results**: ✅ 5/5 tests passing (83.2s total)
 ```
-TestRocksDB_Compact_Basic              ✅ PASS (4.53s)
-TestRocksDB_Compact_Validation         ✅ PASS (2.52s)
-TestRocksDB_Compact_ExpiredLeases      ✅ PASS (2.66s)
-TestRocksDB_Compact_PhysicalCompaction ✅ PASS (64.04s)
-TestRocksDB_Compact_Sequential         ✅ PASS (9.02s)
+TestPebble_Compact_Basic              ✅ PASS (4.53s)
+TestPebble_Compact_Validation         ✅ PASS (2.52s)
+TestPebble_Compact_ExpiredLeases      ✅ PASS (2.66s)
+TestPebble_Compact_PhysicalCompaction ✅ PASS (64.04s)
+TestPebble_Compact_Sequential         ✅ PASS (9.02s)
 ```
 
 ---
@@ -268,7 +268,7 @@ All implementations followed the **"Leverage Existing Tools, Don't Reinvent"** p
    - Automatic sizing
    - GC-aware
 
-3. **RocksDB LSM-Tree** ✅
+3. **Pebble LSM-Tree** ✅
    - Mature compaction algorithms
    - Auto-compaction + manual CompactRange
    - No need for custom MVCC
@@ -297,7 +297,7 @@ All implementations followed the **"Leverage Existing Tools, Don't Reinvent"** p
 13. `pkg/health/disk_unix.go` (45)
 14. `pkg/health/disk_windows.go` (30)
 15. `pkg/health/health_test.go` (330)
-16. `internal/rocksdb/compact_test.go` (258)
+16. `internal/pebble/compact_test.go` (258)
 
 **Documentation** (8):
 17. `docs/PHASE1_P0_IMPLEMENTATION_REPORT.md`
@@ -325,7 +325,7 @@ All implementations followed the **"Leverage Existing Tools, Don't Reinvent"** p
 - `internal/memory/store.go` (context + method signatures)
 - `internal/memory/watch.go` (context)
 - `internal/memory/kvstore.go` (context)
-- `internal/rocksdb/kvstore.go` (context + Compact implementation)
+- `internal/pebble/kvstore.go` (context + Compact implementation)
 - `api/http/server.go` (context)
 - `pkg/grpc/server.go` (metrics integration)
 

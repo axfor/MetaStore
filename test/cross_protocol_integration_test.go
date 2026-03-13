@@ -27,7 +27,7 @@ import (
 
 	"metaStore/internal/memory"
 	"metaStore/internal/raft"
-	"metaStore/internal/rocksdb"
+	"metaStore/internal/pebbledb"
 	etcdapi "metaStore/api/etcd"
 	httpapi "metaStore/internal/http"
 
@@ -505,24 +505,24 @@ func TestCrossProtocolMemoryDataInteroperability(t *testing.T) {
 	os.RemoveAll("data/memory/1")
 }
 
-// TestCrossProtocolRocksDBDataInteroperability tests cross-protocol data access with RocksDB
-func TestCrossProtocolRocksDBDataInteroperability(t *testing.T) {
+// TestCrossProtocolPebbleDataInteroperability tests cross-protocol data access with Pebble
+func TestCrossProtocolPebbleDataInteroperability(t *testing.T) {
 	// Setup: Create a single storage instance with both HTTP and etcd interfaces
 	peers := []string{"http://127.0.0.1:10301"}
 
 	// Clean up data directory
-	os.RemoveAll("data/rocksdb/1")
+	os.RemoveAll("data/pebble/1")
 
 	proposeC := make(chan string, 1)
 	confChangeC := make(chan raftpb.ConfChange, 1)
 
-	// Open RocksDB
-	dbPath := "data/rocksdb/1/kv"
+	// Open Pebble
+	dbPath := "data/pebble/1/kv"
 	os.MkdirAll(dbPath, 0755)
-	db, err := rocksdb.Open(dbPath)
+	db, err := pebbledb.Open(dbPath)
 	require.NoError(t, err)
 
-	var kvs *rocksdb.RocksDB
+	var kvs *pebbledb.PebbleDB
 	getSnapshot := func() ([]byte, error) {
 		if kvs == nil {
 			return nil, nil
@@ -530,9 +530,9 @@ func TestCrossProtocolRocksDBDataInteroperability(t *testing.T) {
 		return kvs.GetSnapshot()
 	}
 
-	commitC, errorC, snapshotterReady, _ := raft.NewNodeRocksDB(1, peers, false, getSnapshot, proposeC, confChangeC, db, "data/rocksdb/1", NewTestConfig(1, 1, ":2379"))
+	commitC, errorC, snapshotterReady, _ := raft.NewNodePebble(1, peers, false, getSnapshot, proposeC, confChangeC, db, "data/pebble/1", NewTestConfig(1, 1, ":2379"))
 
-	kvs = rocksdb.NewRocksDB(db, <-snapshotterReady, proposeC, commitC, errorC)
+	kvs = pebbledb.NewPebbleDB(db, <-snapshotterReady, proposeC, commitC, errorC)
 
 	// Start HTTP API server
 	httpListener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -899,6 +899,6 @@ func TestCrossProtocolRocksDBDataInteroperability(t *testing.T) {
 	<-errorC
 	etcdServer.Stop()
 	db.Close()
-	os.RemoveAll("data/rocksdb/1")
+	os.RemoveAll("data/pebble/1")
 }
 

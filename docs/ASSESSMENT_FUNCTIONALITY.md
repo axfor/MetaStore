@@ -335,7 +335,7 @@ func (s *LeaseServer) LeaseTimeToLive(ctx context.Context, req *pb.LeaseTimeToLi
 **功能**:
 - ✅ API 兼容
 - ⚠️  实际未执行（只返回成功）
-- 说明：委托给 RocksDB 自动压缩
+- 说明：委托给 Pebble 自动压缩
 
 **代码质量**: 良好（符合设计）
 

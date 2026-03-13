@@ -393,7 +393,7 @@ grafana/
 ```
 1. 设计 Compact 算法 [2h]
 2. 实现 Memory Store Compact [2h]
-3. 实现 RocksDB Store Compact [2h]
+3. 实现 Pebble Store Compact [2h]
 4. 添加测试 [2h]
 5. 性能测试 [1h]
 ```
@@ -735,7 +735,7 @@ examples/
 
 3. **Compact 实现**
    - **风险**: 数据丢失或损坏
-   - **缓解**: 充分测试，先实现 Memory，再实现 RocksDB
+   - **缓解**: 充分测试，先实现 Memory，再实现 Pebble
    - **影响**: 中 - 影响数据完整性
 
 4. **Context 传递改动**

@@ -25,7 +25,7 @@ This directory contains all documentation for the Distributed KV Store project.
 **Implementation Details** - Deep dive into technical architecture
 - Project overview and accomplishments
 - Core component implementations
-- RocksDB storage engine details
+- Pebble storage engine details
 - Architecture diagrams
 - Key design decisions
 - Storage mode comparison
@@ -60,10 +60,10 @@ This directory contains all documentation for the Distributed KV Store project.
 
 ---
 
-### RocksDB Specific Documentation
+### Pebble Specific Documentation
 
-#### [ROCKSDB_TEST_GUIDE.md](ROCKSDB_TEST_GUIDE.md)
-**RocksDB Test Guide** - How to run RocksDB tests
+#### [PEBBLE_TEST_GUIDE.md](PEBBLE_TEST_GUIDE.md)
+**Pebble Test Guide** - How to run Pebble tests
 - Environment limitations
 - Linux/macOS/Windows setup
 - Docker testing approach
@@ -73,8 +73,8 @@ This directory contains all documentation for the Distributed KV Store project.
 
 **Audience**: QA engineers, testers, DevOps
 
-#### [ROCKSDB_TEST_REPORT.md](ROCKSDB_TEST_REPORT.md)
-**RocksDB Test Report** - Expected test results
+#### [PEBBLE_TEST_REPORT.md](PEBBLE_TEST_REPORT.md)
+**Pebble Test Report** - Expected test results
 - Simulated test environment
 - Complete test output
 - Test statistics (100% pass rate)
@@ -86,7 +86,7 @@ This directory contains all documentation for the Distributed KV Store project.
 
 **Audience**: QA engineers, performance analysts
 
-#### [ROCKSDB_3NODE_TEST_REPORT.md](ROCKSDB_3NODE_TEST_REPORT.md)
+#### [PEBBLE_3NODE_TEST_REPORT.md](PEBBLE_3NODE_TEST_REPORT.md)
 **3-Node Cluster Test Report** - Multi-node cluster testing results
 - 3-node cluster setup and testing
 - Cluster consensus verification
@@ -94,17 +94,17 @@ This directory contains all documentation for the Distributed KV Store project.
 
 **Audience**: QA engineers, DevOps
 
-#### [ROCKSDB_BUILD_MACOS.md](ROCKSDB_BUILD_MACOS.md)
-**macOS RocksDB构建指南（中文）** - macOS environment setup
-- RocksDB installation guide for macOS
+#### [PEBBLE_BUILD_MACOS.md](PEBBLE_BUILD_MACOS.md)
+**macOS Pebble构建指南（中文）** - macOS environment setup
+- Pebble installation guide for macOS
 - SDK compatibility solutions
 - Build troubleshooting
 
 **Audience**: macOS developers
 
-#### [ROCKSDB_BUILD_MACOS_EN.md](ROCKSDB_BUILD_MACOS_EN.md)
-**macOS RocksDB Build Guide (English)** - macOS environment setup
-- RocksDB installation guide for macOS
+#### [PEBBLE_BUILD_MACOS_EN.md](PEBBLE_BUILD_MACOS_EN.md)
+**macOS Pebble Build Guide (English)** - macOS environment setup
+- Pebble installation guide for macOS
 - SDK compatibility solutions
 - Build troubleshooting
 
@@ -156,8 +156,8 @@ This directory contains all documentation for the Distributed KV Store project.
 4. Follow [GIT_COMMIT.md](GIT_COMMIT.md) for contributions
 
 ### For Testers
-1. Check [ROCKSDB_TEST_GUIDE.md](ROCKSDB_TEST_GUIDE.md)
-2. Review [ROCKSDB_TEST_REPORT.md](ROCKSDB_TEST_REPORT.md)
+1. Check [PEBBLE_TEST_GUIDE.md](PEBBLE_TEST_GUIDE.md)
+2. Review [PEBBLE_TEST_REPORT.md](PEBBLE_TEST_REPORT.md)
 3. Run test suites
 
 ### For Project Managers
@@ -176,11 +176,11 @@ This directory contains all documentation for the Distributed KV Store project.
 | IMPLEMENTATION.md | 9.6KB | Technical | ✅ Complete |
 | PROJECT_SUMMARY.md | 11KB | Technical | ✅ Complete |
 | FILES_CHECKLIST.md | 6.9KB | Technical | ✅ Complete |
-| ROCKSDB_TEST_GUIDE.md | 6.3KB | RocksDB | ✅ Complete |
-| ROCKSDB_TEST_REPORT.md | 10KB | RocksDB | ✅ Complete |
-| ROCKSDB_3NODE_TEST_REPORT.md | 6.4KB | RocksDB | ✅ Complete |
-| ROCKSDB_BUILD_MACOS.md | 40KB | RocksDB | ✅ Complete |
-| ROCKSDB_BUILD_MACOS_EN.md | 40KB | RocksDB | ✅ Complete |
+| PEBBLE_TEST_GUIDE.md | 6.3KB | Pebble | ✅ Complete |
+| PEBBLE_TEST_REPORT.md | 10KB | Pebble | ✅ Complete |
+| PEBBLE_3NODE_TEST_REPORT.md | 6.4KB | Pebble | ✅ Complete |
+| PEBBLE_BUILD_MACOS.md | 40KB | Pebble | ✅ Complete |
+| PEBBLE_BUILD_MACOS_EN.md | 40KB | Pebble | ✅ Complete |
 | GIT_COMMIT.md | 5.5KB | Development | ✅ Complete |
 | TEST_COVERAGE_REPORT.md | 4.9KB | Development | ✅ Complete |
 | DIRECTORY_STRUCTURE_CHANGE_REPORT.md | 12KB | Development | ✅ Complete |
@@ -199,8 +199,8 @@ This directory contains all documentation for the Distributed KV Store project.
 **I want to understand how it works**
 → Read [IMPLEMENTATION.md](IMPLEMENTATION.md)
 
-**I want to test RocksDB version**
-→ Read [ROCKSDB_TEST_GUIDE.md](ROCKSDB_TEST_GUIDE.md)
+**I want to test Pebble version**
+→ Read [PEBBLE_TEST_GUIDE.md](PEBBLE_TEST_GUIDE.md)
 
 **I want to contribute code**
 → Read [GIT_COMMIT.md](GIT_COMMIT.md)
@@ -229,8 +229,8 @@ All documentation is kept in sync with the codebase. When making changes:
 
 - [Raft Consensus Algorithm](http://raftconsensus.github.io/)
 - [etcd/raft Library](https://github.com/etcd-io/raft)
-- [RocksDB Documentation](https://rocksdb.org/)
-- [grocksdb Go Wrapper](https://github.com/linxGnu/grocksdb)
+- [Pebble Documentation](https://pebble.org/)
+- [gpebble Go Wrapper](https://github.com/linxGnu/gpebble)
 
 ---
 

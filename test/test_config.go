@@ -51,12 +51,12 @@ func NewTestConfig(nodeID, clusterID uint64, address string, opts ...func(*confi
 	cfg.Server.Reliability.ShutdownTimeout = 5 * time.Second
 	cfg.Server.Reliability.DrainTimeout = 2 * time.Second
 
-	// RocksDB: testenvironmentusesmallcache
-	cfg.Server.RocksDB.BlockCacheSize = 8 * 1024 * 1024    // 8MB
-	cfg.Server.RocksDB.WriteBufferSize = 4 * 1024 * 1024   // 4MB
-	cfg.Server.RocksDB.MaxWriteBufferNumber = 2
-	cfg.Server.RocksDB.MaxBackgroundJobs = 2
-	cfg.Server.RocksDB.BloomFilterBitsPerKey = 10
+	// Pebble: testenvironmentusesmallcache
+	cfg.Server.Pebble.BlockCacheSize = 8 * 1024 * 1024    // 8MB
+	cfg.Server.Pebble.WriteBufferSize = 4 * 1024 * 1024   // 4MB
+	cfg.Server.Pebble.MaxWriteBufferNumber = 2
+	cfg.Server.Pebble.MaxBackgroundJobs = 2
+	cfg.Server.Pebble.BloomFilterBitsPerKey = 10
 
 	// Raft: testenvironmentuseoptimizeconfig(inherit DefaultConfig)
 	// defaultvalue(already optimize)：
@@ -93,11 +93,11 @@ func WithLimits(maxWatch, maxLease, maxConnections int) func(*config.Config) {
 	}
 }
 
-// WithRocksDBConfig custom RocksDB config
-func WithRocksDBConfig(blockCache, writeBuffer uint64) func(*config.Config) {
+// WithPebbleConfig custom Pebble config
+func WithPebbleConfig(blockCache, writeBuffer uint64) func(*config.Config) {
 	return func(cfg *config.Config) {
-		cfg.Server.RocksDB.BlockCacheSize = blockCache
-		cfg.Server.RocksDB.WriteBufferSize = writeBuffer
+		cfg.Server.Pebble.BlockCacheSize = blockCache
+		cfg.Server.Pebble.WriteBufferSize = writeBuffer
 	}
 }
 
@@ -140,10 +140,10 @@ func WithProductionLike() func(*config.Config) {
 	return func(cfg *config.Config) {
 		cfg.Server.Auth.BcryptCost = 10
 		cfg.Server.Auth.TokenTTL = 1 * time.Hour
-		cfg.Server.RocksDB.BlockCacheSize = 512 * 1024 * 1024   // 512MB
-		cfg.Server.RocksDB.WriteBufferSize = 64 * 1024 * 1024   // 64MB
-		cfg.Server.RocksDB.MaxWriteBufferNumber = 3
-		cfg.Server.RocksDB.MaxBackgroundJobs = 4
+		cfg.Server.Pebble.BlockCacheSize = 512 * 1024 * 1024   // 512MB
+		cfg.Server.Pebble.WriteBufferSize = 64 * 1024 * 1024   // 64MB
+		cfg.Server.Pebble.MaxWriteBufferNumber = 3
+		cfg.Server.Pebble.MaxBackgroundJobs = 4
 		cfg.Server.Maintenance.SnapshotChunkSize = 16 * 1024 * 1024 // 16MB
 	}
 }

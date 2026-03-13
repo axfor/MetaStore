@@ -77,15 +77,15 @@ BenchmarkLeaseManyKeysGOB-8          87558    40773 ns/op  (~40.8μs)
 #### 实现亮点
 
 - ✅ 统一转换 API（`internal/common/lease_converter.go`）
-- ✅ Memory 和 RocksDB 双引擎支持
+- ✅ Memory 和 Pebble 双引擎支持
 - ✅ 自动格式检测（`LEASE-PB:` 前缀）
 - ✅ 向后兼容 GOB 旧数据
-- ✅ 8 处 RocksDB 序列化替换
+- ✅ 8 处 Pebble 序列化替换
 
 **文件**:
 - `internal/common/lease_converter.go` - 统一转换器（118 行）
 - `internal/common/lease_converter_test.go` - 测试（338 行）
-- `internal/rocksdb/kvstore.go` - 8 处替换
+- `internal/pebble/kvstore.go` - 8 处替换
 
 **详细报告**: [LEASE_PROTOBUF_OPTIMIZATION_REPORT.md](./LEASE_PROTOBUF_OPTIMIZATION_REPORT.md)
 
@@ -131,24 +131,24 @@ Throughput: 863,173.01 ops/sec  (~863K ops/sec)
 
 ---
 
-## RocksDB 引擎性能测试
+## Pebble 引擎性能测试
 
 ### 集成测试结果
 
 #### Lease 操作测试
 
-✅ **TestLease_RocksDB** - 6.42s
+✅ **TestLease_Pebble** - 6.42s
 - Lease Grant, Renew, Revoke
 - 所有 Lease 操作正常
 
-✅ **TestLeaseExpiry_RocksDB** - 8.86s
+✅ **TestLeaseExpiry_Pebble** - 8.86s
 - Lease 自动过期和清理
 - 正确删除过期 Lease
 
 ### 性能测试状态
 
 ⚠️ **大规模性能测试超时**
-- `TestRocksDBPerformance_LargeScaleLoad` 超时（>180s）
+- `TestPebblePerformance_LargeScaleLoad` 超时（>180s）
 - 原因：测试负载过大或配置不当
 - **建议**: 优化测试设计，分批次测试
 
@@ -193,7 +193,7 @@ Throughput: 863,173.01 ops/sec  (~863K ops/sec)
 #### Lease 优化
 - ✅ 功能测试: 5/5 通过
 - ✅ 向后兼容测试: 1/1 通过
-- ✅ 集成测试: 2/2 通过（RocksDB）
+- ✅ 集成测试: 2/2 通过（Pebble）
 - ✅ 性能基准测试: 4/4 完成
 
 #### Memory 引擎
@@ -272,7 +272,7 @@ Throughput: 863,173.01 ops/sec  (~863K ops/sec)
 - ✅ 快照 Protobuf（本次完成）
 - ✅ Lease Protobuf（本次完成）
 
-### RocksDB 优化 ✅
+### Pebble 优化 ✅
 
 - ✅ WriteBatch 批量写入
 - ✅ Lease Protobuf 序列化
@@ -290,7 +290,7 @@ Throughput: 863,173.01 ops/sec  (~863K ops/sec)
    - 预期提升: +30%
    - 工作量: 1-2 天
 
-2. ⏳ **RocksDB 配置调优**
+2. ⏳ **Pebble 配置调优**
    - Block Cache 调整
    - Write Buffer 优化
    - Compaction 调优
@@ -301,7 +301,7 @@ Throughput: 863,173.01 ops/sec  (~863K ops/sec)
 
 3. ⏳ **性能测试优化**
    - 修复大规模性能测试超时问题
-   - 建立 RocksDB 性能基线
+   - 建立 Pebble 性能基线
    - 添加更多微基准测试
 
 ---
@@ -323,7 +323,7 @@ Throughput: 863,173.01 ops/sec  (~863K ops/sec)
 ### 中期规划（1-2 周）
 
 1. 完成 gRPC 优化
-2. RocksDB 配置调优
+2. Pebble 配置调优
 3. 端到端性能测试
 4. 性能回归测试套件
 
@@ -343,7 +343,7 @@ Throughput: 863,173.01 ops/sec  (~863K ops/sec)
    - 影响: 降级到旧版本无法读取 Protobuf 数据
    - 缓解: 升级前备份，保留旧版本
 
-2. **RocksDB 性能测试不稳定** ⚠️
+2. **Pebble 性能测试不稳定** ⚠️
    - 影响: 无法建立完整性能基线
    - 缓解: 优化测试设计，分批次测试
 
@@ -400,8 +400,8 @@ go test ./internal/memory -v
 # Memory 基准测试
 go test ./internal/memory -bench=. -benchtime=3s
 
-# RocksDB 集成测试
-CGO_ENABLED=1 CGO_LDFLAGS="-lrocksdb ..." go test ./test -run "Lease" -v
+# Pebble 集成测试
+CGO_ENABLED=1 CGO_LDFLAGS="-lpebble ..." go test ./test -run "Lease" -v
 
 # Lease 性能测试
 go test ./internal/common -bench="BenchmarkLease" -benchtime=3s

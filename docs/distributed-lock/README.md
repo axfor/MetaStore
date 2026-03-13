@@ -76,10 +76,10 @@ if err != nil {
 
 所有关键测试通过:
 ```
-✅ TestRocksDB_MutexLockUnlock         (32.84s)
-✅ TestRocksDB_MutexFIFOOrder          (32.77s)  - 修复
-✅ TestRocksDB_MutexReleaseOnSessionClose (32.73s) - 修复
-✅ TestRocksDB_ElectionCampaign        (32.31s)
+✅ TestPebble_MutexLockUnlock         (32.84s)
+✅ TestPebble_MutexFIFOOrder          (32.77s)  - 修复
+✅ TestPebble_MutexReleaseOnSessionClose (32.73s) - 修复
+✅ TestPebble_ElectionCampaign        (32.31s)
 ```
 
 ## 对比 etcd 官方实现
@@ -94,8 +94,8 @@ if err != nil {
 
 ## 修改的文件
 
-1. **测试文件**: [test/distributed_lock_rocksdb_test.go](../../test/distributed_lock_rocksdb_test.go)
-2. **存储引擎**: [internal/rocksdb/kvstore.go](../../internal/rocksdb/kvstore.go)
+1. **测试文件**: [test/distributed_lock_pebble_test.go](../../test/distributed_lock_pebble_test.go)
+2. **存储引擎**: [internal/pebble/kvstore.go](../../internal/pebble/kvstore.go)
 3. **Mutex 实现**: [pkg/concurrency/mutex.go](../../pkg/concurrency/mutex.go)
 4. **Election 实现**: [pkg/concurrency/election.go](../../pkg/concurrency/election.go)
 

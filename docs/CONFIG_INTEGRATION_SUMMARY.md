@@ -165,7 +165,7 @@ All tests pass successfully with the new configuration system:
 
 ### Production (with config file)
 ```bash
-./metastore --config=configs/prod.yaml --storage=rocksdb
+./metastore --config=configs/prod.yaml --storage=pebble
 ```
 
 ### Debugging (env var override)

@@ -20,13 +20,13 @@
 
 **实现方案**:
 
-#### RocksDB 引擎
+#### Pebble 引擎
 ```go
 func (s *MaintenanceServer) Defragment(ctx context.Context, req *pb.DefragmentRequest) (*pb.DefragmentResponse, error) {
-    // 对于 RocksDB，调用 CompactRange
-    if rocksStore, ok := s.server.store.(*rocksdb.RocksDB); ok {
+    // 对于 Pebble，调用 CompactRange
+    if pebbleStore, ok := s.server.store.(*pebbledb.PebbleDB); ok {
         // 对所有数据执行 full compaction
-        if err := rocksStore.CompactRange(nil, nil); err != nil {
+        if err := pebbleStore.CompactRange(nil, nil); err != nil {
             return nil, toGRPCError(err)
         }
     }
@@ -361,7 +361,7 @@ type Store interface {
 }
 ```
 
-#### 在 Memory 和 RocksDB 实现
+#### 在 Memory 和 Pebble 实现
 
 ```go
 // internal/memory/kvstore.go
@@ -421,7 +421,7 @@ func (m *Memory) GetRaftStatus() kvstore.RaftStatus {
 ## 5. 测试计划
 
 ### 5.1 Defragment 测试
-- RocksDB 碎片整理前后大小对比
+- Pebble 碎片整理前后大小对比
 - 整理后数据完整性验证
 
 ### 5.2 Hash/HashKV 测试
@@ -446,7 +446,7 @@ func (m *Memory) GetRaftStatus() kvstore.RaftStatus {
 ### 代码实现
 - [ ] 修改 internal/kvstore/store.go 添加 GetRaftStatus
 - [ ] 实现 Memory.GetRaftStatus
-- [ ] 实现 RocksDB.GetRaftStatus
+- [ ] 实现 Pebble.GetRaftStatus
 - [ ] 完善 maintenance.go 中的 TODO 方法
 - [ ] 创建 api/etcd/alarm_manager.go
 

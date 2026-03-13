@@ -305,7 +305,7 @@ func (s *MaintenanceServer) Defragment(...) (*pb.DefragmentResponse, error) {
 **Issue**: Only returns success response, no actual defragmentation
 
 **Impact**:
-- RocksDB may become fragmented after long-term operation
+- Pebble may become fragmented after long-term operation
 - Cannot optimize storage space usage
 
 #### 2.2 Hash / HashKV - Not Implemented
@@ -390,9 +390,9 @@ Current implementation:
 
 #### 5.1 Existing Tests
 - ✅ Memory engine single-node tests
-- ✅ RocksDB engine single-node tests
+- ✅ Pebble engine single-node tests
 - ✅ Memory engine cluster consistency tests
-- ✅ RocksDB engine cluster consistency tests
+- ✅ Pebble engine cluster consistency tests
 
 #### 5.2 Test Coverage - Functionality
 - ✅ KV basic operations: Put, Get, Delete
@@ -467,7 +467,7 @@ Current implementation:
 
 4. **Fix Hardcoded RaftTerm** - Affects client judgments
 5. **Fix Leader Detection** - Status API should return actual leader
-6. **Implement Defragment** - Necessary for long-running RocksDB
+6. **Implement Defragment** - Necessary for long-running Pebble
 7. **Implement Hash/HashKV** - Necessary for data consistency verification
 8. **Implement Alarm Mechanism** - Necessary for production monitoring
 
@@ -497,7 +497,7 @@ MetaStore successfully implements the **core data plane** functionality of etcd 
 ✅ **Transaction Support**: Txn semantics fully implemented, Compare-Then-Else atomicity guaranteed
 ✅ **Real-time Watch**: Watch service feature complete, supports historical replay and filtering
 ✅ **Lease Management**: Complete lease lifecycle management, automatic expiration cleanup
-✅ **Dual Engine Support**: Both Memory and RocksDB engines pass tests
+✅ **Dual Engine Support**: Both Memory and Pebble engines pass tests
 ✅ **Cluster Consistency**: Raft consensus ensures cluster data consistency
 ✅ **Cross-Protocol Access**: HTTP API and etcd API share storage
 

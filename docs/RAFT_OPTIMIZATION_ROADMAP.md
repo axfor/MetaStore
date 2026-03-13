@@ -36,7 +36,7 @@
 
 **关键文件需要修改**:
 - `/internal/memory/kvstore.go` - 集成 BatchProposer
-- `/internal/rocksdb/kvstore.go` - 支持批量 Apply
+- `/internal/pebble/kvstore.go` - 支持批量 Apply
 - `/cmd/metastore/main.go` - 配置初始化
 
 **代码实现框架**:
@@ -534,7 +534,7 @@ func (aw *AsyncWALWriter) flushBatch(batch []*WALEntry) error {
 ### 3.2 日志预读优化
 
 ```go
-// internal/rocksdb/prefetch.go
+// internal/pebble/prefetch.go
 
 type PrefetchCache struct {
     cache map[uint64]raftpb.Entry

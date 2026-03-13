@@ -2,10 +2,10 @@
 
 ## 问题描述
 
-在 RocksDB 存储引擎的分布式锁测试中,有两个测试失败:
+在 Pebble 存储引擎的分布式锁测试中,有两个测试失败:
 
-1. **TestRocksDB_MutexFIFOOrder**: FIFO 顺序测试失败,锁获取顺序不符合预期
-2. **TestRocksDB_MutexReleaseOnSessionClose**: Session 关闭后锁释放测试失败,Session2 无法获取锁
+1. **TestPebble_MutexFIFOOrder**: FIFO 顺序测试失败,锁获取顺序不符合预期
+2. **TestPebble_MutexReleaseOnSessionClose**: Session 关闭后锁释放测试失败,Session2 无法获取锁
 
 ## 根本原因
 
@@ -18,7 +18,7 @@
   3. 主线程等待每个 Session 创建完成后再启动下一个
 
 ### 问题 2: Session 关闭后锁无法释放
-- **根本原因**: RocksDB 批量处理模式下,`LEASE_REVOKE` 操作没有触发 Watch 事件
+- **根本原因**: Pebble 批量处理模式下,`LEASE_REVOKE` 操作没有触发 Watch 事件
 - **症状**:
   - Session1 的租约成功撤销 (TTL = -1) ✅
   - Session1 的锁键成功删除 (exists = false) ✅
@@ -26,7 +26,7 @@
 
 ## 修复细节
 
-### 修复 1: TestRocksDB_MutexFIFOOrder
+### 修复 1: TestPebble_MutexFIFOOrder
 
 ```go
 // 两阶段信号机制
@@ -45,7 +45,7 @@ for i := 0; i < numClients; i++ {
 
 ### 修复 2: LEASE_REVOKE Watch 事件触发
 
-**问题代码** ([internal/rocksdb/kvstore.go:365-371](internal/rocksdb/kvstore.go#L365-L371)):
+**问题代码** ([internal/pebble/kvstore.go:365-371](internal/pebble/kvstore.go#L365-L371)):
 ```go
 case "LEASE_REVOKE":
     if err := r.prepareLeaseRevokeBatch(batch, op.LeaseID); err != nil {
@@ -53,7 +53,7 @@ case "LEASE_REVOKE":
     }
 ```
 
-**修复后** ([internal/rocksdb/kvstore.go:365-374](internal/rocksdb/kvstore.go#L365-L374)):
+**修复后** ([internal/pebble/kvstore.go:365-374](internal/pebble/kvstore.go#L365-L374)):
 ```go
 case "LEASE_REVOKE":
     events, err := r.prepareLeaseRevokeBatch(batch, op.LeaseID)
@@ -64,12 +64,12 @@ case "LEASE_REVOKE":
     watchEvents = append(watchEvents, events...) // 收集 Watch 事件
 ```
 
-**修改 prepareLeaseRevokeBatch** ([internal/rocksdb/kvstore.go:896-950](internal/rocksdb/kvstore.go#L896-L950)):
+**修改 prepareLeaseRevokeBatch** ([internal/pebble/kvstore.go:896-950](internal/pebble/kvstore.go#L896-L950)):
 ```go
 // 修改前: func prepareLeaseRevokeBatch(...) error
 // 修改后: func prepareLeaseRevokeBatch(...) ([]kvstore.WatchEvent, error)
 
-func (r *RocksDB) prepareLeaseRevokeBatch(batch *grocksdb.WriteBatch, leaseID int64) ([]kvstore.WatchEvent, error) {
+func (r *Pebble) prepareLeaseRevokeBatch(batch *gpebble.WriteBatch, leaseID int64) ([]kvstore.WatchEvent, error) {
     // ... 获取 lease
 
     var events []kvstore.WatchEvent
@@ -105,12 +105,12 @@ func (r *RocksDB) prepareLeaseRevokeBatch(batch *grocksdb.WriteBatch, leaseID in
 ## 测试结果
 
 ### 修复前
-- ❌ TestRocksDB_MutexFIFOOrder: 顺序 [1,0,3,2,4] - 失败
-- ❌ TestRocksDB_MutexReleaseOnSessionClose: 10秒超时 - 失败
+- ❌ TestPebble_MutexFIFOOrder: 顺序 [1,0,3,2,4] - 失败
+- ❌ TestPebble_MutexReleaseOnSessionClose: 10秒超时 - 失败
 
 ### 修复后
-- ✅ TestRocksDB_MutexFIFOOrder: 顺序 [0,1,2,3,4] - 通过 (33.08s)
-- ✅ TestRocksDB_MutexReleaseOnSessionClose: Session2 成功获取锁 - 通过 (32.82s)
+- ✅ TestPebble_MutexFIFOOrder: 顺序 [0,1,2,3,4] - 通过 (33.08s)
+- ✅ TestPebble_MutexReleaseOnSessionClose: Session2 成功获取锁 - 通过 (32.82s)
 
 ## 关键技术点
 
@@ -129,17 +129,17 @@ func (r *RocksDB) prepareLeaseRevokeBatch(batch *grocksdb.WriteBatch, leaseID in
 
 ## 修改的文件
 
-1. [test/distributed_lock_rocksdb_test.go](test/distributed_lock_rocksdb_test.go):
-   - TestRocksDB_MutexFIFOOrder: 实现两阶段信号机制
-   - TestRocksDB_MutexReleaseOnSessionClose: 增强日志,验证租约和键状态
+1. [test/distributed_lock_pebble_test.go](test/distributed_lock_pebble_test.go):
+   - TestPebble_MutexFIFOOrder: 实现两阶段信号机制
+   - TestPebble_MutexReleaseOnSessionClose: 增强日志,验证租约和键状态
 
-2. [internal/rocksdb/kvstore.go](internal/rocksdb/kvstore.go):
+2. [internal/pebble/kvstore.go](internal/pebble/kvstore.go):
    - prepareLeaseRevokeBatch: 返回 Watch 事件
    - 批量处理 LEASE_REVOKE: 收集并触发 Watch 事件
 
-## 对比: Memory vs RocksDB
+## 对比: Memory vs Pebble
 
-| 特性 | Memory 引擎 | RocksDB 引擎 |
+| 特性 | Memory 引擎 | Pebble 引擎 |
 |------|------------|-------------|
 | 测试通过率 | 40/40 (100%) | 24/24 (100%) ✅ |
 | FIFO 顺序 | ✅ 正确 | ✅ 修复后正确 |

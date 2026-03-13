@@ -63,10 +63,10 @@
 
 ---
 
-### 🔄 RocksDB 存储引擎测试 - 刚启动
+### 🔄 Pebble 存储引擎测试 - 刚启动
 
 **测试ID**: 8832c5
-**输出**: `/tmp/rocksdb_perf_test_results.txt`
+**输出**: `/tmp/pebble_perf_test_results.txt`
 **当前进度**: 5% 完成
 
 #### 正在运行
@@ -75,13 +75,13 @@
    - 50 个客户端
    - 50,000 次操作
    - 启动时间: 02:56:57
-   - 预计完成时间: 10-15 分钟（RocksDB 较慢）
+   - 预计完成时间: 10-15 分钟（Pebble 较慢）
 
 #### 待运行
 
 2. ⏳ **持续负载测试**
 3. ⏳ **混合工作负载测试**
-4. ⏳ **Compaction 性能测试**（RocksDB 特有）
+4. ⏳ **Compaction 性能测试**（Pebble 特有）
 
 ---
 
@@ -125,7 +125,7 @@
    - 总计可达: ~1,200-1,400 ops/sec
    - **接近 etcd 的 70%**
 
-### RocksDB 存储引擎
+### Pebble 存储引擎
 
 ```
 [测试刚开始，数据收集中...]
@@ -168,7 +168,7 @@ Features:
 
 ### 测试代码
 1. ✅ [test/performance_test.go](../test/performance_test.go) - Memory 测试（6个场景）
-2. ✅ [test/performance_rocksdb_test.go](../test/performance_rocksdb_test.go) - RocksDB 测试（4个场景）
+2. ✅ [test/performance_pebble_test.go](../test/performance_pebble_test.go) - Pebble 测试（4个场景）
 3. ✅ [test/benchmark_test.go](../test/benchmark_test.go) - 微基准测试（14个）
 4. ✅ [test/test_helpers.go](../test/test_helpers.go) - 测试辅助函数
 
@@ -189,8 +189,8 @@ Features:
 - **剩余时间**: 10-15 分钟
 - **完成时间**: 约 03:10
 
-### RocksDB 测试
-- **剩余时间**: 45-60 分钟（RocksDB 较慢）
+### Pebble 测试
+- **剩余时间**: 45-60 分钟（Pebble 较慢）
 - **完成时间**: 约 03:50
 
 ### 总计
@@ -202,7 +202,7 @@ Features:
 ## 下一步
 
 1. ⏳ 等待 Memory 测试完成
-2. ⏳ 等待 RocksDB 测试完成
+2. ⏳ 等待 Pebble 测试完成
 3. ⏳ 运行微基准测试（benchmark）
 4. ⏳ 分析和对比结果
 5. ⏳ 更新完整报告
@@ -216,15 +216,15 @@ Features:
 # 查看 Memory 测试进度
 tail -f /tmp/perf_test_results.txt
 
-# 查看 RocksDB 测试进度
-tail -f /tmp/rocksdb_perf_test_results.txt
+# 查看 Pebble 测试进度
+tail -f /tmp/pebble_perf_test_results.txt
 
 # 查看两者对比
-watch 'tail -20 /tmp/perf_test_results.txt && echo "---" && tail -20 /tmp/rocksdb_perf_test_results.txt'
+watch 'tail -20 /tmp/perf_test_results.txt && echo "---" && tail -20 /tmp/pebble_perf_test_results.txt'
 ```
 
 ---
 
 **更新时间**: 2025-01-29 02:58
 **状态**: 🔄 测试进行中
-**进度**: Memory 60% | RocksDB 5% | 总体 30%
+**进度**: Memory 60% | Pebble 5% | 总体 30%

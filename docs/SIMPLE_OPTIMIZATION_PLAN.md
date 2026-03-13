@@ -135,7 +135,7 @@ func (m *MemoryEtcd) applyTxnWithShardLocks(op RaftOperation) {
 | 并发度 | 1 | 512 | 512x |
 | CPU 利用率 | 15% | 70% | 4.7x |
 | 吞吐量 (Memory) | 975 ops/sec | 10,000+ ops/sec | **10x+** |
-| 吞吐量 (RocksDB) | 349 ops/sec | 3,000+ ops/sec | **8x+** |
+| 吞吐量 (Pebble) | 349 ops/sec | 3,000+ ops/sec | **8x+** |
 
 ### 风险和缓解
 

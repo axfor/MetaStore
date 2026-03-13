@@ -41,7 +41,7 @@
 
 **测试内容**: 验证 Status RPC 返回正确的集群状态
 
-**测试引擎**: Memory, RocksDB
+**测试引擎**: Memory, Pebble
 
 **测试结果**:
 ```
@@ -52,7 +52,7 @@
      - Leader=1
      - RaftTerm=17
      - RaftIndex=114670
-  ✅ PASS: TestMaintenance_Status/RocksDB (3.86s)
+  ✅ PASS: TestMaintenance_Status/Pebble (3.86s)
      - Version=3.6.0-compatible
      - DbSize=11423998
      - Leader=1
@@ -72,7 +72,7 @@
 
 **测试内容**: 验证 Hash RPC 计算数据库 CRC32 哈希
 
-**测试引擎**: Memory, RocksDB
+**测试引擎**: Memory, Pebble
 
 **测试结果**:
 ```
@@ -80,7 +80,7 @@
   ✅ PASS: TestMaintenance_Hash/Memory (3.98s)
      - Hash before: 1186064918
      - Hash after adding data: 901114865
-  ✅ PASS: TestMaintenance_Hash/RocksDB (4.13s)
+  ✅ PASS: TestMaintenance_Hash/Pebble (4.13s)
      - Hash before: 4118585537
      - Hash after adding data: 1994786895
 ```
@@ -88,7 +88,7 @@
 **关键验证点**:
 - ✅ Hash 值在数据变化后发生改变
 - ✅ Memory 引擎的 Hash 保持确定性
-- ✅ RocksDB 引擎正确处理后台压缩
+- ✅ Pebble 引擎正确处理后台压缩
 
 ---
 
@@ -96,7 +96,7 @@
 
 **测试内容**: 验证 HashKV RPC 计算带 revision 的哈希
 
-**测试引擎**: Memory, RocksDB
+**测试引擎**: Memory, Pebble
 
 **测试结果**:
 ```
@@ -104,7 +104,7 @@
   ✅ PASS: TestMaintenance_HashKV/Memory (3.32s)
      - Hash=1937690793
      - CompactRevision=114675
-  ✅ PASS: TestMaintenance_HashKV/RocksDB (4.92s)
+  ✅ PASS: TestMaintenance_HashKV/Pebble (4.92s)
      - Hash=716589241
      - CompactRevision=20002
 ```
@@ -120,14 +120,14 @@
 
 **测试内容**: 验证 Alarm 管理（激活、查询、取消告警）
 
-**测试引擎**: Memory, RocksDB
+**测试引擎**: Memory, Pebble
 
 **测试结果**:
 ```
 ✅ PASS: TestMaintenance_Alarm (5.88s)
   ✅ PASS: TestMaintenance_Alarm/Memory (2.79s)
      - Alarm tests passed successfully
-  ✅ PASS: TestMaintenance_Alarm/RocksDB (3.09s)
+  ✅ PASS: TestMaintenance_Alarm/Pebble (3.09s)
      - Alarm tests passed successfully
 ```
 
@@ -143,14 +143,14 @@
 
 **测试内容**: 验证 Snapshot 流式传输
 
-**测试引擎**: Memory, RocksDB
+**测试引擎**: Memory, Pebble
 
 **测试结果**:
 ```
 ✅ PASS: TestMaintenance_Snapshot (9.66s)
   ✅ PASS: TestMaintenance_Snapshot/Memory (4.33s)
      - Snapshot size: 10869417 bytes
-  ✅ PASS: TestMaintenance_Snapshot/RocksDB (5.34s)
+  ✅ PASS: TestMaintenance_Snapshot/Pebble (5.34s)
      - Snapshot size: 11425146 bytes
 ```
 
@@ -171,19 +171,19 @@
 
 **测试内容**: 验证 Defragment RPC（兼容性 API）
 
-**测试引擎**: Memory, RocksDB
+**测试引擎**: Memory, Pebble
 
 **测试结果**:
 ```
 ✅ PASS: TestMaintenance_Defragment (6.12s)
   ✅ PASS: TestMaintenance_Defragment/Memory (2.75s)
-  ✅ PASS: TestMaintenance_Defragment/RocksDB (3.37s)
+  ✅ PASS: TestMaintenance_Defragment/Pebble (3.37s)
 ```
 
 **关键验证点**:
 - ✅ API 兼容 etcd Maintenance.Defragment
 - ✅ 调用不返回错误
-- ✅ Memory/RocksDB 引擎均支持
+- ✅ Memory/Pebble 引擎均支持
 
 ---
 
@@ -375,13 +375,13 @@ Multi-node cluster setup requires dedicated infrastructure
 
 | 基准测试 | 引擎 | 并发 | 数据规模 | 状态 |
 |---------|------|------|---------|------|
-| **BenchmarkMaintenance_Status** | Memory, RocksDB | 并行 | - | ✅ |
-| **BenchmarkMaintenance_Hash** | Memory, RocksDB | 串行 | 1,000 keys | ✅ |
-| **BenchmarkMaintenance_HashKV** | Memory, RocksDB | 串行 | 1,000 keys | ✅ |
-| **BenchmarkMaintenance_Alarm** | Memory, RocksDB | 串行 | - | ✅ |
-| **BenchmarkMaintenance_Snapshot** | Memory, RocksDB | 串行 | 100/1,000 keys | ✅ |
-| **BenchmarkMaintenance_Defragment** | Memory, RocksDB | 并行 | - | ✅ |
-| **BenchmarkMaintenance_MixedWorkload** | Memory, RocksDB | 并行 | 500 keys | ✅ |
+| **BenchmarkMaintenance_Status** | Memory, Pebble | 并行 | - | ✅ |
+| **BenchmarkMaintenance_Hash** | Memory, Pebble | 串行 | 1,000 keys | ✅ |
+| **BenchmarkMaintenance_HashKV** | Memory, Pebble | 串行 | 1,000 keys | ✅ |
+| **BenchmarkMaintenance_Alarm** | Memory, Pebble | 串行 | - | ✅ |
+| **BenchmarkMaintenance_Snapshot** | Memory, Pebble | 串行 | 100/1,000 keys | ✅ |
+| **BenchmarkMaintenance_Defragment** | Memory, Pebble | 并行 | - | ✅ |
+| **BenchmarkMaintenance_MixedWorkload** | Memory, Pebble | 并行 | 500 keys | ✅ |
 
 ### 5.2 预期性能指标
 
@@ -436,7 +436,7 @@ go tool pprof mem.prof
 
 ### 6.2 引擎覆盖
 
-| 测试类型 | Memory | RocksDB | 覆盖率 |
+| 测试类型 | Memory | Pebble | 覆盖率 |
 |---------|--------|---------|--------|
 | 基础功能测试 | ✅ | ✅ | 100% |
 | 集群测试 | ✅ | - | 50% |
@@ -444,7 +444,7 @@ go tool pprof mem.prof
 | 并发测试 | ✅ | - | 50% |
 | 故障注入 | ✅ | - | 50% |
 
-**说明**: RocksDB 的复杂测试在基础功能测试中已充分覆盖。
+**说明**: Pebble 的复杂测试在基础功能测试中已充分覆盖。
 
 ---
 
@@ -466,11 +466,11 @@ kvs.SetRaftNode(raftNode, uint64(nodeID))
 
 ---
 
-### 7.2 修复 #2: Hash 测试 - RocksDB 哈希不匹配
+### 7.2 修复 #2: Hash 测试 - Pebble 哈希不匹配
 
 **问题**: `Hash mismatch: 196422342 != 1563673256`
 
-**原因**: RocksDB 后台压缩改变快照布局
+**原因**: Pebble 后台压缩改变快照布局
 
 **修复**: 调整测试逻辑，仅验证数据变化后哈希值改变
 
@@ -553,7 +553,7 @@ conn, err := grpc.Dial(clientAddr,
 - 适当的数据规模
 
 ✅ **可维护性**:
-- 辅助函数复用 (startMemoryNode, startRocksDBNode)
+- 辅助函数复用 (startMemoryNode, startPebbleNode)
 - 清晰的测试结构
 - 统一的清理模式 (defer cleanup)
 
@@ -637,7 +637,7 @@ jobs:
 
 ✅ **全面的测试覆盖**
 - 单元测试、集群测试、性能测试、故障测试全覆盖
-- Memory 和 RocksDB 双引擎支持
+- Memory 和 Pebble 双引擎支持
 - 所有 Maintenance Service 功能测试完整
 
 ✅ **高质量代码**
@@ -674,7 +674,7 @@ jobs:
 - ✅ 所有 6 个 API 功能完整且稳定
 - ✅ 通过 20 个功能测试（100% 通过率）
 - ✅ 通过 5 个故障注入测试
-- ✅ 支持 Memory 和 RocksDB 双引擎
+- ✅ 支持 Memory 和 Pebble 双引擎
 - ✅ 完整的错误处理和恢复机制
 - ✅ 高并发、高负载场景验证通过
 - ✅ 完整的文档和运维指南

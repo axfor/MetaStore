@@ -171,14 +171,14 @@ func (rc *raftNode) maybeTriggerSnapshot(applyDoneC <-chan struct{}) {
 
 ---
 
-### 2.5 RocksDB 批量写入优化 (已启用)
+### 2.5 Pebble 批量写入优化 (已启用)
 
-**位置**: `/Users/bast/code/MetaStore/internal/rocksdb/kvstore.go:applyOperationsBatch`
+**位置**: `/Users/bast/code/MetaStore/internal/pebble/kvstore.go:applyOperationsBatch`
 
 ```go
-// 使用 RocksDB WriteBatch 实现原子批量写
-func (r *RocksDB) applyOperationsBatch(ops []*RaftOperation) {
-    batch := grocksdb.NewWriteBatch()
+// 使用 Pebble WriteBatch 实现原子批量写
+func (r *Pebble) applyOperationsBatch(ops []*RaftOperation) {
+    batch := gpebble.NewWriteBatch()
     defer batch.Destroy()
 
     // 批量准备操作
@@ -338,7 +338,7 @@ Pipeline 大小: 1024
 
 **位置**: 
 - Memory: `/Users/bast/code/MetaStore/internal/raft/node_memory.go`
-- RocksDB: `/Users/bast/code/MetaStore/internal/raft/node_rocksdb.go`
+- Pebble: `/Users/bast/code/MetaStore/internal/raft/node_pebble.go`
 
 #### 快照触发
 
@@ -528,13 +528,13 @@ var defaultSnapshotCount uint64 = 10000     // 每 10000 条触发快照
 - 新节点可快速从快照恢复
 - 内存占用可控
 
-### 7.2 RocksDB 日志压缩
+### 7.2 Pebble 日志压缩
 
-**位置**: `/Users/bast/code/MetaStore/internal/rocksdb/raftlog.go:159-215`
+**位置**: `/Users/bast/code/MetaStore/internal/pebble/raftlog.go:159-215`
 
 ```go
 // Entries 读取日志条目，已有 maxSize 限制
-func (s *RocksDBStorage) Entries(lo, hi, maxSize uint64) ([]raftpb.Entry, error) {
+func (s *PebbleStorage) Entries(lo, hi, maxSize uint64) ([]raftpb.Entry, error) {
     var ents []raftpb.Entry
     size := uint64(0)
 
@@ -610,7 +610,7 @@ func (lc *LogCompactor) Run() {
   ✓ 批量 Apply (5-10x)
   ✓ Protobuf 序列化 (3-20.6x)
   ✓ 日志压缩 (10000 条保留)
-  ✓ RocksDB 批量写入
+  ✓ Pebble 批量写入
   ✓ 流控制窗口 (8-16MB)
 
 进行中:
@@ -802,13 +802,13 @@ func (lc *LogCompactor) Run() {
 ```
 核心 Raft 实现:
   /internal/raft/node_memory.go (主要优化点)
-  /internal/raft/node_rocksdb.go
-  /internal/rocksdb/raftlog.go
+  /internal/raft/node_pebble.go
+  /internal/pebble/raftlog.go
   /pkg/config/config.go (配置优化)
 
 应用层:
   /internal/memory/kvstore.go (批量 Apply)
-  /internal/rocksdb/kvstore.go (RocksDB 批量)
+  /internal/pebble/kvstore.go (Pebble 批量)
 
 测试:
   /test/benchmark_test.go

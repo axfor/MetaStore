@@ -101,7 +101,7 @@ BatchProposer 设计用于：
 
 // 使用原始构造函数
 kvs = memory.NewMemory(<-snapshotterReady, proposeC, commitC, errorC)
-kvs = rocksdb.NewRocksDB(db, <-snapshotterReady, proposeC, commitC, errorC)
+kvs = pebble.NewPebble(db, <-snapshotterReady, proposeC, commitC, errorC)
 ```
 
 **预期**:

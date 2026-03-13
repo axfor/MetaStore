@@ -35,7 +35,7 @@ cd $pre_dir
 
 cp $pre_dir/../metaStore raft-cluster-test/
 cd raft-cluster-test 
-mkdir -p data/rocksdb/{1,2,3}
+mkdir -p data/pebble/{1,2,3}
 
 # 启动3个节点
 echo "2. 启动3节点集群（后台）..." 
@@ -49,7 +49,7 @@ CLUSTER="http://127.0.0.1:9021,http://127.0.0.1:9022,http://127.0.0.1:9023"
   --cluster=$CLUSTER \
   --port=9121 \
   --grpc-addr=:12379 \
-  --storage=rocksdb \
+  --storage=pebble \
   > node1/log.txt 2>&1 &
 PID1=$!
 echo "节点 1 已启动 (PID: $PID1, HTTP: 9121, gRPC: 12379)"
@@ -61,7 +61,7 @@ sleep 5
   --cluster=$CLUSTER \
   --port=9122 \
   --grpc-addr=:12380 \
-  --storage=rocksdb \
+  --storage=pebble \
   > node2/log.txt 2>&1 &
 PID2=$!
 echo "节点 2 已启动 (PID: $PID2, HTTP: 9122, gRPC: 12380)"
@@ -73,7 +73,7 @@ sleep 5
   --cluster=$CLUSTER \
   --port=9123 \
   --grpc-addr=:12381 \
-  --storage=rocksdb \
+  --storage=pebble \
   > node3/log.txt 2>&1 &
 PID3=$!
 echo "节点 3 已启动 (PID: $PID3, HTTP: 9123, gRPC: 12381)"

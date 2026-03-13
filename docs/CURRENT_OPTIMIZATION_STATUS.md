@@ -36,7 +36,7 @@ TestBatchApplyStressTest: 774K ops/sec (批量测试)
 
 **实现文件**:
 - [internal/memory/protobuf_converter.go](../internal/memory/protobuf_converter.go)
-- [internal/rocksdb/raft_proto.go](../internal/rocksdb/raft_proto.go)
+- [internal/pebble/raft_proto.go](../internal/pebble/raft_proto.go)
 - [internal/proto/raft.proto](../internal/proto/raft.proto)
 
 **核心优化**:
@@ -52,21 +52,21 @@ TestBatchApplyStressTest: 774K ops/sec (批量测试)
 
 ---
 
-### 3. RocksDB WriteBatch 优化
+### 3. Pebble WriteBatch 优化
 
 **实现文件**:
-- [internal/rocksdb/kvstore.go](../internal/rocksdb/kvstore.go) - `applyOperationsBatch()`
+- [internal/pebble/kvstore.go](../internal/pebble/kvstore.go) - `applyOperationsBatch()`
 
 **核心优化**:
 - ✅ 批量操作使用单个 WriteBatch
-- ✅ 减少 RocksDB fsync 次数
+- ✅ 减少 Pebble fsync 次数
 - ✅ 原子性保证
 
 **实现细节**:
 ```go
 // 单个 WriteBatch 处理多个操作
-func (r *RocksDB) applyOperationsBatch(ops []*RaftOperation) {
-    batch := grocksdb.NewWriteBatch()
+func (r *Pebble) applyOperationsBatch(ops []*RaftOperation) {
+    batch := gpebble.NewWriteBatch()
     defer batch.Destroy()
 
     // 批量准备操作
@@ -114,7 +114,7 @@ func (r *RocksDB) applyOperationsBatch(ops []*RaftOperation) {
 **删除内容**:
 - ❌ `internal/batch/` 整个目录
 - ❌ `NewMemoryWithBatchProposer()` 函数
-- ❌ `NewRocksDBWithBatchProposer()` 函数
+- ❌ `NewPebbleWithBatchProposer()` 函数
 
 **简化后性能**:
 - 反而提升（9.43M ops/sec，比之前的 6.16M 更高）
@@ -143,7 +143,7 @@ return json.Marshal(snapshot)
 
 #### 2. Lease 序列化优化
 
-**当前状态**: RocksDB 使用 GOB 编码
+**当前状态**: Pebble 使用 GOB 编码
 ```go
 // 多处使用 gob.Encoder/Decoder
 gob.NewEncoder(&buf).Encode(lease)
@@ -173,7 +173,7 @@ gob.NewEncoder(&buf).Encode(lease)
 
 ### 中优先级
 
-#### 4. RocksDB 配置调优
+#### 4. Pebble 配置调优
 
 **当前状态**: 使用默认配置
 
@@ -214,7 +214,7 @@ gob.NewEncoder(&buf).Encode(lease)
 | **并行 Put** | 508.6 ns/op | 基准测试 |
 | **串行 Put** | 1748 ns/op | 基准测试 |
 
-### RocksDB Storage
+### Pebble Storage
 
 **需要运行性能测试以获取最新数据**
 
@@ -245,7 +245,7 @@ gob.NewEncoder(&buf).Encode(lease)
 
 ### 中期 (1-2 月)
 
-1. **RocksDB 深度优化** (1周)
+1. **Pebble 深度优化** (1周)
    - 配置调优
    - Column Families
    - Compaction 策略
@@ -275,7 +275,7 @@ gob.NewEncoder(&buf).Encode(lease)
 
 - ✅ **Memory Storage 全局锁** - 通过分片锁解决
 - ✅ **序列化开销** - Protobuf 已启用
-- ✅ **RocksDB 批量写入** - WriteBatch 已实现
+- ✅ **Pebble 批量写入** - WriteBatch 已实现
 
 ### 待解决
 
@@ -306,7 +306,7 @@ gob.NewEncoder(&buf).Encode(lease)
 **目标**: 1-2月内获得 100-150% 提升
 
 1. 完成选项 A
-2. RocksDB 配置调优 (1周)
+2. Pebble 配置调优 (1周)
 3. 端到端性能测试 (1周)
 4. 瓶颈分析和针对性优化 (2周)
 
@@ -334,12 +334,12 @@ gob.NewEncoder(&buf).Encode(lease)
 - ✅ Memory Storage 并发优化 → **9.43M ops/sec**
 - ✅ 批量 Apply → **774K ops/sec**
 - ✅ Protobuf 序列化 → 已启用
-- ✅ RocksDB WriteBatch → 已实现
+- ✅ Pebble WriteBatch → 已实现
 
 ### 当前状态
 
 **Memory Storage**: 性能优异，并发优化完成 ✅
-**RocksDB Storage**: 基础优化完成，有进一步优化空间
+**Pebble Storage**: 基础优化完成，有进一步优化空间
 **序列化**: Raft 操作已优化，快照和 Lease 待优化
 
 ### 推荐下一步

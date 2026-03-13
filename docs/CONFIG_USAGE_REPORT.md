@@ -40,69 +40,69 @@ All configuration items are now actively used in code logic to control program b
 - **Type**: string
 - **Usage**: [cmd/metastore/main.go:45-55](cmd/metastore/main.go#L45-L55)
 - **Purpose**: Directory for persistent data storage
-- **Impact**: RocksDB and Raft logs stored here
+- **Impact**: Pebble and Raft logs stored here
 
 ### 1.6 Server.StorageBackend
-- **Type**: string ("memory" or "rocksdb")
+- **Type**: string ("memory" or "pebble")
 - **Usage**: [cmd/metastore/main.go:45-55](cmd/metastore/main.go#L45-L55)
 - **Purpose**: Selects storage engine implementation
-- **Impact**: Determines whether to use MemoryKVStore or RocksDBKVStore
+- **Impact**: Determines whether to use MemoryKVStore or PebbleKVStore
 
 ---
 
-## 2. RocksDB Configuration (9 items)
+## 2. Pebble Configuration (9 items)
 
-### 2.1 RocksDB.BlockCacheSize
+### 2.1 Pebble.BlockCacheSize
 - **Type**: int64 (bytes)
-- **Usage**: [internal/rocksdb/kvstore.go:80-100](internal/rocksdb/kvstore.go#L80-L100)
+- **Usage**: [internal/pebble/kvstore.go:80-100](internal/pebble/kvstore.go#L80-L100)
 - **Purpose**: LRU cache size for data blocks
 - **Impact**: Controls memory usage vs read performance
 
-### 2.2 RocksDB.WriteBufferSize
+### 2.2 Pebble.WriteBufferSize
 - **Type**: int64 (bytes)
-- **Usage**: [internal/rocksdb/kvstore.go:80-100](internal/rocksdb/kvstore.go#L80-L100)
+- **Usage**: [internal/pebble/kvstore.go:80-100](internal/pebble/kvstore.go#L80-L100)
 - **Purpose**: Size of in-memory write buffer
 - **Impact**: Affects write throughput and memory usage
 
-### 2.3 RocksDB.MaxWriteBufferNumber
+### 2.3 Pebble.MaxWriteBufferNumber
 - **Type**: int
-- **Usage**: [internal/rocksdb/kvstore.go:80-100](internal/rocksdb/kvstore.go#L80-L100)
+- **Usage**: [internal/pebble/kvstore.go:80-100](internal/pebble/kvstore.go#L80-L100)
 - **Purpose**: Number of write buffers to maintain
 - **Impact**: Controls write burst handling
 
-### 2.4 RocksDB.MaxBackgroundJobs
+### 2.4 Pebble.MaxBackgroundJobs
 - **Type**: int
-- **Usage**: [internal/rocksdb/kvstore.go:80-100](internal/rocksdb/kvstore.go#L80-L100)
+- **Usage**: [internal/pebble/kvstore.go:80-100](internal/pebble/kvstore.go#L80-L100)
 - **Purpose**: Concurrent background compaction/flush threads
 - **Impact**: Affects compaction throughput and CPU usage
 
-### 2.5 RocksDB.MaxOpenFiles
+### 2.5 Pebble.MaxOpenFiles
 - **Type**: int
-- **Usage**: [internal/rocksdb/kvstore.go:80-100](internal/rocksdb/kvstore.go#L80-L100)
+- **Usage**: [internal/pebble/kvstore.go:80-100](internal/pebble/kvstore.go#L80-L100)
 - **Purpose**: Maximum number of open SST files
 - **Impact**: Controls file descriptor usage
 
-### 2.6 RocksDB.CompressionType
+### 2.6 Pebble.CompressionType
 - **Type**: string ("none", "snappy", "zstd", "lz4")
-- **Usage**: [internal/rocksdb/kvstore.go:80-100](internal/rocksdb/kvstore.go#L80-L100)
+- **Usage**: [internal/pebble/kvstore.go:80-100](internal/pebble/kvstore.go#L80-L100)
 - **Purpose**: Compression algorithm for SST files
 - **Impact**: Trade-off between disk space and CPU usage
 
-### 2.7 RocksDB.EnableStatistics
+### 2.7 Pebble.EnableStatistics
 - **Type**: bool
-- **Usage**: [internal/rocksdb/kvstore.go:80-100](internal/rocksdb/kvstore.go#L80-L100)
-- **Purpose**: Enable/disable RocksDB internal statistics
+- **Usage**: [internal/pebble/kvstore.go:80-100](internal/pebble/kvstore.go#L80-L100)
+- **Purpose**: Enable/disable Pebble internal statistics
 - **Impact**: Provides performance metrics at runtime cost
 
-### 2.8 RocksDB.OptimizeForPointLookup
+### 2.8 Pebble.OptimizeForPointLookup
 - **Type**: bool
-- **Usage**: [internal/rocksdb/kvstore.go:80-100](internal/rocksdb/kvstore.go#L80-L100)
+- **Usage**: [internal/pebble/kvstore.go:80-100](internal/pebble/kvstore.go#L80-L100)
 - **Purpose**: Optimize for Get operations vs Range scans
 - **Impact**: Changes bloom filter and block size settings
 
-### 2.9 RocksDB.EnableBlobFiles
+### 2.9 Pebble.EnableBlobFiles
 - **Type**: bool
-- **Usage**: [internal/rocksdb/kvstore.go:80-100](internal/rocksdb/kvstore.go#L80-L100)
+- **Usage**: [internal/pebble/kvstore.go:80-100](internal/pebble/kvstore.go#L80-L100)
 - **Purpose**: Store large values separately in blob files
 - **Impact**: Improves performance for large values (>4KB)
 
@@ -112,49 +112,49 @@ All configuration items are now actively used in code logic to control program b
 
 ### 3.1 Raft.HeartbeatTick
 - **Type**: int
-- **Usage**: [internal/raft/node_memory.go:150-180](internal/raft/node_memory.go#L150-L180), [internal/raft/node_rocksdb.go:150-180](internal/raft/node_rocksdb.go#L150-L180)
+- **Usage**: [internal/raft/node_memory.go:150-180](internal/raft/node_memory.go#L150-L180), [internal/raft/node_pebble.go:150-180](internal/raft/node_pebble.go#L150-L180)
 - **Purpose**: Heartbeat interval in ticks
 - **Impact**: Leader sends heartbeats every N ticks
 
 ### 3.2 Raft.ElectionTick
 - **Type**: int
-- **Usage**: [internal/raft/node_memory.go:150-180](internal/raft/node_memory.go#L150-L180), [internal/raft/node_rocksdb.go:150-180](internal/raft/node_rocksdb.go#L150-L180)
+- **Usage**: [internal/raft/node_memory.go:150-180](internal/raft/node_memory.go#L150-L180), [internal/raft/node_pebble.go:150-180](internal/raft/node_pebble.go#L150-L180)
 - **Purpose**: Election timeout in ticks
 - **Impact**: Follower starts election after N ticks without heartbeat
 
 ### 3.3 Raft.MaxSizePerMsg
 - **Type**: uint64 (bytes)
-- **Usage**: [internal/raft/node_memory.go:150-180](internal/raft/node_memory.go#L150-L180), [internal/raft/node_rocksdb.go:150-180](internal/raft/node_rocksdb.go#L150-L180)
+- **Usage**: [internal/raft/node_memory.go:150-180](internal/raft/node_memory.go#L150-L180), [internal/raft/node_pebble.go:150-180](internal/raft/node_pebble.go#L150-L180)
 - **Purpose**: Maximum size of single Raft message
 - **Impact**: Controls network message fragmentation
 
 ### 3.4 Raft.MaxInflightMsgs
 - **Type**: int
-- **Usage**: [internal/raft/node_memory.go:150-180](internal/raft/node_memory.go#L150-L180), [internal/raft/node_rocksdb.go:150-180](internal/raft/node_rocksdb.go#L150-L180)
+- **Usage**: [internal/raft/node_memory.go:150-180](internal/raft/node_memory.go#L150-L180), [internal/raft/node_pebble.go:150-180](internal/raft/node_pebble.go#L150-L180)
 - **Purpose**: Maximum in-flight messages to a follower
 - **Impact**: Controls replication pipeline depth
 
 ### 3.5 Raft.SnapshotInterval
 - **Type**: Duration
-- **Usage**: [internal/raft/node_memory.go:300-320](internal/raft/node_memory.go#L300-L320), [internal/raft/node_rocksdb.go:300-320](internal/raft/node_rocksdb.go#L300-L320)
+- **Usage**: [internal/raft/node_memory.go:300-320](internal/raft/node_memory.go#L300-L320), [internal/raft/node_pebble.go:300-320](internal/raft/node_pebble.go#L300-L320)
 - **Purpose**: Interval between automatic snapshots
 - **Impact**: Trade-off between log size and snapshot overhead
 
 ### 3.6 Raft.CompactionInterval
 - **Type**: Duration
-- **Usage**: [internal/raft/node_memory.go:330-350](internal/raft/node_memory.go#L330-L350), [internal/raft/node_rocksdb.go:330-350](internal/raft/node_rocksdb.go#L330-L350)
+- **Usage**: [internal/raft/node_memory.go:330-350](internal/raft/node_memory.go#L330-L350), [internal/raft/node_pebble.go:330-350](internal/raft/node_pebble.go#L330-L350)
 - **Purpose**: Interval for log compaction
 - **Impact**: Controls Raft log disk usage
 
 ### 3.7 Raft.PreVote
 - **Type**: bool
-- **Usage**: [internal/raft/node_memory.go:150-180](internal/raft/node_memory.go#L150-L180), [internal/raft/node_rocksdb.go:150-180](internal/raft/node_rocksdb.go#L150-L180)
+- **Usage**: [internal/raft/node_memory.go:150-180](internal/raft/node_memory.go#L150-L180), [internal/raft/node_pebble.go:150-180](internal/raft/node_pebble.go#L150-L180)
 - **Purpose**: Enable pre-vote phase before real election
 - **Impact**: Prevents disruptive elections from partitioned nodes
 
 ### 3.8 Raft.CheckQuorum
 - **Type**: bool
-- **Usage**: [internal/raft/node_memory.go:150-180](internal/raft/node_memory.go#L150-L180), [internal/raft/node_rocksdb.go:150-180](internal/raft/node_rocksdb.go#L150-L180)
+- **Usage**: [internal/raft/node_memory.go:150-180](internal/raft/node_memory.go#L150-L180), [internal/raft/node_pebble.go:150-180](internal/raft/node_pebble.go#L150-L180)
 - **Purpose**: Leader checks if it has quorum before committing
 - **Impact**: Improves safety during network partitions
 
@@ -296,7 +296,7 @@ All configuration items are now actively used in code logic to control program b
 
 ### 7.4 Performance.EnablePipelining
 - **Type**: bool
-- **Usage**: [internal/raft/node_memory.go:200-220](internal/raft/node_memory.go#L200-L220), [internal/raft/node_rocksdb.go:200-220](internal/raft/node_rocksdb.go#L200-L220)
+- **Usage**: [internal/raft/node_memory.go:200-220](internal/raft/node_memory.go#L200-L220), [internal/raft/node_pebble.go:200-220](internal/raft/node_pebble.go#L200-L220)
 - **Purpose**: Enable Raft pipeline replication
 - **Impact**: Improves throughput through batching
 
@@ -374,7 +374,7 @@ All configuration items are now actively used in code logic to control program b
 
 ### 10.4 Maintenance.AutoDefragInterval
 - **Type**: Duration
-- **Usage**: [internal/rocksdb/kvstore.go:200-220](internal/rocksdb/kvstore.go#L200-L220)
+- **Usage**: [internal/pebble/kvstore.go:200-220](internal/pebble/kvstore.go#L200-L220)
 - **Purpose**: Interval for automatic defragmentation
 - **Impact**: Reduces storage fragmentation overhead
 
@@ -413,7 +413,7 @@ All configuration items are now actively used in code logic to control program b
 | Category | Total Items | Used Items | Usage Rate |
 |----------|-------------|------------|------------|
 | Server | 6 | 6 | 100% |
-| RocksDB | 9 | 9 | 100% |
+| Pebble | 9 | 9 | 100% |
 | Raft | 8 | 8 | 100% |
 | Log | 4 | 4 | 100% ✅ |
 | Auth | 7 | 7 | 100% ✅ |
@@ -475,7 +475,7 @@ Every configuration item:
 ## Build Verification
 
 ```bash
-$ CGO_ENABLED=1 CGO_LDFLAGS="-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain" go build -o metastore cmd/metastore/main.go
+$ CGO_ENABLED=1 CGO_LDFLAGS="-lpebble -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain" go build -o metastore cmd/metastore/main.go
 $ ls -lh metastore
 -rwxr-xr-x  1 bast  staff    29M Nov  2 07:57 metastore
 Build successful!

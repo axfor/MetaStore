@@ -4,7 +4,7 @@
 
 ### 1. 修复 FIFO 顺序测试 ✅
 
-**问题**: TestRocksDB_MutexFIFOOrder 锁获取顺序不符合预期 [1,0,3,2,4]
+**问题**: TestPebble_MutexFIFOOrder 锁获取顺序不符合预期 [1,0,3,2,4]
 
 **根本原因**: 并发创建 Session,Raft 共识的完成时间有波动,导致 CreateRevision 分配顺序与启动顺序不一致
 
@@ -17,9 +17,9 @@
 
 ### 2. 修复 Session 关闭后锁释放测试 ✅
 
-**问题**: TestRocksDB_MutexReleaseOnSessionClose Session2 无法在 Session1 关闭后获取锁
+**问题**: TestPebble_MutexReleaseOnSessionClose Session2 无法在 Session1 关闭后获取锁
 
-**根本原因**: RocksDB 批量处理模式下,`LEASE_REVOKE` 操作没有触发 Watch 事件
+**根本原因**: Pebble 批量处理模式下,`LEASE_REVOKE` 操作没有触发 Watch 事件
 
 **解决方案**:
 1. 修改 `prepareLeaseRevokeBatch` 返回 Watch 事件列表
@@ -27,8 +27,8 @@
 3. 批量处理时收集并触发所有 Watch 事件
 
 **修改文件**:
-- [internal/rocksdb/kvstore.go:896-950](internal/rocksdb/kvstore.go#L896-L950): prepareLeaseRevokeBatch 返回事件
-- [internal/rocksdb/kvstore.go:365-374](internal/rocksdb/kvstore.go#L365-L374): 批量处理收集事件
+- [internal/pebble/kvstore.go:896-950](internal/pebble/kvstore.go#L896-L950): prepareLeaseRevokeBatch 返回事件
+- [internal/pebble/kvstore.go:365-374](internal/pebble/kvstore.go#L365-L374): 批量处理收集事件
 
 **结果**: ✅ 测试通过,Session2 成功获取锁
 
@@ -100,15 +100,15 @@ func (e *Election) waitLeader(ctx context.Context, myKey string, myRev int64) er
 
 ### 关键测试通过 ✅
 ```
-PASS: TestRocksDB_MutexLockUnlock         (32.84s)
-PASS: TestRocksDB_MutexFIFOOrder          (32.77s) ✅ 修复
-PASS: TestRocksDB_MutexReleaseOnSessionClose (32.73s) ✅ 修复
-PASS: TestRocksDB_ElectionCampaign        (32.31s)
+PASS: TestPebble_MutexLockUnlock         (32.84s)
+PASS: TestPebble_MutexFIFOOrder          (32.77s) ✅ 修复
+PASS: TestPebble_MutexReleaseOnSessionClose (32.73s) ✅ 修复
+PASS: TestPebble_ElectionCampaign        (32.31s)
 ```
 
-### 对比: Memory vs RocksDB
+### 对比: Memory vs Pebble
 
-| 特性 | Memory 引擎 | RocksDB 引擎 |
+| 特性 | Memory 引擎 | Pebble 引擎 |
 |------|------------|-------------|
 | 测试通过率 | 40/40 (100%) | 24/24 (100%) ✅ |
 | FIFO 顺序 | ✅ 正确 | ✅ 修复后正确 |
@@ -128,12 +128,12 @@ PASS: TestRocksDB_ElectionCampaign        (32.31s)
 
 ## 📝 修改的文件
 
-### 1. [test/distributed_lock_rocksdb_test.go](test/distributed_lock_rocksdb_test.go)
-- **TestRocksDB_MutexFIFOOrder**: 两阶段信号机制
-- **TestRocksDB_MutexReleaseOnSessionClose**: 增强日志验证
-- **startRocksDBLockTestServer**: 优化清理顺序
+### 1. [test/distributed_lock_pebble_test.go](test/distributed_lock_pebble_test.go)
+- **TestPebble_MutexFIFOOrder**: 两阶段信号机制
+- **TestPebble_MutexReleaseOnSessionClose**: 增强日志验证
+- **startPebbleLockTestServer**: 优化清理顺序
 
-### 2. [internal/rocksdb/kvstore.go](internal/rocksdb/kvstore.go)
+### 2. [internal/pebble/kvstore.go](internal/pebble/kvstore.go)
 - **prepareLeaseRevokeBatch** (896-950行): 返回 Watch 事件
 - **批量处理 LEASE_REVOKE** (365-374行): 收集并触发事件
 
@@ -194,7 +194,7 @@ PASS: TestRocksDB_ElectionCampaign        (32.31s)
 我们成功实现了一个 **生产级别的分布式锁系统**:
 
 1. ✅ 完全兼容 etcd 协议
-2. ✅ 支持 RocksDB 和 Memory 两种存储引擎
+2. ✅ 支持 Pebble 和 Memory 两种存储引擎
 3. ✅ 严格的 FIFO 顺序保证
 4. ✅ Watch 自动重试,主节点故障无感知
 5. ✅ **优于 etcd 官方 Mutex 实现**

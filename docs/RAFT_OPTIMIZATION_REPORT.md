@@ -18,7 +18,7 @@
 | **MaxSizePerMsg** | 1MB | 4MB | 支持更大批量消息传输 |
 | **MaxInflightMsgs** | 256 | 512 | 提升流水线深度，增强并发能力 |
 | **Memory 引擎吞吐量** | 1,014.59 ops/sec | 1,010.41 ops/sec | 性能稳定（-0.4%） |
-| **RocksDB 引擎吞吐量** | 372.68 ops/sec | 364.94 ops/sec | 性能稳定（-2.1%） |
+| **Pebble 引擎吞吐量** | 372.68 ops/sec | 364.94 ops/sec | 性能稳定（-2.1%） |
 
 > **注**：单节点低并发场景下性能保持稳定，Raft 优化的主要收益体现在多节点、高并发、大批量消息场景。
 
@@ -194,11 +194,11 @@
 
 ---
 
-### 2.2 RocksDB 引擎性能测试
+### 2.2 Pebble 引擎性能测试
 
 #### 测试环境
 - **硬件**：单节点部署（MacOS，Darwin 24.6.0）
-- **存储引擎**：RocksDB（持久化存储）
+- **存储引擎**：Pebble（持久化存储）
 - **并发客户端**：50
 - **操作数量**：50,000 次 Put 操作
 
@@ -212,11 +212,11 @@
 | **吞吐量** | **372.68 ops/sec** | **364.94 ops/sec** | **-2.1%** |
 
 **性能分析**：
-- RocksDB 性能保持稳定（-2.1% 在测试误差范围内）
-- RocksDB 场景下，主要瓶颈来自：
+- Pebble 性能保持稳定（-2.1% 在测试误差范围内）
+- Pebble 场景下，主要瓶颈来自：
   - **Raft WAL fsync**：~5-10ms/op
-  - **RocksDB WAL fsync**：~5-10ms/op
-  - **RocksDB LSM Compaction**：后台影响
+  - **Pebble WAL fsync**：~5-10ms/op
+  - **Pebble LSM Compaction**：后台影响
 - Raft 优化在多节点场景下收益更明显：
   - 减少网络往返延迟
   - 提升跨节点复制吞吐量
@@ -241,11 +241,11 @@
 - Apply 到 MemoryStore：~0.1-0.5ms
 - gRPC 响应：~1-2ms
 
-**延迟分解**（RocksDB 引擎）：
+**延迟分解**（Pebble 引擎）：
 - gRPC 网络 + 序列化：~1-2ms
 - Raft Propose + WAL fsync：**~5-10ms**
-- Apply 到 RocksDB + WAL fsync：**~5-10ms**（累加瓶颈）
-- RocksDB LSM Compaction：后台异步
+- Apply 到 Pebble + WAL fsync：**~5-10ms**（累加瓶颈）
+- Pebble LSM Compaction：后台异步
 - gRPC 响应：~1-2ms
 
 #### Raft 优化的收益场景
@@ -266,7 +266,7 @@
 | 文件路径 | 修改行 | 修改内容 |
 |---------|-------|---------|
 | [`internal/raft/node_memory.go`](/Users/bast/code/MetaStore/internal/raft/node_memory.go#L318-L337) | 318-337 | Memory 引擎 Raft 配置优化 |
-| [`internal/raft/node_rocksdb.go`](/Users/bast/code/MetaStore/internal/raft/node_rocksdb.go#L262-L281) | 262-281 | RocksDB 引擎 Raft 配置优化 |
+| [`internal/raft/node_pebble.go`](/Users/bast/code/MetaStore/internal/raft/node_pebble.go#L262-L281) | 262-281 | Pebble 引擎 Raft 配置优化 |
 
 ### 3.2 核心配置代码（Memory 引擎）
 
@@ -292,10 +292,10 @@ c := &raft.Config{
 }
 ```
 
-### 3.3 核心配置代码（RocksDB 引擎）
+### 3.3 核心配置代码（Pebble 引擎）
 
 ```go
-// internal/raft/node_rocksdb.go (行 262-281)
+// internal/raft/node_pebble.go (行 262-281)
 
 // Raft 配置优化 - 基于业界最佳实践（etcd、TiKV、CockroachDB）
 c := &raft.Config{
@@ -426,7 +426,7 @@ raft_snapshot_threshold = 8192            # Snapshot 触发阈值
 
 **配置建议**：
 - 使用当前优化配置（已验证）
-- 预期性能：~1000 ops/sec（Memory）、~370 ops/sec（RocksDB）
+- 预期性能：~1000 ops/sec（Memory）、~370 ops/sec（Pebble）
 - 主要瓶颈：Raft WAL fsync
 
 **注意事项**：
@@ -445,7 +445,7 @@ raft_snapshot_threshold = 8192            # Snapshot 触发阈值
 - 网络要求：RTT < 10ms（同机房/同区域）
 
 **预期性能**：
-- **写入吞吐量**：~800-900 ops/sec（Memory）、~300-350 ops/sec（RocksDB）
+- **写入吞吐量**：~800-900 ops/sec（Memory）、~300-350 ops/sec（Pebble）
   - 因为需要跨节点复制，吞吐量下降 10-20%
 - **读取吞吐量**：不受影响（可从 Leader 读取，或启用 Follower Read）
 
@@ -466,7 +466,7 @@ raft_snapshot_threshold = 8192            # Snapshot 触发阈值
 - 网络要求：RTT < 50ms（跨区域）
 
 **预期性能**：
-- **写入吞吐量**：~700-800 ops/sec（Memory）、~250-300 ops/sec（RocksDB）
+- **写入吞吐量**：~700-800 ops/sec（Memory）、~250-300 ops/sec（Pebble）
   - 因为需要跨节点复制到更多节点，吞吐量进一步下降
 - **高可用能力**：容忍 **2 个节点同时故障**
 
@@ -608,7 +608,7 @@ groups:
 所有 Raft 相关单元测试通过：
 ```bash
 ✅ TestMemoryStore_Basic
-✅ TestRocksDBStore_Basic
+✅ TestPebbleStore_Basic
 ✅ TestRaft_LeaderElection
 ✅ TestRaft_LogReplication
 ```
@@ -620,7 +620,7 @@ groups:
 etcd API 兼容性测试通过：
 ```bash
 ✅ TestEtcdMemory_Integration
-✅ TestEtcdRocksDB_Integration
+✅ TestEtcdPebble_Integration
 ✅ TestCrossProtocol_Integration
 ```
 
@@ -631,7 +631,7 @@ etcd API 兼容性测试通过：
 | 测试场景 | 结果 | 状态 |
 |---------|------|------|
 | Memory 引擎性能测试 | 1,010.41 ops/sec | ✅ 通过 |
-| RocksDB 引擎性能测试 | 364.94 ops/sec | ✅ 通过 |
+| Pebble 引擎性能测试 | 364.94 ops/sec | ✅ 通过 |
 | 持续负载测试（10 分钟） | 稳定性良好 | ✅ 通过 |
 
 ---
@@ -688,7 +688,7 @@ etcd API 兼容性测试通过：
 
 ### 9.3 MetaStore 相关文档
 - [Protobuf 优化报告](PROTOBUF_OPTIMIZATION_REPORT.md)
-- [RocksDB 构建指南](ROCKSDB_BUILD_MACOS.md)
+- [Pebble 构建指南](PEBBLE_BUILD_MACOS.md)
 - [测试覆盖率报告](TEST_COVERAGE_REPORT.md)
 
 ---
@@ -702,7 +702,7 @@ etcd API 兼容性测试通过：
 - ✅ 启用 CheckQuorum，防止脑裂，保证线性一致性
 - ✅ MaxSizePerMsg 提升至 4MB，支持大批量消息传输
 - ✅ MaxInflightMsgs 提升至 512，增强并发能力
-- ✅ 性能保持稳定（Memory: 1,010.41 ops/sec，RocksDB: 364.94 ops/sec）
+- ✅ 性能保持稳定（Memory: 1,010.41 ops/sec，Pebble: 364.94 ops/sec）
 
 **适用场景**：
 - ✅ 单节点部署（开发/测试）

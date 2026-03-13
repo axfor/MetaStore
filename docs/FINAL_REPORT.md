@@ -135,7 +135,7 @@
 ✅ 800 行实现
 ```
 
-#### RocksDB Store ✅
+#### Pebble Store ✅
 ```
 ✅ 持久化存储
 ✅ LSM-Tree 优化
@@ -332,7 +332,7 @@ pb.RegisterHealthServer(grpcSrv, healthServer)
 
 ### 当前性能 (估算)
 
-| 指标 | Memory Store | RocksDB Store |
+| 指标 | Memory Store | Pebble Store |
 |------|--------------|---------------|
 | 写入 QPS | ~10,000 | ~5,000 |
 | 读取 QPS | ~50,000 | ~20,000 |
@@ -367,7 +367,7 @@ pb.RegisterHealthServer(grpcSrv, healthServer)
 **预期提升**: 网络吞吐 +30%
 
 #### 4. 存储优化 (3%)
-- [ ] RocksDB 调优
+- [ ] Pebble 调优
 - [ ] LRU 缓存
 - [ ] Bloom Filter
 - [ ] Batch 写入
@@ -460,7 +460,7 @@ pkg/concurrency/          580 行
 internal/               2,620 行
 ├── kvstore/              500 行
 ├── memory/               800 行
-├── rocksdb/              900 行
+├── pebble/              900 行
 └── raft/               1,000 行
 
 总计: ~6,500 行
@@ -490,7 +490,7 @@ internal/               2,620 行
 1. 实现分段锁
 2. 添加 sync.Pool
 3. gRPC 参数调优
-4. RocksDB 优化
+4. Pebble 优化
 5. 基准测试验证
 ```
 

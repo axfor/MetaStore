@@ -437,7 +437,7 @@ confState := raftpb.ConfState{
 
 ### 7.1 修改 raftNode 结构
 
-在 `internal/raft/node_memory.go` 和 `node_rocksdb.go` 中：
+在 `internal/raft/node_memory.go` 和 `node_pebble.go` 中：
 
 ```go
 type raftNode struct {

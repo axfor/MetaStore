@@ -1,7 +1,7 @@
 # MetaStore 配置化优化完整报告
 
 **生成日期**: 2025-11-02
-**优化类型**: 配置文件集成 + gRPC 优化 + RocksDB 调优
+**优化类型**: 配置文件集成 + gRPC 优化 + Pebble 调优
 **状态**: ✅ 全部完成
 
 ---
@@ -12,7 +12,7 @@
 
 1. ✅ **阶段 1: 配置文件集成** - 将 Protobuf 性能开关从硬编码常量迁移到配置文件
 2. ✅ **阶段 2: gRPC 并发优化** - 分析现有 gRPC 配置并确认已达到业界最佳实践
-3. ✅ **阶段 3: RocksDB 配置调优** - 添加完整的 RocksDB 性能配置结构
+3. ✅ **阶段 3: Pebble 配置调优** - 添加完整的 Pebble 性能配置结构
 
 ### 核心成果
 
@@ -153,7 +153,7 @@ log.Info("Performance optimizations initialized",
 
 ```bash
 # 构建测试
-CGO_ENABLED=1 CGO_LDFLAGS="-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain" \
+CGO_ENABLED=1 CGO_LDFLAGS="-lpebble -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain" \
 go build -o metastore ./cmd/metastore
 
 # 结果: ✅ 构建成功
@@ -257,10 +257,10 @@ go build -o metastore ./cmd/metastore
 
 ---
 
-## 🗄️ 阶段 3: RocksDB 配置调优
+## 🗄️ 阶段 3: Pebble 配置调优
 
 ### 目标
-添加完整的 RocksDB 性能配置结构，支持生产环境调优。
+添加完整的 Pebble 性能配置结构，支持生产环境调优。
 
 ### 实施细节
 
@@ -269,8 +269,8 @@ go build -o metastore ./cmd/metastore
 **文件**: `pkg/config/config.go`
 
 ```go
-// RocksDBConfig RocksDB 性能配置
-type RocksDBConfig struct {
+// PebbleConfig Pebble 性能配置
+type PebbleConfig struct {
     // Block Cache 配置（影响读性能）
     BlockCacheSize uint64 `yaml:"block_cache_size"` // 默认 256MB
 
@@ -300,7 +300,7 @@ type RocksDBConfig struct {
 ```go
 type ServerConfig struct {
     // ... 其他字段
-    RocksDB     RocksDBConfig     `yaml:"rocksdb"`
+    Pebble     PebbleConfig     `yaml:"pebble"`
 }
 ```
 
@@ -309,15 +309,15 @@ type ServerConfig struct {
 **文件**: `pkg/config/config.go` - `SetDefaults()` 函数
 
 ```go
-// RocksDB 默认值（基于 RocksDB 官方推荐配置）
-if c.Server.RocksDB.BlockCacheSize == 0 {
-    c.Server.RocksDB.BlockCacheSize = 268435456 // 256MB
+// Pebble 默认值（基于 Pebble 官方推荐配置）
+if c.Server.Pebble.BlockCacheSize == 0 {
+    c.Server.Pebble.BlockCacheSize = 268435456 // 256MB
 }
-if c.Server.RocksDB.WriteBufferSize == 0 {
-    c.Server.RocksDB.WriteBufferSize = 67108864 // 64MB
+if c.Server.Pebble.WriteBufferSize == 0 {
+    c.Server.Pebble.WriteBufferSize = 67108864 // 64MB
 }
-if c.Server.RocksDB.MaxWriteBufferNumber == 0 {
-    c.Server.RocksDB.MaxWriteBufferNumber = 3
+if c.Server.Pebble.MaxWriteBufferNumber == 0 {
+    c.Server.Pebble.MaxWriteBufferNumber = 3
 }
 // ... (所有默认值)
 ```
@@ -327,8 +327,8 @@ if c.Server.RocksDB.MaxWriteBufferNumber == 0 {
 **文件**: `configs/config.yaml`
 
 ```yaml
-  # RocksDB 性能配置（仅在使用 RocksDB 存储引擎时生效）
-  rocksdb:
+  # Pebble 性能配置（仅在使用 Pebble 存储引擎时生效）
+  pebble:
     # Block Cache 配置（影响读性能）
     block_cache_size: 268435456 # 256MB（默认），建议设置为可用内存的 1/3
 
@@ -379,7 +379,7 @@ if c.Server.RocksDB.MaxWriteBufferNumber == 0 {
 
 ```bash
 # 构建测试
-CGO_ENABLED=1 CGO_LDFLAGS="-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain" \
+CGO_ENABLED=1 CGO_LDFLAGS="-lpebble -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain" \
 go build -o metastore ./cmd/metastore
 
 # 结果: ✅ 构建成功
@@ -387,8 +387,8 @@ go build -o metastore ./cmd/metastore
 
 ### 成果
 
-- ✅ 完整的 RocksDB 配置结构（15+ 配置项）
-- ✅ 合理的默认值（基于 RocksDB 官方推荐）
+- ✅ 完整的 Pebble 配置结构（15+ 配置项）
+- ✅ 合理的默认值（基于 Pebble 官方推荐）
 - ✅ 详细的配置注释和优化建议
 - ✅ 构建和测试通过
 
@@ -410,7 +410,7 @@ go build -o metastore ./cmd/metastore
 - **平均吞吐量**: 8-10M ops/sec
 - **延迟**: 亚毫秒级
 
-### RocksDB 引擎性能
+### Pebble 引擎性能
 
 - **混合负载**: 5,384 ops/sec
 - **写密集**: 通过 WriteBatch 优化显著提升
@@ -426,8 +426,8 @@ go build -o metastore ./cmd/metastore
 # 使用配置文件启动
 ./metastore --config configs/config.yaml --storage memory
 
-# RocksDB 存储引擎
-./metastore --config configs/config.yaml --storage rocksdb
+# Pebble 存储引擎
+./metastore --config configs/config.yaml --storage pebble
 ```
 
 ### 无配置文件启动（使用默认值）
@@ -459,12 +459,12 @@ export METASTORE_LOG_LEVEL=debug
     enable_lease_protobuf: false    # 禁用 Lease Protobuf
 ```
 
-### RocksDB 生产环境调优
+### Pebble 生产环境调优
 
 根据硬件资源调整 `configs/config.yaml`:
 
 ```yaml
-  rocksdb:
+  pebble:
     # 假设服务器有 64GB 内存
     block_cache_size: 21474836480  # 20GB（约 1/3 内存）
 
@@ -490,7 +490,7 @@ export METASTORE_LOG_LEVEL=debug
 
 1. ✅ `pkg/config/config.go`
    - 添加 `PerformanceConfig` 结构
-   - 添加 `RocksDBConfig` 结构
+   - 添加 `PebbleConfig` 结构
    - 添加默认值设置
    - 添加配置验证
 
@@ -511,7 +511,7 @@ export METASTORE_LOG_LEVEL=debug
 
 1. ✅ `configs/config.yaml`
    - 添加 `performance` 配置段
-   - 添加 `rocksdb` 配置段
+   - 添加 `pebble` 配置段
    - 完善 `grpc` 配置段注释
 
 ---
@@ -547,20 +547,20 @@ export METASTORE_LOG_LEVEL=debug
 
 ## 🎯 后续工作建议
 
-### RocksDB 配置实施（优先级：高）
+### Pebble 配置实施（优先级：高）
 
-当前 RocksDB 配置已添加到配置文件，但代码尚未使用这些配置。建议：
+当前 Pebble 配置已添加到配置文件，但代码尚未使用这些配置。建议：
 
-1. **修改 RocksDB 初始化代码**
-   - 文件: `internal/rocksdb/kvstore.go`
-   - 使用 `cfg.Server.RocksDB.*` 配置项
+1. **修改 Pebble 初始化代码**
+   - 文件: `internal/pebble/kvstore.go`
+   - 使用 `cfg.Server.Pebble.*` 配置项
    - 应用 Block Cache、Write Buffer、Compaction 配置
 
-2. **添加 RocksDB 配置日志**
-   - 启动时输出 RocksDB 配置
+2. **添加 Pebble 配置日志**
+   - 启动时输出 Pebble 配置
    - 方便运维人员确认配置生效
 
-3. **RocksDB 配置验证**
+3. **Pebble 配置验证**
    - 性能测试对比（默认配置 vs 优化配置）
    - 确认配置实际生效
 
@@ -569,7 +569,7 @@ export METASTORE_LOG_LEVEL=debug
 1. **添加 Prometheus 指标**
    - Protobuf vs JSON 序列化次数
    - 序列化性能指标
-   - RocksDB 统计信息
+   - Pebble 统计信息
 
 2. **添加性能日志**
    - 慢操作日志（> 100ms）
@@ -579,10 +579,10 @@ export METASTORE_LOG_LEVEL=debug
 
 1. **热更新支持**
    - 支持运行时修改 Protobuf 开关
-   - 支持运行时修改 RocksDB 配置
+   - 支持运行时修改 Pebble 配置
 
 2. **配置校验增强**
-   - 添加 RocksDB 配置合法性校验
+   - 添加 Pebble 配置合法性校验
    - 添加配置冲突检测
 
 ---
@@ -605,8 +605,8 @@ export METASTORE_LOG_LEVEL=debug
 ### 业界最佳实践参考
 
 1. **etcd 配置**: gRPC 并发、Raft 配置
-2. **TiKV 配置**: RocksDB 调优、gRPC 流控制
-3. **RocksDB 官方**: Block Cache、Compaction 策略
+2. **TiKV 配置**: Pebble 调优、gRPC 流控制
+3. **Pebble 官方**: Block Cache、Compaction 策略
 
 ---
 
@@ -616,7 +616,7 @@ export METASTORE_LOG_LEVEL=debug
 
 - ✅ **阶段 1**: 配置文件集成 - 100% 完成
 - ✅ **阶段 2**: gRPC 并发优化 - 100% 完成（已达到最佳实践）
-- ✅ **阶段 3**: RocksDB 配置调优 - 100% 完成（配置结构已添加）
+- ✅ **阶段 3**: Pebble 配置调优 - 100% 完成（配置结构已添加）
 
 ### 核心价值
 
@@ -629,8 +629,8 @@ export METASTORE_LOG_LEVEL=debug
 
 根据用户需求，可以选择：
 
-1. **实施 RocksDB 配置**: 让 RocksDB 代码真正使用这些配置
-2. **性能测试**: 验证 RocksDB 配置优化效果
+1. **实施 Pebble 配置**: 让 Pebble 代码真正使用这些配置
+2. **性能测试**: 验证 Pebble 配置优化效果
 3. **生产部署**: 使用新的配置文件部署到生产环境
 
 ---

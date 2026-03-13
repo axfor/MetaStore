@@ -73,17 +73,17 @@ for i := 0; i < 10; i++ {
 #### 基准测试套件
 
 **2.1 BenchmarkMaintenance_Status**
-- **测试引擎**: Memory, RocksDB
+- **测试引擎**: Memory, Pebble
 - **并发模式**: RunParallel
 - **测试内容**: Status RPC 吞吐量和延迟
 
 **2.2 BenchmarkMaintenance_Hash**
-- **测试引擎**: Memory, RocksDB
+- **测试引擎**: Memory, Pebble
 - **数据规模**: 1,000 keys
 - **测试内容**: Hash 计算性能
 
 **2.3 BenchmarkMaintenance_HashKV**
-- **测试引擎**: Memory, RocksDB
+- **测试引擎**: Memory, Pebble
 - **数据规模**: 1,000 keys
 - **测试内容**: HashKV 计算性能（带 revision）
 
@@ -91,18 +91,18 @@ for i := 0; i < 10; i++ {
 - **子基准**:
   - Memory_GET - 读取告警列表
   - Memory_ACTIVATE - 激活告警
-  - RocksDB_GET - RocksDB 读取告警
+  - Pebble_GET - Pebble 读取告警
 - **测试内容**: Alarm 操作性能
 
 **2.5 BenchmarkMaintenance_Snapshot**
 - **子基准**:
   - Memory_SmallDB (100 keys)
   - Memory_MediumDB (1,000 keys)
-  - RocksDB_SmallDB (100 keys)
+  - Pebble_SmallDB (100 keys)
 - **测试内容**: 快照流式传输性能
 
 **2.6 BenchmarkMaintenance_Defragment**
-- **测试引擎**: Memory, RocksDB
+- **测试引擎**: Memory, Pebble
 - **并发模式**: RunParallel
 - **测试内容**: Defragment RPC 吞吐量
 
@@ -238,7 +238,7 @@ go test -bench=BenchmarkMaintenance_Hash -benchtime=10s -benchmem ./test
 ### 测试覆盖矩阵
 
 ```
-测试类型          Memory  RocksDB  3-Node  故障注入
+测试类型          Memory  Pebble  3-Node  故障注入
 -----------------------------------------------
 基础功能测试       ✅      ✅       -       -
 集群测试           ✅      -        ✅      -
@@ -266,7 +266,7 @@ go test -bench=BenchmarkMaintenance_Hash -benchtime=10s -benchmem ./test
 - 避免测试代码影响基准结果
 
 ✅ **可维护性**
-- 辅助函数复用（startMemoryNode, startRocksDBNode）
+- 辅助函数复用（startMemoryNode, startPebbleNode）
 - 清晰的测试结构
 - 合理的超时设置
 
@@ -403,7 +403,7 @@ go test -v -run="TestMaintenance_FaultInjection" -timeout=30m ./test
 
 ✅ **全面的测试覆盖**
 - 单元测试、集群测试、性能测试、故障测试全覆盖
-- Memory 和 RocksDB 双引擎支持
+- Memory 和 Pebble 双引擎支持
 - 所有 Maintenance Service 功能测试完整
 
 ✅ **高质量代码**

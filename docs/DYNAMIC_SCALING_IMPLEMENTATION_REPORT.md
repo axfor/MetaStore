@@ -118,9 +118,9 @@ if rc.cfg.Server.Raft.LeaseRead.Enable {
 }
 ```
 
-### 4. RocksDB Raft 节点初始化
+### 4. Pebble Raft 节点初始化
 
-**文件**: [internal/raft/node_rocksdb.go:364-406](../internal/raft/node_rocksdb.go#L364-L406)
+**文件**: [internal/raft/node_pebble.go:364-406](../internal/raft/node_pebble.go#L364-L406)
 
 **修改**: 与 Memory 节点完全相同的模式
 

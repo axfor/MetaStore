@@ -37,7 +37,7 @@ cd $pre_dir
 
 cp $pre_dir/../metaStore mysql-single-test/
 cd mysql-single-test
-mkdir -p data/rocksdb/1
+mkdir -p data/pebble/1
 
 # Create config file with MySQL enabled
 cat > config.yaml << 'EOF'
@@ -68,7 +68,7 @@ echo "2. Starting single node with MySQL enabled..."
   -config=config.yaml \
   -cluster=http://127.0.0.1:9021 \
   -port=9121 \
-  -storage=rocksdb \
+  -storage=pebble \
   > node1/log.txt 2>&1 &
 
 PID=$!

@@ -8,7 +8,7 @@
 
 ### 1. 新增测试用例
 
-为内存引擎和 RocksDB 引擎分别添加了 4 个新的测试场景：
+为内存引擎和 Pebble 引擎分别添加了 4 个新的测试场景：
 
 #### Test 5: HTTP_Delete_etcd_Verify
 - 通过 etcd API 写入数据
@@ -93,7 +93,7 @@ TestCrossProtocolMemoryDataInteroperability (18.85s)
   ✅ etcd_RangeQuery_Sees_HTTP_Data (新增)
   ✅ Concurrent_Mixed_Protocol_Writes (新增)
 
-TestCrossProtocolRocksDBDataInteroperability (30.14s)
+TestCrossProtocolPebbleDataInteroperability (30.14s)
   ✅ HTTP_Write_etcd_Read
   ✅ etcd_Write_HTTP_Read
   ✅ Mixed_Protocol_Writes
@@ -143,4 +143,4 @@ TestCrossProtocolRocksDBDataInteroperability (30.14s)
 
 **完成日期**: 2025-10-26
 **测试通过率**: 100%
-**新增测试用例**: 8 个（内存引擎 4 个 + RocksDB 引擎 4 个）
+**新增测试用例**: 8 个（内存引擎 4 个 + Pebble 引擎 4 个）

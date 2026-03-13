@@ -34,7 +34,7 @@ import (
 	"metaStore/internal/kvstore"
 	"metaStore/internal/memory"
 	"metaStore/internal/raft"
-	"metaStore/internal/rocksdb"
+	"metaStore/internal/pebbledb"
 	"metaStore/pkg/config"
 	"metaStore/pkg/log"
 	"metaStore/pkg/metrics"
@@ -76,25 +76,25 @@ func (s *serverStarter) buildStore(engine string) (kvstore.Store, raftNodeHook, 
 		kvs = memory.NewMemory(<-snapshotterReady, s.proposeC, commitC, errorC)
 		kvs.SetRaftNode(raftNode, s.cfg.Server.MemberID)
 		return kvs, raftNode, func() {}, nil
-	case "rocksdb":
-		dbPath := fmt.Sprintf("data/rocksdb/%d", s.cfg.Server.MemberID)
-		db, err := rocksdb.Open(dbPath, &s.cfg.Server.RocksDB)
+	case "pebble":
+		dbPath := fmt.Sprintf("data/pebble/%d", s.cfg.Server.MemberID)
+		db, err := pebbledb.Open(dbPath, &s.cfg.Server.Pebble)
 		if err != nil {
 			return nil, nil, nil, err
 		}
 
-		log.Info("RocksDB configuration applied",
-			zap.Uint64("block_cache_size", s.cfg.Server.RocksDB.BlockCacheSize),
-			zap.Uint64("write_buffer_size", s.cfg.Server.RocksDB.WriteBufferSize),
-			zap.Int("max_background_jobs", s.cfg.Server.RocksDB.MaxBackgroundJobs),
-			zap.Int("max_open_files", s.cfg.Server.RocksDB.MaxOpenFiles),
-			zap.Bool("bloom_filter_enabled", s.cfg.Server.RocksDB.BlockBasedTableBloomFilter),
-			zap.String("component", "rocksdb"))
+		log.Info("Pebble configuration applied",
+			zap.Uint64("block_cache_size", s.cfg.Server.Pebble.BlockCacheSize),
+			zap.Uint64("write_buffer_size", s.cfg.Server.Pebble.WriteBufferSize),
+			zap.Int("max_background_jobs", s.cfg.Server.Pebble.MaxBackgroundJobs),
+			zap.Int("max_open_files", s.cfg.Server.Pebble.MaxOpenFiles),
+			zap.Bool("bloom_filter_enabled", s.cfg.Server.Pebble.BlockBasedTableBloomFilter),
+			zap.String("component", "pebble"))
 
-		var kvs *rocksdb.RocksDB
+		var kvs *pebbledb.PebbleDB
 		getSnapshot := func() ([]byte, error) { return kvs.GetSnapshot() }
-		commitC, errorC, snapshotterReady, raftNode := raft.NewNodeRocksDB(int(s.cfg.Server.MemberID), s.clusterPeers, s.join, getSnapshot, s.proposeC, s.confChangeC, db, dbPath, s.cfg)
-		kvs = rocksdb.NewRocksDB(db, <-snapshotterReady, s.proposeC, commitC, errorC)
+		commitC, errorC, snapshotterReady, raftNode := raft.NewNodePebble(int(s.cfg.Server.MemberID), s.clusterPeers, s.join, getSnapshot, s.proposeC, s.confChangeC, db, dbPath, s.cfg)
+		kvs = pebbledb.NewPebbleDB(db, <-snapshotterReady, s.proposeC, commitC, errorC)
 		kvs.SetRaftNode(raftNode, s.cfg.Server.MemberID)
 		closeFunc := func() {
 			kvs.Close()
@@ -102,7 +102,7 @@ func (s *serverStarter) buildStore(engine string) (kvstore.Store, raftNodeHook, 
 		}
 		return kvs, raftNode, closeFunc, nil
 	default:
-		return nil, nil, nil, fmt.Errorf("Unknown storage engine: %s. Supported engines: memory, rocksdb", engine)
+		return nil, nil, nil, fmt.Errorf("Unknown storage engine: %s. Supported engines: memory, pebble", engine)
 	}
 }
 
@@ -233,7 +233,7 @@ func main() {
 	grpcAddr := flag.String("grpc-addr", ":2379", "gRPC server address for etcd compatibility")
 	clientURLs := flag.String("client-urls", "", "comma separated advertised client URLs")
 	join := flag.Bool("join", false, "join an existing cluster")
-	storageEngine := flag.String("storage", "memory", "storage engine: memory or rocksdb")
+	storageEngine := flag.String("storage", "memory", "storage engine: memory or pebble")
 
 	flag.Parse()
 
@@ -322,8 +322,8 @@ func main() {
 	}
 
 	switch *storageEngine {
-	case "rocksdb":
-		log.Info("Starting with RocksDB persistent storage", zap.String("component", "main"))
+	case "pebble":
+		log.Info("Starting with Pebble persistent storage", zap.String("component", "main"))
 	case "memory":
 		log.Info("Starting with memory + WAL storage and etcd gRPC support", zap.String("component", "main"))
 	default:
@@ -334,8 +334,8 @@ func main() {
 
 	store, raftNode, closeStore, err := starter.buildStore(*storageEngine)
 	if err != nil {
-		if *storageEngine == "rocksdb" {
-			log.Fatal("Failed to open RocksDB", zap.Error(err), zap.String("component", "main"))
+		if *storageEngine == "pebble" {
+			log.Fatal("Failed to open Pebble", zap.Error(err), zap.String("component", "main"))
 		} else {
 			log.Fatal("Failed to build store", zap.Error(err), zap.String("component", "main"))
 		}

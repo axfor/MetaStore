@@ -75,12 +75,12 @@ func TestLeaseExpiry_SingleNode_Memory(t *testing.T) {
 }
 
 // ============================================================================
-// Single-node lease expiry tests (RocksDB)
+// Single-node lease expiry tests (Pebble)
 // ============================================================================
 
-// TestLeaseExpiry_SingleNode_RocksDB tests lease expiry with the RocksDB engine.
-func TestLeaseExpiry_SingleNode_RocksDB(t *testing.T) {
-	node, cleanup := startRocksDBNode(t, 1)
+// TestLeaseExpiry_SingleNode_Pebble tests lease expiry with the Pebble engine.
+func TestLeaseExpiry_SingleNode_Pebble(t *testing.T) {
+	node, cleanup := startPebbleNode(t, 1)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -92,19 +92,19 @@ func TestLeaseExpiry_SingleNode_RocksDB(t *testing.T) {
 	leaseResp, err := cli.Grant(ctx, 2)
 	require.NoError(t, err)
 	leaseID := leaseResp.ID
-	t.Logf("Granted lease ID=%d, TTL=2s (RocksDB)", leaseID)
+	t.Logf("Granted lease ID=%d, TTL=2s (Pebble)", leaseID)
 
 	// Put a key with the lease
-	_, err = cli.Put(ctx, "expire-rocks/key1", "value1", clientv3.WithLease(leaseID))
+	_, err = cli.Put(ctx, "expire-pebble/key1", "value1", clientv3.WithLease(leaseID))
 	require.NoError(t, err)
 
 	// Verify key exists
-	getResp, err := cli.Get(ctx, "expire-rocks/key1")
+	getResp, err := cli.Get(ctx, "expire-pebble/key1")
 	require.NoError(t, err)
 	require.Len(t, getResp.Kvs, 1)
 
 	// Wait for expiry
-	t.Log("Waiting for lease to expire (RocksDB)...")
+	t.Log("Waiting for lease to expire (Pebble)...")
 	time.Sleep(4 * time.Second)
 
 	// Verify expired
@@ -113,20 +113,20 @@ func TestLeaseExpiry_SingleNode_RocksDB(t *testing.T) {
 	assert.Equal(t, int64(-1), ttlResp.TTL, "expired lease should have TTL=-1")
 
 	// Verify key deleted
-	getResp, err = cli.Get(ctx, "expire-rocks/key1")
+	getResp, err = cli.Get(ctx, "expire-pebble/key1")
 	require.NoError(t, err)
-	assert.Len(t, getResp.Kvs, 0, "key should be deleted after lease expired (RocksDB)")
-	t.Log("Single-node RocksDB lease expiry: PASSED")
+	assert.Len(t, getResp.Kvs, 0, "key should be deleted after lease expired (Pebble)")
+	t.Log("Single-node Pebble lease expiry: PASSED")
 }
 
 // ============================================================================
-// Single-node restart + lease expiry tests (RocksDB)
+// Single-node restart + lease expiry tests (Pebble)
 // ============================================================================
 
-// TestLeaseExpiry_AfterRestart_RocksDB tests that a lease with remaining TTL
-// properly expires after a RocksDB server restart.
-func TestLeaseExpiry_AfterRestart_RocksDB(t *testing.T) {
-	node, cleanup := startRocksDBNode(t, 1)
+// TestLeaseExpiry_AfterRestart_Pebble tests that a lease with remaining TTL
+// properly expires after a Pebble server restart.
+func TestLeaseExpiry_AfterRestart_Pebble(t *testing.T) {
+	node, cleanup := startPebbleNode(t, 1)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -137,7 +137,7 @@ func TestLeaseExpiry_AfterRestart_RocksDB(t *testing.T) {
 	leaseResp, err := cli.Grant(ctx, 5)
 	require.NoError(t, err)
 	leaseID := leaseResp.ID
-	t.Logf("Granted lease ID=%d, TTL=5s (RocksDB)", leaseID)
+	t.Logf("Granted lease ID=%d, TTL=5s (Pebble)", leaseID)
 
 	// Put keys with the lease
 	_, err = cli.Put(ctx, "restart-expire/key1", "v1", clientv3.WithLease(leaseID))
@@ -158,8 +158,8 @@ func TestLeaseExpiry_AfterRestart_RocksDB(t *testing.T) {
 	t.Log("Waiting 2s before restart (partial TTL elapsed)...")
 	time.Sleep(2 * time.Second)
 
-	// Restart server (reuse same RocksDB)
-	t.Log("Restarting RocksDB server...")
+	// Restart server (reuse same Pebble)
+	t.Log("Restarting Pebble server...")
 	node.server.Stop()
 	time.Sleep(500 * time.Millisecond)
 
@@ -169,7 +169,7 @@ func TestLeaseExpiry_AfterRestart_RocksDB(t *testing.T) {
 	listener.Close()
 
 	newServer, err := etcdapi.NewServer(etcdapi.ServerConfig{
-		Store:     node.rocksKVStore,
+		Store:     node.pebbleKVStore,
 		Address:   newAddr,
 		ClusterID: 2000,
 		MemberID:  uint64(node.id),
@@ -225,7 +225,7 @@ func TestLeaseExpiry_AfterRestart_RocksDB(t *testing.T) {
 	kaResp, err := cli2.KeepAliveOnce(ctx, longID)
 	require.NoError(t, err)
 	assert.Greater(t, kaResp.TTL, int64(0))
-	t.Log("RocksDB restart + lease expiry: PASSED")
+	t.Log("Pebble restart + lease expiry: PASSED")
 }
 
 // ============================================================================
@@ -371,12 +371,12 @@ func TestLeaseExpiry_3NodeCluster_ViaFollower(t *testing.T) {
 }
 
 // ============================================================================
-// 3-Node cluster lease expiry tests (RocksDB)
+// 3-Node cluster lease expiry tests (Pebble)
 // ============================================================================
 
-// TestLeaseExpiry_3NodeCluster_RocksDB tests lease expiry in a 3-node RocksDB cluster.
-func TestLeaseExpiry_3NodeCluster_RocksDB(t *testing.T) {
-	clus := newEtcdRocksDBCluster(t, 3)
+// TestLeaseExpiry_3NodeCluster_Pebble tests lease expiry in a 3-node Pebble cluster.
+func TestLeaseExpiry_3NodeCluster_Pebble(t *testing.T) {
+	clus := newEtcdPebbleCluster(t, 3)
 	defer clus.Close(t)
 
 	ctx := context.Background()
@@ -398,43 +398,43 @@ func TestLeaseExpiry_3NodeCluster_RocksDB(t *testing.T) {
 	leaseResp, err := clus.clients[leaderIdx].Grant(ctx, 3)
 	require.NoError(t, err)
 	leaseID := leaseResp.ID
-	t.Logf("Granted lease via leader (node %d), ID=%d, TTL=3s (RocksDB)", leaderIdx, leaseID)
+	t.Logf("Granted lease via leader (node %d), ID=%d, TTL=3s (Pebble)", leaderIdx, leaseID)
 
 	// Put key with lease
-	_, err = clus.clients[leaderIdx].Put(ctx, "rocks-cluster-expire/key1", "v1", clientv3.WithLease(leaseID))
+	_, err = clus.clients[leaderIdx].Put(ctx, "pebble-cluster-expire/key1", "v1", clientv3.WithLease(leaseID))
 	require.NoError(t, err)
 
 	// Wait for replication
 	time.Sleep(1 * time.Second)
 
 	// Verify key exists
-	getResp, err := clus.clients[leaderIdx].Get(ctx, "rocks-cluster-expire/key1")
+	getResp, err := clus.clients[leaderIdx].Get(ctx, "pebble-cluster-expire/key1")
 	require.NoError(t, err)
 	require.Len(t, getResp.Kvs, 1)
 
 	// Wait for expiry
-	t.Log("Waiting for lease to expire (RocksDB cluster)...")
+	t.Log("Waiting for lease to expire (Pebble cluster)...")
 	time.Sleep(6 * time.Second)
 
 	// Verify expired
 	ttlResp, err := clus.clients[leaderIdx].TimeToLive(ctx, leaseID)
 	require.NoError(t, err)
-	t.Logf("Lease TTL after expiry (RocksDB cluster): %d", ttlResp.TTL)
-	assert.Equal(t, int64(-1), ttlResp.TTL, "lease should have expired in RocksDB cluster")
+	t.Logf("Lease TTL after expiry (Pebble cluster): %d", ttlResp.TTL)
+	assert.Equal(t, int64(-1), ttlResp.TTL, "lease should have expired in Pebble cluster")
 
 	// Verify key deleted on all nodes
 	for i := 0; i < 3; i++ {
-		getResp, err := clus.clients[i].Get(ctx, "rocks-cluster-expire/key1")
+		getResp, err := clus.clients[i].Get(ctx, "pebble-cluster-expire/key1")
 		require.NoError(t, err)
-		assert.Len(t, getResp.Kvs, 0, "node %d: key should be deleted (RocksDB)", i)
+		assert.Len(t, getResp.Kvs, 0, "node %d: key should be deleted (Pebble)", i)
 	}
-	t.Log("3-node RocksDB cluster lease expiry: PASSED")
+	t.Log("3-node Pebble cluster lease expiry: PASSED")
 }
 
-// TestLeaseExpiry_3NodeCluster_RocksDB_ViaFollower tests lease expiry in a 3-node
-// RocksDB cluster when the lease is created via a follower.
-func TestLeaseExpiry_3NodeCluster_RocksDB_ViaFollower(t *testing.T) {
-	clus := newEtcdRocksDBCluster(t, 3)
+// TestLeaseExpiry_3NodeCluster_Pebble_ViaFollower tests lease expiry in a 3-node
+// Pebble cluster when the lease is created via a follower.
+func TestLeaseExpiry_3NodeCluster_Pebble_ViaFollower(t *testing.T) {
+	clus := newEtcdPebbleCluster(t, 3)
 	defer clus.Close(t)
 
 	ctx := context.Background()
@@ -458,40 +458,40 @@ func TestLeaseExpiry_3NodeCluster_RocksDB_ViaFollower(t *testing.T) {
 			break
 		}
 	}
-	t.Logf("Leader=node %d, Follower=node %d (RocksDB)", leaderIdx, followerIdx)
+	t.Logf("Leader=node %d, Follower=node %d (Pebble)", leaderIdx, followerIdx)
 
 	// Grant lease with 3s TTL via FOLLOWER
 	leaseResp, err := clus.clients[followerIdx].Grant(ctx, 3)
 	require.NoError(t, err)
 	leaseID := leaseResp.ID
-	t.Logf("Granted lease via FOLLOWER (node %d), ID=%d, TTL=3s (RocksDB)", followerIdx, leaseID)
+	t.Logf("Granted lease via FOLLOWER (node %d), ID=%d, TTL=3s (Pebble)", followerIdx, leaseID)
 
 	// Put key with lease
-	_, err = clus.clients[followerIdx].Put(ctx, "rocks-follower-expire/key1", "v1", clientv3.WithLease(leaseID))
+	_, err = clus.clients[followerIdx].Put(ctx, "pebble-follower-expire/key1", "v1", clientv3.WithLease(leaseID))
 	require.NoError(t, err)
 
 	// Wait for replication
 	time.Sleep(1 * time.Second)
 
 	// Wait for expiry
-	t.Log("Waiting for lease (granted via follower) to expire (RocksDB)...")
+	t.Log("Waiting for lease (granted via follower) to expire (Pebble)...")
 	time.Sleep(7 * time.Second)
 
 	// Verify
 	ttlResp, err := clus.clients[leaderIdx].TimeToLive(ctx, leaseID)
 	require.NoError(t, err)
-	t.Logf("Lease TTL after expiry (RocksDB follower): %d", ttlResp.TTL)
+	t.Logf("Lease TTL after expiry (Pebble follower): %d", ttlResp.TTL)
 
 	if ttlResp.TTL != -1 {
-		t.Errorf("BUG: lease granted via follower did NOT expire in RocksDB cluster! TTL=%d", ttlResp.TTL)
+		t.Errorf("BUG: lease granted via follower did NOT expire in Pebble cluster! TTL=%d", ttlResp.TTL)
 	}
 
-	getResp, err := clus.clients[leaderIdx].Get(ctx, "rocks-follower-expire/key1")
+	getResp, err := clus.clients[leaderIdx].Get(ctx, "pebble-follower-expire/key1")
 	require.NoError(t, err)
 	if len(getResp.Kvs) > 0 {
-		t.Errorf("BUG: key still exists after lease should have expired (RocksDB follower)")
+		t.Errorf("BUG: key still exists after lease should have expired (Pebble follower)")
 	} else {
-		t.Log("3-node RocksDB cluster lease expiry (via follower): PASSED")
+		t.Log("3-node Pebble cluster lease expiry (via follower): PASSED")
 	}
 }
 

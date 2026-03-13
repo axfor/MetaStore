@@ -76,13 +76,13 @@ for {
   - 移除：DELETE 操作的 `time.Sleep(50 * time.Millisecond)`
   - 优化：统一使用 `deadline` 和 `select` 机制
 
-### 2. [test/performance_rocksdb_test.go](../test/performance_rocksdb_test.go)
+### 2. [test/performance_pebble_test.go](../test/performance_pebble_test.go)
 
-- **TestPerformanceRocksDB_SustainedLoad**：
+- **TestPerformancePebble_SustainedLoad**：
   - 移除：`targetOpsPerSec` 参数和相关的 sleep
   - 优化：使用 `time.After(duration)` 替代 `stopFlag`
 
-- **TestPerformanceRocksDB_MixedWorkload**：
+- **TestPerformancePebble_MixedWorkload**：
   - 移除：所有已注释掉的 sleep（第 270, 291, 309, 330 行）
   - 优化：使用 `deadline` 和 `select` 统一控制
 
@@ -191,17 +191,17 @@ for {
 | SustainedLoad | ~2,000 (人为限制) | 330 | 移除限流后的真实写入性能 |
 | MixedWorkload | ~3,000-5,000 (含延迟) | 1,455 | 混合负载下的真实性能 |
 
-### RocksDB 存储
+### Pebble 存储
 
 | 测试场景 | 优化前 (ops/s) | 优化后实际 (ops/s) | 说明 |
 |---------|---------------|-------------------|------|
-| SustainedLoad | ~1,000 (人为限制) | 173 | RocksDB 写入性能（受持久化影响） |
+| SustainedLoad | ~1,000 (人为限制) | 173 | Pebble 写入性能（受持久化影响） |
 | MixedWorkload | ~1,500 (含延迟) | 4,921 | 读操作占 80%，总体吞吐高 |
 
 **性能分析：**
 1. **写入受 Raft 共识影响**：单节点 Raft 每次写入需要持久化 WAL，限制了写入吞吐
 2. **读写性能差异大**：MixedWorkload 中读操作占比高，因此总吞吐明显提升
-3. **RocksDB 持久化开销**：SustainedLoad 全是写操作，RocksDB 需要写 WAL + SST，比内存慢
+3. **Pebble 持久化开销**：SustainedLoad 全是写操作，Pebble 需要写 WAL + SST，比内存慢
 4. **优化成功移除了限流**：测试现在测量的是系统真实性能，而非人为限制的性能
 
 *注：实际吞吐受 Raft 共识协议、持久化策略、硬件性能等多种因素影响*
@@ -241,7 +241,7 @@ for {
 2. **更快速**地发现性能瓶颈
    - 识别出 Raft 共识协议对写入性能的影响
    - 发现读写性能差异（读操作明显快于写操作）
-   - 暴露 RocksDB 持久化开销
+   - 暴露 Pebble 持久化开销
 
 3. **更有效**地验证优化效果
    - 可以准确测量 WriteBatch 优化带来的提升

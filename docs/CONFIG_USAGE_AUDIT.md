@@ -19,7 +19,7 @@
 | LogConfig | 4 | ❌ **未使用** | - |
 | MonitoringConfig | 3 | ✅ **部分使用** | pkg/grpc/server.go |
 | PerformanceConfig | 3 | ✅ **完全使用** | pkg/config/performance.go, internal/memory/*, internal/common/* |
-| RocksDBConfig | 15 | ❌ **未使用** | - |
+| PebbleConfig | 15 | ❌ **未使用** | - |
 
 **测试代码使用情况**:
 - ❌ **test/** 目录中没有任何测试使用配置文件
@@ -250,7 +250,7 @@ func EnableLeaseProtobuf() bool { return config.GetEnableLeaseProtobuf() }
 
 ---
 
-## 🔟 RocksDBConfig - ❌ 完全未使用
+## 🔟 PebbleConfig - ❌ 完全未使用
 
 **定义位置**: [pkg/config/config.go:132-156](pkg/config/config.go:132-156)
 
@@ -271,12 +271,12 @@ func EnableLeaseProtobuf() bool { return config.GetEnableLeaseProtobuf() }
 | BytesPerSync | uint64 | 1MB | - | ❌ |
 
 **影响**:
-- RocksDB 引擎使用硬编码的默认配置（[internal/rocksdb/config.go:84-102](internal/rocksdb/config.go:84-102)）
-- 无法通过配置文件调整 RocksDB 性能
+- Pebble 引擎使用硬编码的默认配置（[internal/pebble/config.go:84-102](internal/pebble/config.go:84-102)）
+- 无法通过配置文件调整 Pebble 性能
 
 **当前硬编码值**:
 ```go
-// internal/rocksdb/config.go:84-102
+// internal/pebble/config.go:84-102
 func DefaultOptimizationConfig() OptimizationConfig {
     return OptimizationConfig{
         BlockCache: BlockCacheConfig{
@@ -288,34 +288,34 @@ func DefaultOptimizationConfig() OptimizationConfig {
 }
 ```
 
-**建议**: **高优先级** - 需要实施 RocksDB 配置集成（详见下文）
+**建议**: **高优先级** - 需要实施 Pebble 配置集成（详见下文）
 
 ---
 
 ## 🚨 关键问题
 
-### 问题 1: RocksDB 配置未被使用（优先级：🔴 高）
+### 问题 1: Pebble 配置未被使用（优先级：🔴 高）
 
 **现状**:
-- 配置文件定义了 15 个 RocksDB 配置项
+- 配置文件定义了 15 个 Pebble 配置项
 - 所有配置项都有合理的默认值
 - **但是没有任何代码使用这些配置**
 
 **影响**:
 - 用户修改配置文件无效
-- 无法进行 RocksDB 性能调优
+- 无法进行 Pebble 性能调优
 - 配置文件与实际行为不一致
 
 **解决方案**:
 
-#### 步骤 1: 修改 RocksDB 配置应用函数
+#### 步骤 1: 修改 Pebble 配置应用函数
 
-**文件**: `internal/rocksdb/config.go`
+**文件**: `internal/pebble/config.go`
 
 添加新函数：
 ```go
 // ConfigFromYAML 从 YAML 配置创建 OptimizationConfig
-func ConfigFromYAML(cfg *config.RocksDBConfig) OptimizationConfig {
+func ConfigFromYAML(cfg *config.PebbleConfig) OptimizationConfig {
     return OptimizationConfig{
         WAL: WALConfig{
             Sync:         cfg.UseFsync,
@@ -336,15 +336,15 @@ func ConfigFromYAML(cfg *config.RocksDBConfig) OptimizationConfig {
 }
 
 // ApplyDBOptionsFromConfig 应用 YAML 配置到 DBOptions
-func ApplyDBOptionsFromConfig(opts *grocksdb.Options, cfg *config.RocksDBConfig) {
+func ApplyDBOptionsFromConfig(opts *gpebble.Options, cfg *config.PebbleConfig) {
     // Block Cache
     if cfg.BlockCacheSize > 0 {
-        cache := grocksdb.NewLRUCache(cfg.BlockCacheSize)
-        bbto := grocksdb.NewDefaultBlockBasedTableOptions()
+        cache := gpebble.NewLRUCache(cfg.BlockCacheSize)
+        bbto := gpebble.NewDefaultBlockBasedTableOptions()
         bbto.SetBlockCache(cache)
 
         if cfg.BlockBasedTableBloomFilter {
-            bbto.SetFilterPolicy(grocksdb.NewBloomFilter(cfg.BloomFilterBitsPerKey))
+            bbto.SetFilterPolicy(gpebble.NewBloomFilter(cfg.BloomFilterBitsPerKey))
         }
 
         opts.SetBlockBasedTableFactory(bbto)
@@ -387,12 +387,12 @@ func ApplyDBOptionsFromConfig(opts *grocksdb.Options, cfg *config.RocksDBConfig)
 
 #### 步骤 2: 修改 storage.go 的 Open 函数
 
-**文件**: `internal/rocksdb/storage.go`
+**文件**: `internal/pebble/storage.go`
 
 ```go
-// Open 打开 RocksDB 数据库（使用配置）
-func Open(path string, cfg *config.RocksDBConfig) (*grocksdb.DB, error) {
-    opts := grocksdb.NewDefaultOptions()
+// Open 打开 Pebble 数据库（使用配置）
+func Open(path string, cfg *config.PebbleConfig) (*gpebble.DB, error) {
+    opts := gpebble.NewDefaultOptions()
     opts.SetCreateIfMissing(true)
 
     // 应用配置文件中的设置
@@ -404,7 +404,7 @@ func Open(path string, cfg *config.RocksDBConfig) (*grocksdb.DB, error) {
         defaultCfg.ApplyDBOptions(opts)
     }
 
-    db, err := grocksdb.OpenDb(opts, path)
+    db, err := gpebble.OpenDb(opts, path)
     if err != nil {
         return nil, err
     }
@@ -419,7 +419,7 @@ func Open(path string, cfg *config.RocksDBConfig) (*grocksdb.DB, error) {
 
 ```go
 // 第 100 行，修改为：
-db, err := rocksdb.Open(dbPath, &cfg.Server.RocksDB)
+db, err := pebble.Open(dbPath, &cfg.Server.Pebble)
 ```
 
 ---
@@ -449,15 +449,15 @@ db, err := rocksdb.Open(dbPath, &cfg.Server.RocksDB)
 
 ## 📝 实施优先级
 
-### 🔴 优先级 1: RocksDB 配置集成
+### 🔴 优先级 1: Pebble 配置集成
 
 **预计工时**: 2-3 小时
 **影响**: 高 - 15 个配置项
-**价值**: 允许用户调优 RocksDB 性能
+**价值**: 允许用户调优 Pebble 性能
 
 **任务**:
-1. 修改 `internal/rocksdb/config.go` 添加配置转换函数
-2. 修改 `internal/rocksdb/storage.go` 的 Open 函数接收配置
+1. 修改 `internal/pebble/config.go` 添加配置转换函数
+2. 修改 `internal/pebble/storage.go` 的 Open 函数接收配置
 3. 修改 `cmd/metastore/main.go` 传递配置
 4. 测试验证配置生效
 
@@ -522,7 +522,7 @@ db, err := rocksdb.Open(dbPath, &cfg.Server.RocksDB)
        enable_snapshot_protobuf: true
        enable_lease_protobuf: true
 
-     rocksdb:
+     pebble:
        block_cache_size: 268435456
        # ... 其他配置
    ```
@@ -548,11 +548,11 @@ db, err := rocksdb.Open(dbPath, &cfg.Server.RocksDB)
 3. **更新性能测试使用配置**:
    ```go
    // test/performance_test.go
-   func BenchmarkRocksDBWithConfig(b *testing.B) {
+   func BenchmarkPebbleWithConfig(b *testing.B) {
        cfg := testutil.LoadTestConfig()
 
-       // 使用配置打开 RocksDB
-       db, err := rocksdb.Open(dbPath, &cfg.Server.RocksDB)
+       // 使用配置打开 Pebble
+       db, err := pebble.Open(dbPath, &cfg.Server.Pebble)
        // ...
    }
    ```
@@ -576,7 +576,7 @@ db, err := rocksdb.Open(dbPath, &cfg.Server.RocksDB)
 
 ### 未使用的配置（33 项）
 
-1. **RocksDBConfig** (15 项) - ❌ 完全未使用
+1. **PebbleConfig** (15 项) - ❌ 完全未使用
 2. **LeaseConfig** (2 项) - ❌ 完全未使用
 3. **AuthConfig** (4 项) - ❌ 完全未使用
 4. **MaintenanceConfig** (1 项) - ❌ 未使用
@@ -587,7 +587,7 @@ db, err := rocksdb.Open(dbPath, &cfg.Server.RocksDB)
 
 ### 行动建议
 
-1. **立即实施**: RocksDB 配置集成（优先级 1）
+1. **立即实施**: Pebble 配置集成（优先级 1）
 2. **近期实施**: Log 配置集成（优先级 2）
 3. **逐步完善**: Lease/Auth/Maintenance 配置集成（优先级 3）
 4. **长期优化**: 完善 Limits 配置（优先级 4）

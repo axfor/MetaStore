@@ -196,7 +196,7 @@ func (lm *LeaseManager) TimeToLive(id int64) (*kvstore.Lease, error) {
 	// (e.g., SyncFromStore loaded a lease that was concurrently revoked),
 	// so treat any store "not found" error as ErrLeaseNotFound.
 	lease, err := lm.store.LeaseTimeToLive(context.Background(), id)
-	if err != nil {
+	if err != nil || lease == nil {
 		// Remove stale entry from cache
 		lm.mu.Lock()
 		delete(lm.leases, id)

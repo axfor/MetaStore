@@ -160,7 +160,7 @@ MetaStore 提供了与 etcd v3 API 兼容的 gRPC 接口，但在某些功能和
 - 适合开发环境
 
 **未来计划**：
-- Phase 2: 支持 RocksDB 持久化
+- Phase 2: 支持 Pebble 持久化
 - Phase 3: 性能优化
 
 ### 6. Snapshot 功能
@@ -268,7 +268,7 @@ MetaStore 正确映射了以下 gRPC 错误码：
 
 ### Phase 2：生产就绪
 - ⏳ 集成 Raft 共识
-- ⏳ RocksDB 持久化
+- ⏳ Pebble 持久化
 - ⏳ 完整的 MVCC
 - ⏳ 历史事件回放
 

@@ -105,7 +105,7 @@ const (
 - [internal/batch/batch_proposer.go](internal/batch/batch_proposer.go) - BatchProposer 实现
 - [cmd/metastore/main.go:38-55](cmd/metastore/main.go#L38-L55) - 参数配置 ✅ 已修改
 - [internal/memory/kvstore.go](internal/memory/kvstore.go) - Memory 引擎集成
-- [internal/rocksdb/kvstore.go](internal/rocksdb/kvstore.go) - RocksDB 引擎集成
+- [internal/pebble/kvstore.go](internal/pebble/kvstore.go) - Pebble 引擎集成
 
 ### 文档
 - [docs/BATCH_PROPOSER_PERFORMANCE_ANALYSIS.md](docs/BATCH_PROPOSER_PERFORMANCE_ANALYSIS.md) - 详细分析报告
@@ -165,7 +165,7 @@ const (
 |---------|------|------|-----------------|
 | Memory LargeScale | 982 ops/sec | 15,000+ ops/sec | ~3,000-4,000 ops/sec |
 | Memory Sustained | 453 ops/sec | 10,000+ ops/sec | ~2,000-3,000 ops/sec |
-| RocksDB LargeScale | 364 ops/sec | 20,000+ ops/sec | ~2,000-3,000 ops/sec |
+| Pebble LargeScale | 364 ops/sec | 20,000+ ops/sec | ~2,000-3,000 ops/sec |
 
 **估计提升**: 3-5x (相比当前基准)
 
@@ -184,8 +184,8 @@ make build
 # 运行 Memory 性能测试
 make test-perf-memory
 
-# 运行 RocksDB 性能测试
-make test-perf-rocksdb
+# 运行 Pebble 性能测试
+make test-perf-pebble
 ```
 
 ### 检查 BatchProposer 统计

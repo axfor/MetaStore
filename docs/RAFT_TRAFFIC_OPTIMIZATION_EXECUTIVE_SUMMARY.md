@@ -24,7 +24,7 @@
 | 批量 Apply | ✓ 完成 | 5-10x | kvstore.go:132-179 |
 | Protobuf 序列化 | ✓ 完成 | 3-20.6x | config.go:128-132 |
 | 日志压缩 | ✓ 完成 | - | node_memory.go:433-443 |
-| RocksDB 批量写入 | ✓ 完成 | 5-10x | rocksdb/kvstore.go |
+| Pebble 批量写入 | ✓ 完成 | 5-10x | pebble/kvstore.go |
 | 流控制窗口 | ✓ 完成 | 2x | config.go:268-272 |
 | 批量 Proposal | ~ 已设计 | 2-5x | docs/RAFT_BATCH_*.md |
 | 消息压缩 | ✗ 未实现 | 1.5-2x | - |
@@ -304,7 +304,7 @@ loadCompressedSnapshot(compressed []byte) → decompress → apply
 |------|------|------|------|
 | pkg/config/config.go | 参数优化 | 370-395 | Raft 配置 |
 | internal/memory/kvstore.go | 批量 Apply | 132-179 | Phase 2 优化 |
-| internal/rocksdb/kvstore.go | 批量写入 | - | RocksDB WriteBatch |
+| internal/pebble/kvstore.go | 批量写入 | - | Pebble WriteBatch |
 | internal/raft/node_memory.go | 日志压缩 | 433-443 | 快照和压缩 |
 | configs/config.yaml | 配置示例 | 94-143 | 性能参数 |
 
@@ -436,9 +436,9 @@ MetaStore 已经奠定了良好的性能优化基础：
 
 ### 源代码文件
 - `internal/raft/node_memory.go` - Memory Raft 实现
-- `internal/raft/node_rocksdb.go` - RocksDB Raft 实现
+- `internal/raft/node_pebble.go` - Pebble Raft 实现
 - `internal/memory/kvstore.go` - 内存存储应用层
-- `internal/rocksdb/kvstore.go` - RocksDB 应用层
+- `internal/pebble/kvstore.go` - Pebble 应用层
 - `pkg/config/config.go` - 配置管理
 
 ### 配置文件

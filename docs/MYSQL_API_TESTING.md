@@ -24,10 +24,10 @@ Tests basic MySQL operations with memory storage engine:
 go test -v ./test -run TestMySQLMemorySingleNodeOperations
 ```
 
-#### RocksDB Engine Tests
-**File**: `test/mysql_api_rocksdb_integration_test.go`
+#### Pebble Engine Tests
+**File**: `test/mysql_api_pebble_integration_test.go`
 
-Tests MySQL operations with RocksDB persistent storage:
+Tests MySQL operations with Pebble persistent storage:
 - ✅ All memory engine tests
 - ✅ Large value handling (1KB, 10KB)
 - ✅ Special characters in keys
@@ -35,8 +35,8 @@ Tests MySQL operations with RocksDB persistent storage:
 
 **Run Command**:
 ```bash
-CGO_ENABLED=1 CGO_LDFLAGS="-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain" \
-go test -v ./test -run TestMySQLRocksDB
+CGO_ENABLED=1 CGO_LDFLAGS="-lpebble -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain" \
+go test -v ./test -run TestMySQLPebble
 ```
 
 ### 2. Cross-Protocol Integration Tests
@@ -116,11 +116,11 @@ go test -v ./test -run TestMySQLProtocolShowCommands
 go test -v ./test -run TestMySQL.*Memory
 ```
 
-### Full Test Suite (Requires RocksDB)
+### Full Test Suite (Requires Pebble)
 ```bash
-# Set CGO flags for RocksDB
+# Set CGO flags for Pebble
 export CGO_ENABLED=1
-export CGO_LDFLAGS="-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain"
+export CGO_LDFLAGS="-lpebble -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain"
 
 # Run all MySQL tests
 go test -v ./test -run TestMySQL -timeout 10m
@@ -141,12 +141,12 @@ go test -v ./test -run TestMySQLCluster -timeout 5m
 ### Software Dependencies
 - Go 1.21+
 - MySQL CLI client (for manual testing)
-- RocksDB library (for RocksDB tests)
+- Pebble library (for Pebble tests)
 - Available ports: 13306-13311, 12379-12382, 19200-19300
 
 ### System Resources
 - Memory: 2GB+ recommended
-- Disk: 1GB+ free space for RocksDB
+- Disk: 1GB+ free space for Pebble
 - Network: Localhost access
 - Ports: Must be available (not in use)
 
@@ -171,7 +171,7 @@ go test -v ./test -run TestMySQLCluster -timeout 5m
 
 ### Storage Engines
 - ✅ Memory engine (in-memory with WAL)
-- ✅ RocksDB engine (persistent storage)
+- ✅ Pebble engine (persistent storage)
 
 ### Cluster Scenarios
 - ✅ 3-node cluster replication
@@ -248,17 +248,17 @@ lsof -i :3306
 kill <PID>
 ```
 
-#### 2. RocksDB Not Found
+#### 2. Pebble Not Found
 ```
-Error: ld: library not found for -lrocksdb
+Error: ld: library not found for -lpebble
 ```
 
-**Solution**: Install RocksDB or skip RocksDB tests
+**Solution**: Install Pebble or skip Pebble tests
 ```bash
 # macOS
-brew install rocksdb
+brew install pebble
 
-# Or skip RocksDB tests
+# Or skip Pebble tests
 go test -v ./test -run TestMySQL.*Memory
 ```
 
@@ -311,21 +311,21 @@ jobs:
       - name: Run Memory Tests
         run: go test -v ./test -run TestMySQL.*Memory
 
-  test-rocksdb:
+  test-pebble:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v4
         with:
           go-version: '1.21'
-      - name: Install RocksDB
+      - name: Install Pebble
         run: |
           sudo apt-get update
-          sudo apt-get install -y librocksdb-dev
-      - name: Run RocksDB Tests
+          sudo apt-get install -y libpebble-dev
+      - name: Run Pebble Tests
         run: |
           export CGO_ENABLED=1
-          go test -v ./test -run TestMySQLRocksDB
+          go test -v ./test -run TestMySQLPebble
 
   test-cross-protocol:
     runs-on: ubuntu-latest
@@ -401,6 +401,6 @@ The MySQL API test suite provides comprehensive coverage of:
 - Basic MySQL protocol operations
 - Cross-protocol data consistency
 - Multi-node cluster replication
-- Both storage engines (Memory and RocksDB)
+- Both storage engines (Memory and Pebble)
 
 All tests validate that the MySQL protocol layer maintains data consistency with HTTP and etcd APIs while providing standard MySQL compatibility.

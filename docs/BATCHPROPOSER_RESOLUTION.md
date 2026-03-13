@@ -92,7 +92,7 @@ MixedWorkload 测试显示 6,476 ops/sec，但分析发现：
 
 // 使用原始构造函数（不使用 BatchProposer）
 kvs = memory.NewMemory(<-snapshotterReady, proposeC, commitC, errorC)
-kvs = rocksdb.NewRocksDB(db, <-snapshotterReady, proposeC, commitC, errorC)
+kvs = pebble.NewPebble(db, <-snapshotterReady, proposeC, commitC, errorC)
 ```
 
 ---

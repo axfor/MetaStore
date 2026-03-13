@@ -27,7 +27,7 @@ This report presents comprehensive performance testing results for MetaStore, in
 - **OS**: macOS Darwin 24.6.0
 - **CPU**: x86_64 architecture
 - **Go Version**: Go 1.21+
-- **Storage Engine**: RocksDB with Raft consensus
+- **Storage Engine**: Pebble with Raft consensus
 - **Test Mode**: Memory-backed storage for performance testing
 
 ### Configuration
@@ -315,13 +315,13 @@ _(To be measured during extended test runs)_
 
 **Performance Tests:**
 ```bash
-CGO_ENABLED=1 CGO_LDFLAGS="-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain" \
+CGO_ENABLED=1 CGO_LDFLAGS="-lpebble -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain" \
 go test -timeout=20m -v -run="^TestPerformance_" ./test
 ```
 
 **Benchmark Tests:**
 ```bash
-CGO_ENABLED=1 CGO_LDFLAGS="-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain" \
+CGO_ENABLED=1 CGO_LDFLAGS="-lpebble -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2 -Wl,-U,_SecTrustCopyCertificateChain" \
 go test -bench=. -benchmem -benchtime=5s -run=^$ ./test
 ```
 
@@ -345,7 +345,7 @@ go test -bench=. -benchmem -benchtime=5s -run=^$ ./test
 2. **Performance Tuning**
    - Enable read-from-follower for read-heavy workloads
    - Use connection pooling on client side
-   - Monitor and tune RocksDB compaction settings
+   - Monitor and tune Pebble compaction settings
    - Consider SSD storage for write-heavy workloads
 
 3. **Monitoring**

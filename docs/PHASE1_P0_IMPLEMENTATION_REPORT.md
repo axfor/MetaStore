@@ -244,12 +244,12 @@ type AuthManager struct {
 - ✅ **API Layer (etcdapi)**: 100% complete (context propagation from gRPC)
 - ✅ **Auth Layer**: 100% complete (uses context.Background())
 - ✅ **HTTP Layer**: 100% complete (uses context.Background())
-- ⏳ **Storage Implementation**: 90% complete (10 compile errors remaining in memory/rocksdb implementations)
+- ⏳ **Storage Implementation**: 90% complete (10 compile errors remaining in memory/pebble implementations)
 
 ### Remaining Work
 The following Store implementations need context parameter updates:
 - `internal/memory/kvstore.go` - Memory storage (~200 lines)
-- `internal/rocksdb/kvstore.go` - RocksDB storage (~300 lines)
+- `internal/pebble/kvstore.go` - Pebble storage (~300 lines)
 
 **Estimated time**: 2-3 hours to complete
 
@@ -324,7 +324,7 @@ resp, err := store.Range(ctx, "key", "", 0, 0)
 
 ### High Priority (Week 2-3)
 1. **Complete Context Implementation** (2-3h)
-   - Update memory/rocksdb Store implementations
+   - Update memory/pebble Store implementations
    - Fix remaining 10 compile errors
 
 2. **AuthManager sync.Map Optimization** (Already done in Phase 1!)

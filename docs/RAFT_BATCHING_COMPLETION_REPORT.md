@@ -13,7 +13,7 @@ Successfully implemented Raft batching mechanism for MetaStore, completing Tier 
 **Implementation Results**:
 - ✅ BatchProposer component created and integrated
 - ✅ All write operations (Put/Delete/Lease/Txn) now use batching
-- ✅ 100% test pass rate maintained (13/13 RocksDB tests + integration tests)
+- ✅ 100% test pass rate maintained (13/13 Pebble tests + integration tests)
 - ✅ Fixed channel backpressure handling for production reliability
 - ✅ Zero breaking changes - maintains full etcd v3 API compatibility
 
@@ -58,7 +58,7 @@ Client Operations
 
 ### 2.1 New Files Created
 
-#### [internal/rocksdb/batch_proposer.go](../internal/rocksdb/batch_proposer.go) (211 lines)
+#### [internal/pebble/batch_proposer.go](../internal/pebble/batch_proposer.go) (211 lines)
 
 **Key Components**:
 
@@ -94,13 +94,13 @@ type BatchProposer struct {
 
 ### 2.2 Modified Files
 
-#### [internal/rocksdb/kvstore.go](../internal/rocksdb/kvstore.go)
+#### [internal/pebble/kvstore.go](../internal/pebble/kvstore.go)
 
 **Changes**:
 
 1. **Added field** (Line 73):
 ```go
-type RocksDB struct {
+type Pebble struct {
     // ... existing fields ...
     batchProposer *BatchProposer  // NEW
 }
@@ -182,25 +182,25 @@ case <-time.After(30 * time.Second):
 
 ## 4. Test Results
 
-### 4.1 RocksDB Core Tests
+### 4.1 Pebble Core Tests
 
 All 13 tests passed (5.260s):
 
 | Test | Status | Duration |
 |------|--------|----------|
-| TestRocksDB_Compact_Basic | ✅ PASS | 0.37s |
-| TestRocksDB_Compact_Validation | ✅ PASS | 0.42s |
-| TestRocksDB_Compact_ExpiredLeases | ✅ PASS | 0.36s |
-| TestRocksDB_Compact_PhysicalCompaction | ✅ PASS | 0.43s |
-| TestRocksDB_Compact_Sequential | ✅ PASS | 0.43s |
-| TestRocksDBStorage_BasicOperations | ✅ PASS | 0.28s |
-| TestRocksDBStorage_AppendEntries | ✅ PASS | 0.31s |
-| TestRocksDBStorage_Term | ✅ PASS | 0.31s |
-| TestRocksDBStorage_HardState | ✅ PASS | 0.28s |
-| TestRocksDBStorage_Snapshot | ✅ PASS | 0.30s |
-| TestRocksDBStorage_ApplySnapshot | ✅ PASS | 0.37s |
-| TestRocksDBStorage_Compact | ✅ PASS | 0.32s |
-| TestRocksDBStorage_Persistence | ✅ PASS | 0.43s |
+| TestPebble_Compact_Basic | ✅ PASS | 0.37s |
+| TestPebble_Compact_Validation | ✅ PASS | 0.42s |
+| TestPebble_Compact_ExpiredLeases | ✅ PASS | 0.36s |
+| TestPebble_Compact_PhysicalCompaction | ✅ PASS | 0.43s |
+| TestPebble_Compact_Sequential | ✅ PASS | 0.43s |
+| TestPebbleStorage_BasicOperations | ✅ PASS | 0.28s |
+| TestPebbleStorage_AppendEntries | ✅ PASS | 0.31s |
+| TestPebbleStorage_Term | ✅ PASS | 0.31s |
+| TestPebbleStorage_HardState | ✅ PASS | 0.28s |
+| TestPebbleStorage_Snapshot | ✅ PASS | 0.30s |
+| TestPebbleStorage_ApplySnapshot | ✅ PASS | 0.37s |
+| TestPebbleStorage_Compact | ✅ PASS | 0.32s |
+| TestPebbleStorage_Persistence | ✅ PASS | 0.43s |
 
 ### 4.2 Integration Tests
 
@@ -214,7 +214,7 @@ All 13 tests passed (5.260s):
 - ✅ etcd_RangeQuery_Sees_HTTP_Data (2.01s)
 - ✅ **Concurrent_Mixed_Protocol_Writes (3.54s)** ← Critical test that was failing
 
-**TestCrossProtocolRocksDBDataInteroperability** (26.84s):
+**TestCrossProtocolPebbleDataInteroperability** (26.84s):
 - ✅ HTTP_Write_etcd_Read (1.05s)
 - ✅ etcd_Write_HTTP_Read (1.05s)
 - ✅ Mixed_Protocol_Writes (4.61s)
@@ -224,7 +224,7 @@ All 13 tests passed (5.260s):
 - ✅ etcd_RangeQuery_Sees_HTTP_Data (2.46s)
 - ✅ **Concurrent_Mixed_Protocol_Writes (5.92s)** ← Critical test that was failing
 
-**TestEtcdRocksDBSingleNodeOperations** (6.00s):
+**TestEtcdPebbleSingleNodeOperations** (6.00s):
 - ✅ PutAndGet (0.08s)
 - ✅ Delete (0.12s)
 - ✅ RangeQuery (0.28s)
@@ -233,7 +233,7 @@ All 13 tests passed (5.260s):
 
 ### 4.3 Test Summary
 
-- **RocksDB Tests**: 13/13 passed ✅
+- **Pebble Tests**: 13/13 passed ✅
 - **Cross-Protocol Tests**: 16/16 subtests passed ✅
 - **etcd Integration**: 3/3 subtests passed ✅
 - **Total Pass Rate**: 100% ✅
@@ -520,7 +520,7 @@ batchConfig := BatchConfig{
 - [TIER2_OPTIMIZATION_TEST_REPORT.md](TIER2_OPTIMIZATION_TEST_REPORT.md): Tier 2 results
 - [OPTIMIZATION_SUMMARY.md](OPTIMIZATION_SUMMARY.md): Overall optimization journey
 - [WRITE_PATH_ANALYSIS.md](WRITE_PATH_ANALYSIS.md): Original bottleneck analysis
-- [batch_proposer.go](../internal/rocksdb/batch_proposer.go): Implementation
+- [batch_proposer.go](../internal/pebble/batch_proposer.go): Implementation
 
 ---
 

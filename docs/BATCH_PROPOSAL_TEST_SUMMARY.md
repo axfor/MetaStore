@@ -131,7 +131,7 @@ ok  	metaStore/internal/batch	0.379s
 - ✅ 缓冲区溢出保护生效（> 80% 时强制高负载模式）
 - ✅ 流量降低后能恢复到低批量模式
 
-#### 场景 5: Memory vs RocksDB 对比 (`TestBatchProposal_MemoryVsRocksDB`)
+#### 场景 5: Memory vs Pebble 对比 (`TestBatchProposal_MemoryVsPebble`)
 
 **配置**:
 - 客户端数: 20
@@ -139,7 +139,7 @@ ok  	metaStore/internal/batch	0.379s
 
 **对比测试**:
 1. Memory 后端（批量启用）
-2. RocksDB 后端（批量启用）
+2. Pebble 后端（批量启用）
 
 **验证指标**:
 - 两种后端都受益于批量优化

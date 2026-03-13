@@ -443,20 +443,20 @@ func TestMySQLCrossProtocolMemory(t *testing.T) {
 	})
 }
 
-// TestMySQLCrossProtocolRocksDB tests cross-protocol with RocksDB engine
-func TestMySQLCrossProtocolRocksDB(t *testing.T) {
+// TestMySQLCrossProtocolPebble tests cross-protocol with Pebble engine
+func TestMySQLCrossProtocolPebble(t *testing.T) {
 	if testing.Short() {
-		t.Skip("Skipping RocksDB test in short mode")
+		t.Skip("Skipping Pebble test in short mode")
 	}
 
 	t.Parallel()
 
-	// This test requires RocksDB to be installed
-	// Similar structure to TestMySQLCrossProtocolMemory but with RocksDB backend
+	// This test requires Pebble to be installed
+	// Similar structure to TestMySQLCrossProtocolMemory but with Pebble backend
 	// Implementation follows the same pattern as memory tests
 
-	t.Log("RocksDB cross-protocol test would require CGO and RocksDB installation")
-	t.Log("Test structure is identical to memory version but uses rocksdb.Open() instead")
+	t.Log("Pebble cross-protocol test would require CGO and Pebble installation")
+	t.Log("Test structure is identical to memory version but uses pebble.Open() instead")
 }
 
 // TestMySQLProtocolShowCommands tests MySQL SHOW commands return correct data

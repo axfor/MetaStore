@@ -396,7 +396,7 @@ server:
 
 ### Phase 2: Raft 集成（2-3 小时）
 1. 集成到 Memory Raft 节点
-2. 集成到 RocksDB Raft 节点
+2. 集成到 Pebble Raft 节点
 3. 添加配置系统
 4. 集成测试
 

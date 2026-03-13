@@ -214,7 +214,7 @@ func (m *Memory) propose(ctx context.Context, data string) error {
 
 5. **综合优化**:
    - Protobuf 序列化 (替代 JSON)
-   - WriteBatch (RocksDB 原生批量)
+   - WriteBatch (Pebble 原生批量)
    - gRPC 并发优化
    - 目标：**100,000+ QPS**
 

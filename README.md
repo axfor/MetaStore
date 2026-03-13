@@ -19,7 +19,7 @@ A lightweight, high-performance, production-ready distributed metadata managemen
 - **🏗️ Raft Consensus**: Built on etcd's battle-tested raft library for strong consistency
 - **🚀 High Availability**: Tolerates up to (N-1)/2 node failures in an N-node cluster
 - **👁️ 2-Node HA with Witness**: Support for 2 data nodes + 1 lightweight witness node for cost-effective HA
-- **💾 Dual Storage Modes**: Memory+WAL (fast) or RocksDB (persistent)
+- **💾 Dual Storage Modes**: Memory+WAL (fast) or Pebble (persistent, pure Go)
 - **📊 Observability**: Prometheus metrics, structured logging, and health checks
 - **🔧 Production Features**: Graceful shutdown, panic recovery, rate limiting, and input validation
 
@@ -241,7 +241,7 @@ See [docs/MYSQL_API_QUICKSTART.md](docs/MYSQL_API_QUICKSTART.md) for complete My
 
 #### Performance Optimization
 - ✅ Object pooling for KV pairs (reduces GC pressure)
-- ✅ Memory-mapped I/O for RocksDB
+- ✅ Pebble storage engine (pure Go, no CGO required)
 - ✅ Efficient serialization with protobuf
 - ✅ Connection pooling and keep-alive
 
@@ -261,13 +261,11 @@ See [docs/MYSQL_API_QUICKSTART.md](docs/MYSQL_API_QUICKSTART.md) for complete My
 git clone https://github.com/axfor/MetaStore.git
 cd MetaStore
 
-# Build with Make (recommended)
+# Build with Make (recommended, pure Go, no CGO required)
 make build
 
 # Or build manually
-export CGO_ENABLED=1
-export CGO_LDFLAGS="-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2"
-go build -o metastore cmd/metastore/main.go
+CGO_ENABLED=0 go build -ldflags="-s -w" -o metastore cmd/metastore/main.go
 ```
 
 ### Running a Single Node
@@ -276,9 +274,9 @@ go build -o metastore cmd/metastore/main.go
 # Memory + WAL mode (default, fast)
 ./metastore --member-id 1 --cluster http://127.0.0.1:12379 --port 12380
 
-# RocksDB mode (persistent)
+# Pebble mode (persistent, pure Go)
 mkdir -p data
-./metastore --member-id 1 --cluster http://127.0.0.1:12379 --port 12380 --storage rocksdb
+./metastore --member-id 1 --cluster http://127.0.0.1:12379 --port 12380 --storage pebble
 ```
 
 ### Using etcd Client
@@ -338,7 +336,7 @@ func main() {
 ```bash
 # Using Make
 make cluster-memory    # Memory storage cluster
-make cluster-rocksdb   # RocksDB storage cluster
+make cluster-pebble   # Pebble storage cluster
 
 # Check cluster status
 make status
@@ -508,67 +506,21 @@ go test -v -run="TestCrossProtocol" ./test
 - 🔍 [Performance Assessment](docs/ASSESSMENT_PERFORMANCE.md) - Performance analysis
 - 🔍 [Best Practices Assessment](docs/ASSESSMENT_BEST_PRACTICES.md) - Go best practices compliance
 
-### RocksDB Documentation
-- 🔧 [RocksDB Build Guide (macOS)](docs/ROCKSDB_BUILD_MACOS.md) - macOS build instructions
-- 🔧 [RocksDB Test Guide](docs/ROCKSDB_TEST_GUIDE.md) - RocksDB testing
-- 📊 [RocksDB Test Report](docs/ROCKSDB_TEST_REPORT.md) - Test results
-
 ## 🏗️ Building from Source
 
 ### Prerequisites
 - **Go 1.23 or higher**
-- **CGO enabled** (`CGO_ENABLED=1`)
-- **RocksDB C++ library** (for RocksDB storage mode)
+- No CGO or C libraries required (pure Go build)
 
-### Linux (Ubuntu/Debian)
-
-```bash
-# Install dependencies
-sudo apt-get update
-sudo apt-get install -y librocksdb-dev build-essential
-
-# Build
-export CGO_ENABLED=1
-export CGO_LDFLAGS="-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2"
-go build -ldflags="-s -w" -o metastore cmd/metastore/main.go
-```
-
-### macOS
+### All Platforms (Linux, macOS, Windows)
 
 ```bash
-# Install dependencies
-brew install rocksdb
+# Build (pure Go, cross-platform)
+make build
 
-# Build
-export CGO_ENABLED=1
-export CGO_LDFLAGS="-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2"
-go build -ldflags="-s -w" -o metastore cmd/metastore/main.go
+# Or manually
+CGO_ENABLED=0 go build -ldflags="-s -w" -o metastore cmd/metastore/main.go
 ```
-
-### Build from RocksDB Source (Latest Version)
-
-For the latest RocksDB version with optimal performance:
-
-```bash
-# Install build dependencies (Ubuntu)
-sudo apt-get install -y gcc-c++ make cmake git \
-  libsnappy-dev zlib1g-dev libbz2-dev liblz4-dev libzstd-dev
-
-# Clone and build RocksDB v10.7.5
-git clone --branch v10.7.5 https://github.com/facebook/rocksdb.git
-cd rocksdb
-make clean
-make static_lib -j$(nproc)
-sudo make install
-
-# Build MetaStore
-cd /path/to/MetaStore
-export CGO_ENABLED=1
-export CGO_LDFLAGS="-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2"
-go build -ldflags="-s -w" -o metastore cmd/metastore/main.go
-```
-
-See [ROCKSDB_BUILD_MACOS.md](docs/ROCKSDB_BUILD_MACOS.md) for macOS-specific instructions.
 
 ## 🔧 Configuration
 
@@ -587,7 +539,7 @@ Flags:
   --cluster string       Comma-separated cluster peer URLs
   --port int            HTTP API port (default: 9121)
   --grpc-port int       gRPC API port (default: 2379)
-  --storage string      Storage engine: "memory" or "rocksdb" (default: "memory")
+  --storage string      Storage engine: "memory" or "pebble" (default: "memory")
   --join                Join existing cluster
   --config string       Config file path (default: "configs/metastore.yaml")
 
@@ -638,7 +590,7 @@ See [configs/metastore.yaml](configs/metastore.yaml) for complete configuration 
 - ✅ Best for: Datasets < 10GB, read-heavy workloads
 - ⚠️ Note: WAL replay on restart for large datasets can be slow
 
-**RocksDB Mode**:
+**Pebble Mode**:
 - ✅ Use for: Large datasets (TB-scale), guaranteed persistence
 - ✅ Best for: Write-heavy workloads, large key-value pairs
 - ⚠️ Note: Slightly higher latency due to disk I/O

@@ -24,14 +24,14 @@
 
 **实现内容**：
 1. 在 Raft 节点层添加 `TransferLeadership(targetID uint64) error` 方法
-2. 为 Memory 和 RocksDB 存储引擎实现 leader 转移
+2. 为 Memory 和 Pebble 存储引擎实现 leader 转移
 3. 更新 MaintenanceServer 使用真实的 leadership transfer
 
 **修改文件**：
 - [internal/raft/node_memory.go](internal/raft/node_memory.go:566-570) - 添加 TransferLeadership 方法
-- [internal/raft/node_rocksdb.go](internal/raft/node_rocksdb.go:560-564) - 添加 TransferLeadership 方法
+- [internal/raft/node_pebble.go](internal/raft/node_pebble.go:560-564) - 添加 TransferLeadership 方法
 - [internal/memory/kvstore.go](internal/memory/kvstore.go:554-568) - Memory 存储实现
-- [internal/rocksdb/kvstore.go](internal/rocksdb/kvstore.go:1527-1541) - RocksDB 存储实现
+- [internal/pebble/kvstore.go](internal/pebble/kvstore.go:1527-1541) - Pebble 存储实现
 - [internal/memory/store.go](internal/memory/store.go:582-585) - Standalone 模式支持
 - [internal/kvstore/store.go](internal/kvstore/store.go:87-88) - 接口定义
 - [api/etcd/maintenance.go](api/etcd/maintenance.go:188-209) - RPC 实现
@@ -88,7 +88,7 @@ return &pb.StatusResponse{
 **验证**：
 - ✅ Line 92-100: 使用 `s.server.store.GetRaftStatus()` 获取真实状态
 - ✅ Memory 引擎: [internal/memory/kvstore.go:536-552](internal/memory/kvstore.go:536-552) - 调用 `m.raftNode.Status()`
-- ✅ RocksDB 引擎: [internal/rocksdb/kvstore.go:1509-1525](internal/rocksdb/kvstore.go:1509-1525) - 调用 `r.raftNode.Status()`
+- ✅ Pebble 引擎: [internal/pebble/kvstore.go:1509-1525](internal/pebble/kvstore.go:1509-1525) - 调用 `r.raftNode.Status()`
 
 ---
 
@@ -252,7 +252,7 @@ func (s *MaintenanceServer) Snapshot(req *pb.SnapshotRequest, stream pb.Maintena
 **特性**：
 - ✅ 流式传输（1MB 分块）
 - ✅ 进度跟踪（RemainingBytes）
-- ✅ 支持 Memory 和 RocksDB
+- ✅ 支持 Memory 和 Pebble
 
 ---
 
@@ -261,7 +261,7 @@ func (s *MaintenanceServer) Snapshot(req *pb.SnapshotRequest, stream pb.Maintena
 **实现位置**: [api/etcd/maintenance.go](api/etcd/maintenance.go:104-114)
 
 **说明**:
-- RocksDB: 存储引擎自动处理压缩（Compaction）
+- Pebble: 存储引擎自动处理压缩（Compaction）
 - Memory: 无碎片问题
 - 实现仅返回成功响应以保持 etcd API 兼容性
 
@@ -285,34 +285,34 @@ func (s *MaintenanceServer) Snapshot(req *pb.SnapshotRequest, stream pb.Maintena
 === 测试统计 ===
 ✅ TestMaintenance_Status       PASS  (7.94s)
    ├─ Memory                    PASS  (4.08s)
-   └─ RocksDB                   PASS  (3.86s)
+   └─ Pebble                   PASS  (3.86s)
 
 ✅ TestMaintenance_Hash         PASS  (8.11s)
    ├─ Memory                    PASS  (3.98s)
-   └─ RocksDB                   PASS  (4.13s)
+   └─ Pebble                   PASS  (4.13s)
 
 ✅ TestMaintenance_HashKV       PASS  (8.24s)
    ├─ Memory                    PASS  (3.32s)
-   └─ RocksDB                   PASS  (4.92s)
+   └─ Pebble                   PASS  (4.92s)
 
 ✅ TestMaintenance_Alarm        PASS  (5.88s)
    ├─ Memory                    PASS  (2.79s)
-   └─ RocksDB                   PASS  (3.09s)
+   └─ Pebble                   PASS  (3.09s)
 
 ✅ TestMaintenance_Snapshot     PASS  (9.66s)
    ├─ Memory                    PASS  (4.33s) - 10.3 MB
-   └─ RocksDB                   PASS  (5.34s) - 10.9 MB
+   └─ Pebble                   PASS  (5.34s) - 10.9 MB
 
 ✅ TestMaintenance_Defragment   PASS  (5.81s)
    ├─ Memory                    PASS  (2.77s)
-   └─ RocksDB                   PASS  (3.04s)
+   └─ Pebble                   PASS  (3.04s)
 
 总计: 6/6 测试通过，12/12 子测试通过
 ```
 
 **测试覆盖**：
 - ✅ Memory 存储引擎 (6 tests)
-- ✅ RocksDB 存储引擎 (6 tests)
+- ✅ Pebble 存储引擎 (6 tests)
 - ✅ 正常流程验证
 - ✅ 错误处理验证
 - ✅ 边界条件测试
@@ -324,12 +324,12 @@ func (s *MaintenanceServer) Snapshot(req *pb.SnapshotRequest, stream pb.Maintena
 1. **Status 测试修复** ✅
    - **问题**: Raft 状态返回 Leader=0, Term=0
    - **根因**: 测试帮助函数未调用 `SetRaftNode()`
-   - **修复**: 在 `startMemoryNode()` 和 `startRocksDBNode()` 中添加 `kvs.SetRaftNode(raftNode, nodeID)`
+   - **修复**: 在 `startMemoryNode()` 和 `startPebbleNode()` 中添加 `kvs.SetRaftNode(raftNode, nodeID)`
    - **文件**: [test/test_helpers.go:85, 206](test/test_helpers.go#L85)
 
 2. **Hash 测试修复** ✅
-   - **问题**: RocksDB 两次 Hash 值不同
-   - **根因**: RocksDB 后台压缩（compaction）改变快照内容
+   - **问题**: Pebble 两次 Hash 值不同
+   - **根因**: Pebble 后台压缩（compaction）改变快照内容
    - **修复**: 调整测试逻辑，不要求连续两次 Hash 相同，只验证添加数据后 Hash 变化
    - **文件**: [test/maintenance_service_test.go:172-208](test/maintenance_service_test.go#L172-L208)
 
@@ -388,7 +388,7 @@ func (s *MaintenanceServer) Snapshot(req *pb.SnapshotRequest, stream pb.Maintena
 | **代码质量** | ✅ 高质量，遵循最佳实践 |
 | **性能** | ✅ 生产级性能 |
 | **测试覆盖** | ✅ 100% (6/6 测试套件通过，12/12 子测试通过) |
-| **双引擎支持** | ✅ Memory + RocksDB 全覆盖 |
+| **双引擎支持** | ✅ Memory + Pebble 全覆盖 |
 | **生产就绪** | ✅ 可直接投入生产使用 |
 
 ### 关键发现
@@ -401,7 +401,7 @@ func (s *MaintenanceServer) Snapshot(req *pb.SnapshotRequest, stream pb.Maintena
    - ✅ 验证所有现有功能的正确性
 
 3. **生产就绪度**: 所有功能均达到生产级标准，支持：
-   - Memory 和 RocksDB 双引擎
+   - Memory 和 Pebble 双引擎
    - 完整的错误处理
    - 并发安全
    - 资源高效
@@ -414,9 +414,9 @@ func (s *MaintenanceServer) Snapshot(req *pb.SnapshotRequest, stream pb.Maintena
 
 **核心实现**:
 - `internal/raft/node_memory.go` - 添加 TransferLeadership
-- `internal/raft/node_rocksdb.go` - 添加 TransferLeadership
+- `internal/raft/node_pebble.go` - 添加 TransferLeadership
 - `internal/memory/kvstore.go` - Memory TransferLeadership 实现
-- `internal/rocksdb/kvstore.go` - RocksDB TransferLeadership 实现
+- `internal/pebble/kvstore.go` - Pebble TransferLeadership 实现
 - `internal/memory/store.go` - Standalone 模式支持
 - `internal/kvstore/store.go` - 接口定义更新
 - `api/etcd/maintenance.go` - MoveLeader RPC 实现

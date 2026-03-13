@@ -361,7 +361,7 @@ func (i *PostMarshalInterceptor) UnaryServerInterceptor() grpc.UnaryServerInterc
 
 **Example Locations**:
 - `internal/memory/store.go` - MVCC version tracking
-- `internal/rocksdb/kvstore.go` - RocksDB serialization
+- `internal/pebble/kvstore.go` - Pebble serialization
 - Transaction processing - intermediate conversions
 
 **Implementation**:

@@ -13,14 +13,14 @@
 ### 关键发现
 
 1. **Memory 引擎**: JSON → Protobuf ✅ (新集成)
-2. **RocksDB 引擎**: 已使用 Protobuf ✅ (无需修改)
+2. **Pebble 引擎**: 已使用 Protobuf ✅ (无需修改)
 
 ### 性能结果
 
 | 存储引擎 | 序列化格式 | 吞吐量 (ops/sec) | 状态 |
 |---------|----------|-----------------|------|
 | **Memory** | Protobuf (新) | 1,014.59 | ✅ 已验证 |
-| **RocksDB** | Protobuf (已有) | 372.68 | ✅ 已验证 |
+| **Pebble** | Protobuf (已有) | 372.68 | ✅ 已验证 |
 
 ---
 
@@ -90,13 +90,13 @@ func deserializeOperation(data []byte) (RaftOperation, error) {
 
 ---
 
-### 2. RocksDB 引擎现状
+### 2. Pebble 引擎现状
 
 #### 发现
 
-**RocksDB 已原生使用 Protobuf**！
+**Pebble 已原生使用 Protobuf**！
 
-**[internal/rocksdb/raft_proto.go](../internal/rocksdb/raft_proto.go)**
+**[internal/pebble/raft_proto.go](../internal/pebble/raft_proto.go)**
 - 创建时间：早期实现
 - 序列化：直接使用 `proto.Marshal` (无 JSON 回退)
 - 反序列化：直接使用 `proto.Unmarshal`
@@ -121,7 +121,7 @@ func unmarshalRaftOperation(data []byte) (*RaftOperation, error) {
 }
 ```
 
-**结论**: RocksDB 从一开始就使用了 Protobuf，无需修改。
+**结论**: Pebble 从一开始就使用了 Protobuf，无需修改。
 
 ---
 
@@ -145,16 +145,16 @@ Average latency: 49.26ms
 Throughput: 1,014.59 ops/sec
 ```
 
-### RocksDB 引擎测试
+### Pebble 引擎测试
 
-**集成测试** (TestEtcdRocksDBSingleNodeOperations):
+**集成测试** (TestEtcdPebbleSingleNodeOperations):
 ```bash
 ✅ PASS: PutAndGet
 ✅ PASS: Delete
 ✅ PASS: RangeQuery
 ```
 
-**性能测试** (TestRocksDBPerformance_LargeScaleLoad):
+**性能测试** (TestPebblePerformance_LargeScaleLoad):
 ```
 Total operations: 50,000
 Successful operations: 50,000 (100.00%)
@@ -179,7 +179,7 @@ Throughput: 372.68 ops/sec
 - 相比更早的基准 (921 ops/sec) 提升 10.2%
 - 序列化优化效果被 Raft 共识和网络开销掩盖
 
-### RocksDB 引擎
+### Pebble 引擎
 
 | 指标 | 性能 |
 |------|------|
@@ -188,7 +188,7 @@ Throughput: 372.68 ops/sec
 | 成功率 | 100% |
 
 **分析**:
-- RocksDB 性能主要受磁盘 I/O 限制
+- Pebble 性能主要受磁盘 I/O 限制
 - Protobuf 已集成，无额外优化空间
 - 需要通过其他优化提升性能（WriteBatch、Compaction 等）
 
@@ -311,7 +311,7 @@ message Op {
 ┌─────────────────────────────────────────┐
 │       Storage Engine Layer              │
 │  ┌──────────────┐  ┌─────────────────┐  │
-│  │   Memory     │  │    RocksDB      │  │
+│  │   Memory     │  │    Pebble      │  │
 │  │              │  │                 │  │
 │  │ RaftOperation│  │  RaftOperation  │  │
 │  └──────┬───────┘  └────────┬────────┘  │
@@ -340,14 +340,14 @@ message Op {
 1. ✅ 创建 Memory 引擎 Protobuf 转换器
 2. ✅ 集成 Protobuf 序列化到 Memory 引擎所有操作
 3. ✅ 实现向后兼容的 JSON 支持
-4. ✅ 验证 RocksDB 已使用 Protobuf
+4. ✅ 验证 Pebble 已使用 Protobuf
 5. ✅ 通过集成测试验证正确性
 6. ✅ 获取性能基准数据
 7. ✅ 创建完整文档
 
 ### ⏳ 无需行动
 
-1. ❌ RocksDB Protobuf 集成 - **已存在，无需修改**
+1. ❌ Pebble Protobuf 集成 - **已存在，无需修改**
 2. ❌ 性能回归 - **无回归，性能稳定**
 
 ---
@@ -357,7 +357,7 @@ message Op {
 ### 核心成果
 
 1. **Memory 引擎**: 成功集成 Protobuf，支持零停机迁移
-2. **RocksDB 引擎**: 确认已使用 Protobuf，架构一致
+2. **Pebble 引擎**: 确认已使用 Protobuf，架构一致
 3. **性能稳定**: 两个引擎均通过所有测试
 4. **向后兼容**: Memory 引擎支持 JSON 格式读取
 
@@ -392,11 +392,11 @@ message Op {
    - 优化并发处理
    - 预期提升：5-10%
 
-4. **RocksDB 调优** ⭐⭐⭐
+4. **Pebble 调优** ⭐⭐⭐
    - WriteBatch 优化
    - Compaction 配置
    - Block Cache 调整
-   - 预期提升：2-3x (RocksDB 引擎)
+   - 预期提升：2-3x (Pebble 引擎)
 
 ---
 
@@ -404,7 +404,7 @@ message Op {
 
 - [Protobuf 协议定义](../internal/proto/raft.proto)
 - [Memory Protobuf 转换器](../internal/memory/protobuf_converter.go)
-- [RocksDB Protobuf 实现](../internal/rocksdb/raft_proto.go)
+- [Pebble Protobuf 实现](../internal/pebble/raft_proto.go)
 - [BatchProposer 解决方案](BATCHPROPOSER_RESOLUTION.md)
 - [性能优化主计划](PERFORMANCE_OPTIMIZATION_MASTER_PLAN.md)
 

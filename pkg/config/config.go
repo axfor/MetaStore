@@ -52,7 +52,7 @@ type ServerConfig struct {
 	Monitoring  MonitoringConfig  `yaml:"monitoring"`
 	Performance PerformanceConfig `yaml:"performance"`
 	Raft        RaftConfig        `yaml:"raft"`
-	RocksDB     RocksDBConfig     `yaml:"rocksdb"`
+	Pebble     PebbleConfig     `yaml:"pebble"`
 	MVCC        MVCCConfig        `yaml:"mvcc"` // MVCC configuration
 }
 
@@ -253,10 +253,10 @@ type LeaseReadConfig struct {
 	ReadTimeout time.Duration `yaml:"read_timeout"` // Read timeout, default 5s
 }
 
-// RocksDBConfig RocksDB performance configuration
+// PebbleConfig Pebble performance configuration
 // Defaults are optimized for lightweight memory footprint (~10MB)
 // For high-performance scenarios, increase BlockCacheSize and WriteBufferSize
-type RocksDBConfig struct {
+type PebbleConfig struct {
 	// Block Cache configuration (affects read performance)
 	BlockCacheSize uint64 `yaml:"block_cache_size"` // Default 8MB (lightweight), increase for better read performance
 
@@ -622,45 +622,45 @@ func (c *Config) SetDefaults() {
 		c.Server.Raft.LeaseRead.ReadTimeout = 5 * time.Second // Read timeout 5 seconds
 	}
 
-	// RocksDB defaults (lightweight config for ~10MB memory footprint)
-	if c.Server.RocksDB.BlockCacheSize == 0 {
-		c.Server.RocksDB.BlockCacheSize = 8 * 1024 * 1024 // 8MB (reduced from 256MB)
+	// Pebble defaults (lightweight config for ~10MB memory footprint)
+	if c.Server.Pebble.BlockCacheSize == 0 {
+		c.Server.Pebble.BlockCacheSize = 8 * 1024 * 1024 // 8MB (reduced from 256MB)
 	}
-	if c.Server.RocksDB.WriteBufferSize == 0 {
-		c.Server.RocksDB.WriteBufferSize = 4 * 1024 * 1024 // 4MB (reduced from 64MB)
+	if c.Server.Pebble.WriteBufferSize == 0 {
+		c.Server.Pebble.WriteBufferSize = 4 * 1024 * 1024 // 4MB (reduced from 64MB)
 	}
-	if c.Server.RocksDB.MaxWriteBufferNumber == 0 {
-		c.Server.RocksDB.MaxWriteBufferNumber = 2 // reduced from 3
+	if c.Server.Pebble.MaxWriteBufferNumber == 0 {
+		c.Server.Pebble.MaxWriteBufferNumber = 2 // reduced from 3
 	}
-	if c.Server.RocksDB.MinWriteBufferNumberToMerge == 0 {
-		c.Server.RocksDB.MinWriteBufferNumberToMerge = 1
+	if c.Server.Pebble.MinWriteBufferNumberToMerge == 0 {
+		c.Server.Pebble.MinWriteBufferNumberToMerge = 1
 	}
-	if c.Server.RocksDB.MaxBackgroundJobs == 0 {
-		c.Server.RocksDB.MaxBackgroundJobs = 2 // reduced from 4
+	if c.Server.Pebble.MaxBackgroundJobs == 0 {
+		c.Server.Pebble.MaxBackgroundJobs = 2 // reduced from 4
 	}
-	if c.Server.RocksDB.Level0FileNumCompactionTrigger == 0 {
-		c.Server.RocksDB.Level0FileNumCompactionTrigger = 4
+	if c.Server.Pebble.Level0FileNumCompactionTrigger == 0 {
+		c.Server.Pebble.Level0FileNumCompactionTrigger = 4
 	}
-	if c.Server.RocksDB.Level0SlowdownWritesTrigger == 0 {
-		c.Server.RocksDB.Level0SlowdownWritesTrigger = 20
+	if c.Server.Pebble.Level0SlowdownWritesTrigger == 0 {
+		c.Server.Pebble.Level0SlowdownWritesTrigger = 20
 	}
-	if c.Server.RocksDB.Level0StopWritesTrigger == 0 {
-		c.Server.RocksDB.Level0StopWritesTrigger = 36
+	if c.Server.Pebble.Level0StopWritesTrigger == 0 {
+		c.Server.Pebble.Level0StopWritesTrigger = 36
 	}
-	if c.Server.RocksDB.BloomFilterBitsPerKey == 0 {
-		c.Server.RocksDB.BloomFilterBitsPerKey = 10
+	if c.Server.Pebble.BloomFilterBitsPerKey == 0 {
+		c.Server.Pebble.BloomFilterBitsPerKey = 10
 	}
-	if !c.Server.RocksDB.BlockBasedTableBloomFilter {
-		c.Server.RocksDB.BlockBasedTableBloomFilter = true
+	if !c.Server.Pebble.BlockBasedTableBloomFilter {
+		c.Server.Pebble.BlockBasedTableBloomFilter = true
 	}
-	if c.Server.RocksDB.MaxOpenFiles == 0 {
-		c.Server.RocksDB.MaxOpenFiles = 10000
+	if c.Server.Pebble.MaxOpenFiles == 0 {
+		c.Server.Pebble.MaxOpenFiles = 10000
 	}
-	if c.Server.RocksDB.BytesPerSync == 0 {
-		c.Server.RocksDB.BytesPerSync = 1048576 // 1MB
+	if c.Server.Pebble.BytesPerSync == 0 {
+		c.Server.Pebble.BytesPerSync = 1048576 // 1MB
 	}
-	if c.Server.RocksDB.Compression == "" {
-		c.Server.RocksDB.Compression = "lz4" // Default to LZ4 for good balance
+	if c.Server.Pebble.Compression == "" {
+		c.Server.Pebble.Compression = "lz4" // Default to LZ4 for good balance
 	}
 	// UseFsync defaults to false (no need to set)
 

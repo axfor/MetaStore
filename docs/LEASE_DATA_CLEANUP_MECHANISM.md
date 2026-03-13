@@ -25,7 +25,7 @@ Lease（租约）是 etcd 的重要特性，用于为 key-value 对提供自动�
                         │ Store Interface
                         ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                Storage Layer (内存/RocksDB)                   │
+│                Storage Layer (内存/Pebble)                   │
 │  ┌──────────────────────────────────────────────────┐       │
 │  │  Lease 数据结构:                                  │       │
 │  │  ├─ ID: Lease ID                                 │       │
@@ -185,12 +185,12 @@ func (m *MemoryEtcd) LeaseRevoke(id int64) error {
 }
 ```
 
-#### 3.3 RocksDB 存储实现
+#### 3.3 Pebble 存储实现
 
-**位置**: `internal/rocksdb/kvstore_etcd_raft.go:590-611`
+**位置**: `internal/pebble/kvstore_etcd_raft.go:590-611`
 
 ```go
-func (r *RocksDBEtcdRaft) leaseRevokeUnlocked(id int64) error {
+func (r *PebbleEtcdRaft) leaseRevokeUnlocked(id int64) error {
     // 1. 获取 Lease 以找到关联的键
     lease, err := r.getLease(id)
     if err != nil {
@@ -213,7 +213,7 @@ func (r *RocksDBEtcdRaft) leaseRevokeUnlocked(id int64) error {
 }
 ```
 
-**RocksDB 特殊处理**:
+**Pebble 特殊处理**:
 - 通过 Raft 提交保证分布式一致性
 - 持久化到磁盘，崩溃恢复后仍有效
 
@@ -240,12 +240,12 @@ func (m *MemoryEtcd) PutWithLease(key, value string, leaseID int64) (int64, *kvs
 }
 ```
 
-#### 4.2 RocksDB 版本（本次修复）
+#### 4.2 Pebble 版本（本次修复）
 
-**位置**: `internal/rocksdb/kvstore_etcd_raft.go:384-410`
+**位置**: `internal/pebble/kvstore_etcd_raft.go:384-410`
 
 ```go
-func (r *RocksDBEtcdRaft) putUnlocked(key, value string, leaseID int64) error {
+func (r *PebbleEtcdRaft) putUnlocked(key, value string, leaseID int64) error {
     // ... 保存 KeyValue ...
 
     // 更新 lease 的键追踪（关键修复！）
@@ -345,7 +345,7 @@ resp, _ = cli.Get(ctx, "key1")
 ### 3. 可靠性
 
 ✅ **错误容忍**: 单个 lease 清理失败不影响其他
-✅ **持久化**: RocksDB 版本通过 Raft 保证数据一致性
+✅ **持久化**: Pebble 版本通过 Raft 保证数据一致性
 ✅ **日志记录**: 完整的操作日志便于调试
 
 ## 关键配置参数
@@ -410,7 +410,7 @@ MetaStore 的 Lease 数据清理机制通过以下层次实现：
 1. **Lease 结构**: 追踪关联的键集合（Keys map）
 2. **LeaseManager**: 每秒检查并清理过期 lease
 3. **LeaseRevoke**: 删除所有关联键 + 删除 lease 本身
-4. **存储层**: 内存直接删除，RocksDB 通过 Raft 保证一致性
+4. **存储层**: 内存直接删除，Pebble 通过 Raft 保证一致性
 
 这种设计确保了：
 - ✅ 自动化、无需人工干预

@@ -28,7 +28,7 @@
 MetaStore is a production-ready distributed key-value store with:
 - ✅ etcd v3 API compatibility
 - ✅ Raft consensus for high availability
-- ✅ RocksDB persistence for durability
+- ✅ Pebble persistence for durability
 - ✅ Prometheus metrics for observability
 - ✅ 99% allocation reduction via object pooling
 
@@ -65,7 +65,7 @@ MetaStore is a production-ready distributed key-value store with:
 
 - **OS**: Linux (Ubuntu 20.04+, CentOS 7+, RHEL 8+) or macOS
 - **Go**: 1.21+ (for building from source)
-- **RocksDB**: 7.x+ (installed system-wide)
+- **Pebble**: 7.x+ (installed system-wide)
 - **Prometheus**: 2.x+ (for monitoring)
 - **Grafana**: 8.x+ (for dashboards)
 
@@ -113,7 +113,7 @@ iptables -A INPUT -p tcp --dport 8080 -s <lb-ip> -j ACCEPT
           │                 │                 │
           │                 │                 │
      ┌────▼────┐       ┌────▼────┐       ┌────▼────┐
-     │ RocksDB │       │ RocksDB │       │ RocksDB │
+     │ Pebble │       │ Pebble │       │ Pebble │
      │ Storage │       │ Storage │       │ Storage │
      └─────────┘       └─────────┘       └─────────┘
 ```
@@ -131,10 +131,10 @@ iptables -A INPUT -p tcp --dport 8080 -s <lb-ip> -j ACCEPT
 ### Option 1: Build from Source
 
 ```bash
-# 1. Install RocksDB dependencies (Ubuntu/Debian)
+# 1. Install Pebble dependencies (Ubuntu/Debian)
 sudo apt-get update
 sudo apt-get install -y \
-    librocksdb-dev \
+    libpebble-dev \
     libsnappy-dev \
     zlib1g-dev \
     libbz2-dev \
@@ -147,7 +147,7 @@ cd metaStore
 
 # 3. Build
 CGO_ENABLED=1 \
-CGO_LDFLAGS="-lrocksdb -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2" \
+CGO_LDFLAGS="-lpebble -lpthread -lstdc++ -ldl -lm -lzstd -llz4 -lz -lsnappy -lbz2" \
 go build -o metastore cmd/metastore/main.go
 
 # 4. Verify build
@@ -471,8 +471,8 @@ DATE=$(date +%Y%m%d_%H%M%S)
 # Create snapshot
 etcdctl snapshot save "${BACKUP_DIR}/snapshot_${DATE}.db"
 
-# Backup RocksDB data
-tar czf "${BACKUP_DIR}/rocksdb_${DATE}.tar.gz" "${DATA_DIR}"
+# Backup Pebble data
+tar czf "${BACKUP_DIR}/pebble_${DATE}.tar.gz" "${DATA_DIR}"
 
 # Cleanup old backups (keep last 7 days)
 find "${BACKUP_DIR}" -name "*.db" -mtime +7 -delete
@@ -491,9 +491,9 @@ find "${BACKUP_DIR}" -name "*.tar.gz" -mtime +7 -delete
 # 1. Stop MetaStore
 systemctl stop metastore
 
-# 2. Restore RocksDB data
+# 2. Restore Pebble data
 rm -rf /var/lib/metastore/*
-tar xzf /backup/metastore/rocksdb_20250120_020000.tar.gz -C /var/lib/metastore
+tar xzf /backup/metastore/pebble_20250120_020000.tar.gz -C /var/lib/metastore
 
 # 3. Restart MetaStore
 systemctl start metastore
@@ -558,11 +558,11 @@ sysctl net.core.rmem_max=16777216
 sysctl net.core.wmem_max=16777216
 ```
 
-### RocksDB Tuning
+### Pebble Tuning
 
 ```yaml
 server:
-  rocksdb:
+  pebble:
     write_buffer_size: 67108864       # 64 MB
     max_write_buffer_number: 3
     max_background_jobs: 4
@@ -618,7 +618,7 @@ curl localhost:9090/metrics | grep duration
 # Check disk I/O
 iostat -x 1 10
 
-# Check RocksDB compaction
+# Check Pebble compaction
 lsof | grep metastore | grep .sst | wc -l
 ```
 

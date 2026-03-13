@@ -29,7 +29,7 @@ Phase 2 - P2 focuses on **production polish and operational convenience** - feat
 **Implementation**:
 ```go
 type AutoCompactor struct {
-    store          *RocksDB
+    store          *Pebble
     keepRevisions  int64
     checkInterval  time.Duration
     stopCh         chan struct{}
@@ -211,7 +211,7 @@ server:
 
 **Implementation**:
 ```go
-func (r *RocksDB) BatchPut(kvs []KeyValue) error {
+func (r *Pebble) BatchPut(kvs []KeyValue) error {
     // Create single Raft operation with multiple KVs
     op := RaftOperation{
         Type: "BATCH_PUT",
@@ -274,8 +274,8 @@ For maximum value with minimal complexity, I recommend implementing only the **t
 
 ### Task 1: Auto-Compaction Worker
 **Files**:
-- `internal/rocksdb/autocompact.go` (new, ~150 lines)
-- `internal/rocksdb/autocompact_test.go` (new, ~100 lines)
+- `internal/pebble/autocompact.go` (new, ~150 lines)
+- `internal/pebble/autocompact_test.go` (new, ~100 lines)
 - `pkg/config/config.go` (modify, +15 lines)
 
 **Tests**: Start/stop, periodic trigger, metrics

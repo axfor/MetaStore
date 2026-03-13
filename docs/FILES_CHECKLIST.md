@@ -5,10 +5,10 @@
 ### Go源代码文件 (14个)
 
 #### 核心实现 (新增)
-1. ✅ `rocksdb_storage.go` - RocksDB存储引擎实现 (636行)
-2. ✅ `kvstore_rocks.go` - RocksDB键值存储 (238行)
-3. ✅ `raft_rocks.go` - RocksDB Raft节点 (418行)
-4. ✅ `main_rocksdb.go` - RocksDB模式入口 (70行)
+1. ✅ `pebble_storage.go` - Pebble存储引擎实现 (636行)
+2. ✅ `kvstore_pebble.go` - Pebble键值存储 (238行)
+3. ✅ `raft_pebble.go` - Pebble Raft节点 (418行)
+4. ✅ `main_pebble.go` - Pebble模式入口 (70行)
 5. ✅ `main_memory.go` - 内存模式入口 (50行)
 
 #### 原有代码 (保留/修改)
@@ -19,7 +19,7 @@
 10. ✅ `doc.go` - 包文档
 
 ### 测试文件 (4个)
-11. ✅ `rocksdb_storage_test.go` - RocksDB存储测试 (359行) **[新增]**
+11. ✅ `pebble_storage_test.go` - Pebble存储测试 (359行) **[新增]**
 12. ✅ `kvstore_test.go` - KV存储测试 (41行)
 13. ✅ `raft_test.go` - Raft测试 (130行)
 14. ✅ `store_test.go` - 集成测试 (287行)
@@ -34,9 +34,9 @@
 3. ✅ `IMPLEMENTATION.md` - 实现细节和架构 (9.6KB)
 4. ✅ `PROJECT_SUMMARY.md` - 项目总结 (11KB)
 
-#### RocksDB专项文档
-5. ✅ `ROCKSDB_TEST_GUIDE.md` - RocksDB测试指南 (6.3KB)
-6. ✅ `ROCKSDB_TEST_REPORT.md` - RocksDB测试报告 (10KB)
+#### Pebble专项文档
+5. ✅ `PEBBLE_TEST_GUIDE.md` - Pebble测试指南 (6.3KB)
+6. ✅ `PEBBLE_TEST_REPORT.md` - Pebble测试报告 (10KB)
 
 #### 开发文档
 7. ✅ `GIT_COMMIT.md` - Git提交指南 (5.5KB)
@@ -73,12 +73,12 @@ Markdown文档: 7个
 
 ### 文件大小分布
 ```
-rocksdb_storage.go:      22KB (最大源文件)
+pebble_storage.go:      22KB (最大源文件)
 raft.go:                 18KB
-raft_rocks.go:           15KB
+raft_pebble.go:           15KB
 store_test.go:           12KB
 PROJECT_SUMMARY.md:      11KB (最大文档)
-ROCKSDB_TEST_REPORT.md:  10KB
+PEBBLE_TEST_REPORT.md:  10KB
 IMPLEMENTATION.md:       9.6KB
 ```
 
@@ -87,12 +87,12 @@ IMPLEMENTATION.md:       9.6KB
 ### 核心功能层
 
 #### 存储引擎
-- `rocksdb_storage.go` → 实现raft.Storage接口，RocksDB后端
-- `kvstore_rocks.go` → KV数据的RocksDB持久化
+- `pebble_storage.go` → 实现raft.Storage接口，Pebble后端
+- `kvstore_pebble.go` → KV数据的Pebble持久化
 - `kvstore.go` → KV数据的内存存储
 
 #### Raft共识
-- `raft_rocks.go` → RocksDB版Raft节点
+- `raft_pebble.go` → Pebble版Raft节点
 - `raft.go` → 内存版Raft节点
 
 #### 网络通信
@@ -100,13 +100,13 @@ IMPLEMENTATION.md:       9.6KB
 - `listener.go` → TCP监听器封装
 
 #### 程序入口
-- `main_rocksdb.go` → RocksDB模式启动
+- `main_pebble.go` → Pebble模式启动
 - `main_memory.go` → 内存模式启动
 
 ### 测试层
 
 #### 单元测试
-- `rocksdb_storage_test.go` → RocksDB存储引擎测试
+- `pebble_storage_test.go` → Pebble存储引擎测试
 - `kvstore_test.go` → KV存储测试
 - `raft_test.go` → Raft消息处理测试
 
@@ -123,9 +123,9 @@ IMPLEMENTATION.md:       9.6KB
 - `IMPLEMENTATION.md` → 深入理解实现
 - `PROJECT_SUMMARY.md` → 项目全貌总结
 
-#### RocksDB文档
-- `ROCKSDB_TEST_GUIDE.md` → 如何测试RocksDB
-- `ROCKSDB_TEST_REPORT.md` → 测试结果参考
+#### Pebble文档
+- `PEBBLE_TEST_GUIDE.md` → 如何测试Pebble
+- `PEBBLE_TEST_REPORT.md` → 测试结果参考
 
 #### 开发文档
 - `GIT_COMMIT.md` → 提交代码指南
@@ -137,12 +137,12 @@ d:\ax\code\store\
 │
 ├── 源代码 (*.go)
 │   ├── 存储引擎
-│   │   ├── rocksdb_storage.go      [新增] RocksDB存储
-│   │   ├── kvstore_rocks.go        [新增] RocksDB KV
+│   │   ├── pebble_storage.go      [新增] Pebble存储
+│   │   ├── kvstore_pebble.go        [新增] Pebble KV
 │   │   └── kvstore.go              [原有] 内存KV
 │   │
 │   ├── Raft节点
-│   │   ├── raft_rocks.go           [新增] RocksDB Raft
+│   │   ├── raft_pebble.go           [新增] Pebble Raft
 │   │   └── raft.go                 [原有] 内存Raft
 │   │
 │   ├── 网络层
@@ -150,11 +150,11 @@ d:\ax\code\store\
 │   │   └── listener.go             [原有] 监听器
 │   │
 │   └── 入口
-│       ├── main_rocksdb.go         [新增] RocksDB入口
+│       ├── main_pebble.go         [新增] Pebble入口
 │       └── main_memory.go          [新增] 内存入口
 │
 ├── 测试 (*_test.go)
-│   ├── rocksdb_storage_test.go     [新增] RocksDB测试
+│   ├── pebble_storage_test.go     [新增] Pebble测试
 │   ├── kvstore_test.go             [原有] KV测试
 │   ├── raft_test.go                [原有] Raft测试
 │   └── store_test.go               [原有] 集成测试
@@ -168,9 +168,9 @@ d:\ax\code\store\
 │   │   ├── IMPLEMENTATION.md       [新增] 实现细节
 │   │   └── PROJECT_SUMMARY.md      [新增] 项目总结
 │   │
-│   ├── RocksDB文档
-│   │   ├── ROCKSDB_TEST_GUIDE.md   [新增] 测试指南
-│   │   └── ROCKSDB_TEST_REPORT.md  [新增] 测试报告
+│   ├── Pebble文档
+│   │   ├── PEBBLE_TEST_GUIDE.md   [新增] 测试指南
+│   │   └── PEBBLE_TEST_REPORT.md  [新增] 测试报告
 │   │
 │   └── 开发文档
 │       └── GIT_COMMIT.md           [新增] 提交指南
@@ -219,7 +219,7 @@ d:\ax\code\store\
 - ✅ 可执行文件
 
 ### 额外交付 (超出预期)
-- ✅ RocksDB专项测试指南
+- ✅ Pebble专项测试指南
 - ✅ 模拟测试报告
 - ✅ 快速入门教程
 - ✅ Git提交指南
@@ -237,10 +237,10 @@ d:\ax\code\store\
 2. 查看源代码注释
 3. 运行测试验证
 
-### RocksDB用户
-1. 阅读 `ROCKSDB_TEST_GUIDE.md`
+### Pebble用户
+1. 阅读 `PEBBLE_TEST_GUIDE.md`
 2. 准备环境
-3. 构建RocksDB版本
+3. 构建Pebble版本
 
 ### 贡献者
 1. 阅读 `GIT_COMMIT.md`
