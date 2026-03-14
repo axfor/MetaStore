@@ -80,6 +80,16 @@ func (m *MemoryEtcd) WatchWithOptions(key, rangeEnd string, startRevision int64,
 
 // sendHistoricalEvents sends historical events from current data snapshot
 func (m *MemoryEtcd) sendHistoricalEvents(sub *watchSubscription, key, rangeEnd string) {
+	// Recover from panic if eventCh is closed before cancel is signaled
+	defer func() {
+		if r := recover(); r != nil {
+			log.Warn("Watch channel closed during historical event send",
+				zap.Int64("watchID", sub.watchID),
+				zap.String("key", key),
+				zap.String("component", "watch"))
+		}
+	}()
+
 	// Use ShardedMap.GetAll() to get all data (internally locked)
 	allData := m.kvData.GetAll()
 	currentRev := m.getRevision() // Capture current revision
@@ -182,6 +192,14 @@ func (m *MemoryEtcd) CancelWatch(watchID int64) error {
 
 // notifyWatches notifies all matching watches (high-performance lock-free version)
 func (m *MemoryEtcd) notifyWatches(event kvstore.WatchEvent) {
+	// Recover from panic if eventCh is closed during send
+	defer func() {
+		if r := recover(); r != nil {
+			log.Warn("Watch channel closed during event notification",
+				zap.Any("recover", r),
+				zap.String("component", "watch"))
+		}
+	}()
 	key := ""
 	if event.Kv != nil {
 		key = string(event.Kv.Key)
@@ -247,6 +265,12 @@ func (m *MemoryEtcd) shouldFilter(eventType kvstore.EventType, filters []kvstore
 
 // slowSendEvent handles slow clients with timeout
 func (m *MemoryEtcd) slowSendEvent(sub *watchSubscription, event kvstore.WatchEvent) {
+	// Recover from panic if eventCh is closed during send
+	defer func() {
+		if r := recover(); r != nil {
+			// Channel was closed, watch was cancelled - this is normal during cleanup
+		}
+	}()
 	timer := time.NewTimer(5 * time.Second)
 	defer timer.Stop()
 

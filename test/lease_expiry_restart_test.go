@@ -270,10 +270,18 @@ func TestLeaseRestart_Single_ExpiresAfterRestart(t *testing.T) {
 	t.Log("Waiting for remaining TTL to expire...")
 	require.True(t, waitForLeaseExpiry(t, cli2, leaseID, 10*time.Second), "lease should eventually expire")
 
-	// Key should be deleted
-	get, err = cli2.Get(ctx, "single/expire-after/k1")
-	require.NoError(t, err)
-	assert.Len(t, get.Kvs, 0, "key should be deleted after lease expired post-restart")
+	// Key should be deleted (allow a short delay for async key cleanup via Raft)
+	var keyDeleted bool
+	for i := 0; i < 5; i++ {
+		get, err = cli2.Get(ctx, "single/expire-after/k1")
+		require.NoError(t, err)
+		if len(get.Kvs) == 0 {
+			keyDeleted = true
+			break
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	assert.True(t, keyDeleted, "key should be deleted after lease expired post-restart")
 	t.Log("PASSED: single-node expires-after-restart")
 }
 
