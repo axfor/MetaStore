@@ -17,6 +17,7 @@ package etcd
 import (
 	"context"
 	"errors"
+	"io"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 )
@@ -69,6 +70,9 @@ func (s *LeaseServer) LeaseKeepAlive(stream pb.Lease_LeaseKeepAliveServer) error
 	for {
 		req, err := stream.Recv()
 		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
 			return err
 		}
 
