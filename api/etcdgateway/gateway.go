@@ -25,8 +25,8 @@ func NewHandler(ctx context.Context, endpoint string, dialOpts []grpc.DialOption
 			&runtime.HTTPBodyMarshaler{
 				Marshaler: &runtime.JSONPb{
 					MarshalOptions: protojson.MarshalOptions{
-						UseProtoNames:   true,
-						EmitUnpopulated: false,
+						UseProtoNames:     true,
+						EmitDefaultValues: true,
 					},
 					UnmarshalOptions: protojson.UnmarshalOptions{
 						DiscardUnknown: true,
