@@ -64,14 +64,22 @@ func TestLeaseManager_LoadLeases_Recovery(t *testing.T) {
 	// Create a NEW LeaseManager (simulates server restart)
 	lm := newTestLeaseManager(t, store)
 
-	// Before LoadLeases, Renew and TimeToLive should fail
-	_, err = lm.Renew(100)
-	if err == nil {
-		t.Fatal("expected Renew to fail before LoadLeases")
+	// Before LoadLeases, cross-node/cache-miss operations should still work by
+	// consulting the underlying store and repairing the cache.
+	lease, err := lm.Renew(100)
+	if err != nil {
+		t.Fatalf("Renew failed on cache miss: %v", err)
 	}
-	_, err = lm.TimeToLive(100)
-	if err == nil {
-		t.Fatal("expected TimeToLive to fail before LoadLeases")
+	if lease.ID != 100 {
+		t.Fatalf("expected lease ID 100, got %d", lease.ID)
+	}
+
+	lease, err = lm.TimeToLive(200)
+	if err != nil {
+		t.Fatalf("TimeToLive failed on cache miss: %v", err)
+	}
+	if lease.ID != 200 {
+		t.Fatalf("expected lease ID 200, got %d", lease.ID)
 	}
 
 	// Load persisted leases
@@ -87,8 +95,8 @@ func TestLeaseManager_LoadLeases_Recovery(t *testing.T) {
 		t.Fatalf("expected 2 leases, got %d", count)
 	}
 
-	// Renew should now succeed
-	lease, err := lm.Renew(100)
+	// Renew should continue to succeed after an explicit cache reload
+	lease, err = lm.Renew(100)
 	if err != nil {
 		t.Fatalf("Renew failed after LoadLeases: %v", err)
 	}
