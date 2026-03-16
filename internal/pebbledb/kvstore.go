@@ -312,12 +312,31 @@ func (r *PebbleDB) applyOperationsBatch(ops []*RaftOperation) {
 		return
 	}
 
-	// Create a single WriteBatch for all operations
-	batch := r.db.NewBatch()
+	// Use an indexed batch so later operations in the same Raft commit can read
+	// writes prepared by earlier operations (e.g. LEASE_GRANT -> PUT -> REVOKE).
+	batch := r.db.NewIndexedBatch()
 	defer batch.Close()
 
-	// Track watch events to emit after batch write completes
+	// Track watch events to emit after each successful batch write completes.
 	var watchEvents []kvstore.WatchEvent
+	batchDirty := false
+
+	flushBatch := func() error {
+		if !batchDirty {
+			return nil
+		}
+		if err := batch.Commit(r.wo); err != nil {
+			return err
+		}
+		for _, event := range watchEvents {
+			r.notifyWatches(event)
+		}
+		watchEvents = nil
+		batchDirty = false
+		batch.Close()
+		batch = r.db.NewIndexedBatch()
+		return nil
+	}
 
 	// Process each operation and add to batch
 	for _, op := range ops {
@@ -332,6 +351,7 @@ func (r *PebbleDB) applyOperationsBatch(ops []*RaftOperation) {
 				continue
 			}
 			watchEvents = append(watchEvents, events...)
+			batchDirty = true
 
 		case "DELETE":
 			events, err := r.prepareDeleteBatch(batch, op.Key, op.RangeEnd)
@@ -343,6 +363,7 @@ func (r *PebbleDB) applyOperationsBatch(ops []*RaftOperation) {
 				continue
 			}
 			watchEvents = append(watchEvents, events...)
+			batchDirty = true
 
 		case "LEASE_GRANT":
 			if err := r.prepareLeaseGrantBatchWithTime(batch, op.LeaseID, op.TTL, op.GrantTime); err != nil {
@@ -350,7 +371,9 @@ func (r *PebbleDB) applyOperationsBatch(ops []*RaftOperation) {
 					zap.Error(err),
 					zap.Int64("leaseID", op.LeaseID),
 					zap.String("component", "storage-pebble"))
+				continue
 			}
+			batchDirty = true
 
 		case "LEASE_REVOKE":
 			events, err := r.prepareLeaseRevokeBatch(batch, op.LeaseID)
@@ -362,10 +385,18 @@ func (r *PebbleDB) applyOperationsBatch(ops []*RaftOperation) {
 				continue
 			}
 			watchEvents = append(watchEvents, events...)
+			batchDirty = true
 
 		case "TXN":
-			// Transactions need special handling - apply individually for now
-			// TODO: Optimize transaction batching in future
+			// Transactions are still applied individually. Flush any preceding
+			// batched writes first so the transaction sees the correct state.
+			if err := flushBatch(); err != nil {
+				log.Error("Failed to flush batch before TXN",
+					zap.Error(err),
+					zap.String("component", "storage-pebble"))
+				return
+			}
+
 			txnResp, err := r.txnUnlocked(op.Compares, op.ThenOps, op.ElseOps)
 			if err != nil {
 				log.Error("Failed to apply TXN in batch",
@@ -380,8 +411,8 @@ func (r *PebbleDB) applyOperationsBatch(ops []*RaftOperation) {
 		}
 	}
 
-	// Atomic write of all operations in one fsync
-	if err := batch.Commit(r.wo); err != nil {
+	// Flush any remaining batched operations.
+	if err := flushBatch(); err != nil {
 		log.Error("Failed to write batch",
 			zap.Error(err),
 			zap.Int("batch_size", len(ops)),
@@ -400,11 +431,6 @@ func (r *PebbleDB) applyOperationsBatch(ops []*RaftOperation) {
 			}
 			r.pendingMu.Unlock()
 		}
-	}
-
-	// Emit all watch events after successful write
-	for _, event := range watchEvents {
-		r.notifyWatches(event)
 	}
 
 	log.Debug("Applied operations batch",
@@ -752,33 +778,35 @@ func (r *PebbleDB) preparePutBatch(batch *pebble.Batch, key, value string, lease
 		return nil, err
 	}
 
-	// Add to batch
-	dbKey := []byte(kvPrefix + key)
-	batch.Set(dbKey, encodedKV, nil)
-
 	// Update lease's key tracking if leaseID is specified
 	if leaseID != 0 {
-		lease, err := r.getLease(leaseID)
+		lease, err := r.getLeaseFromReader(batch, leaseID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get lease %d: %v", leaseID, err)
 		}
-		if lease != nil {
-			// Add key to lease's key set
-			if lease.Keys == nil {
-				lease.Keys = make(map[string]bool)
-			}
-			lease.Keys[key] = true
-
-			// Save updated lease to batch - use Protobuf(20x performance)
-			leaseData, err := common.SerializeLease(lease)
-			if err != nil {
-				return nil, fmt.Errorf("failed to encode lease: %v", err)
-			}
-
-			leaseKey := []byte(fmt.Sprintf("%s%d", leasePrefix, leaseID))
-			batch.Set(leaseKey, leaseData, nil)
+		if lease == nil {
+			return nil, fmt.Errorf("failed to get lease %d: lease not found", leaseID)
 		}
+
+		// Add key to lease's key set
+		if lease.Keys == nil {
+			lease.Keys = make(map[string]bool)
+		}
+		lease.Keys[key] = true
+
+		// Save updated lease to batch - use Protobuf(20x performance)
+		leaseData, err := common.SerializeLease(lease)
+		if err != nil {
+			return nil, fmt.Errorf("failed to encode lease: %v", err)
+		}
+
+		leaseKey := []byte(fmt.Sprintf("%s%d", leasePrefix, leaseID))
+		batch.Set(leaseKey, leaseData, nil)
 	}
+
+	// Add KV to batch only after lease validation succeeds.
+	dbKey := []byte(kvPrefix + key)
+	batch.Set(dbKey, encodedKV, nil)
 
 	// Prepare watch event (to be emitted after successful write)
 	event := kvstore.WatchEvent{
@@ -917,7 +945,7 @@ func (r *PebbleDB) prepareLeaseGrantBatchWithTime(batch *pebble.Batch, leaseID, 
 // Returns watch events to be emitted after batch write succeeds
 func (r *PebbleDB) prepareLeaseRevokeBatch(batch *pebble.Batch, leaseID int64) ([]kvstore.WatchEvent, error) {
 	// Get the lease to find associated keys
-	lease, err := r.getLease(leaseID)
+	lease, err := r.getLeaseFromReader(batch, leaseID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get lease %d: %v", leaseID, err)
 	}
@@ -1857,8 +1885,12 @@ func (r *PebbleDB) getKeyValue(key string) (*kvstore.KeyValue, error) {
 }
 
 func (r *PebbleDB) getLease(id int64) (*kvstore.Lease, error) {
+	return r.getLeaseFromReader(r.db, id)
+}
+
+func (r *PebbleDB) getLeaseFromReader(reader pebble.Reader, id int64) (*kvstore.Lease, error) {
 	dbKey := []byte(fmt.Sprintf("%s%d", leasePrefix, id))
-	val, closer, err := r.db.Get(dbKey)
+	val, closer, err := reader.Get(dbKey)
 	if err != nil {
 		if err == pebble.ErrNotFound {
 			return nil, fmt.Errorf("lease not found: %d", id)

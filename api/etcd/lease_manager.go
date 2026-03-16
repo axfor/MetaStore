@@ -16,10 +16,12 @@ package etcd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"metaStore/internal/kvstore"
 	"metaStore/pkg/config"
 	"metaStore/pkg/log"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -144,71 +146,80 @@ func (lm *LeaseManager) Grant(id int64, ttl int64) (*kvstore.Lease, error) {
 
 // Revoke revokes a lease (deletes all associated keys)
 func (lm *LeaseManager) Revoke(id int64) error {
-	lm.mu.Lock()
-	_, ok := lm.leases[id]
-	if ok {
-		delete(lm.leases, id)
+	// The replicated store is the source of truth. The in-memory cache is only a
+	// local acceleration layer for expiry handling and may lag on other nodes.
+	if err := lm.store.LeaseRevoke(context.Background(), id); err != nil {
+		if isLeaseNotFoundError(err) {
+			lm.deleteCachedLease(id)
+			return ErrLeaseNotFound
+		}
+		return err
 	}
-	lm.mu.Unlock()
 
-	if !ok {
-		return ErrLeaseNotFound
-	}
-
-	// Delegate to store (will delete all associated keys)
-	return lm.store.LeaseRevoke(context.Background(), id)
+	lm.deleteCachedLease(id)
+	return nil
 }
 
 // Renew renews a lease
 func (lm *LeaseManager) Renew(id int64) (*kvstore.Lease, error) {
-	lm.mu.RLock()
-	_, ok := lm.leases[id]
-	lm.mu.RUnlock()
-
-	if !ok {
-		return nil, ErrLeaseNotFound
-	}
-
-	// Delegate to store
 	lease, err := lm.store.LeaseRenew(context.Background(), id)
 	if err != nil {
+		if isLeaseNotFoundError(err) {
+			lm.deleteCachedLease(id)
+			return nil, ErrLeaseNotFound
+		}
 		return nil, err
 	}
 
-	lm.mu.Lock()
-	lm.leases[id] = lease
-	lm.mu.Unlock()
+	lm.cacheLease(lease)
 
 	return lease, nil
 }
 
 // TimeToLive gets the remaining time for a lease
 func (lm *LeaseManager) TimeToLive(id int64) (*kvstore.Lease, error) {
-	lm.mu.RLock()
-	_, ok := lm.leases[id]
-	lm.mu.RUnlock()
-
-	if !ok {
-		return nil, ErrLeaseNotFound
-	}
-
-	// Delegate to store. The cache and store may be briefly out of sync
-	// (e.g., SyncFromStore loaded a lease that was concurrently revoked),
-	// so treat any store "not found" error as ErrLeaseNotFound.
+	// Delegate to store. The cache and store may be briefly out of sync across
+	// nodes, so always resolve TTL from the store and repair the local cache.
 	lease, err := lm.store.LeaseTimeToLive(context.Background(), id)
 	if err != nil || lease == nil {
-		// Remove stale entry from cache
-		lm.mu.Lock()
-		delete(lm.leases, id)
-		lm.mu.Unlock()
+		lm.deleteCachedLease(id)
 		return nil, ErrLeaseNotFound
 	}
+	lm.cacheLease(lease)
 	return lease, nil
 }
 
 // Leases returns all leases
 func (lm *LeaseManager) Leases() ([]*kvstore.Lease, error) {
 	return lm.store.Leases(context.Background())
+}
+
+func (lm *LeaseManager) cacheLease(lease *kvstore.Lease) {
+	if lease == nil {
+		return
+	}
+
+	lm.mu.Lock()
+	lm.leases[lease.ID] = lease
+	lm.mu.Unlock()
+}
+
+func (lm *LeaseManager) deleteCachedLease(id int64) {
+	lm.mu.Lock()
+	delete(lm.leases, id)
+	lm.mu.Unlock()
+}
+
+func isLeaseNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	if errors.Is(err, ErrLeaseNotFound) {
+		return true
+	}
+
+	return strings.Contains(strings.ToLower(err.Error()), "lease not found")
 }
 
 // SyncFromStore rebuilds lease cache from storage
