@@ -63,6 +63,7 @@ type PebbleDB struct {
 	mu                sync.Mutex
 	pendingMu         sync.RWMutex
 	pendingOps        map[string]chan struct{}        // for sync wait
+	pendingOpErrors   map[string]error                // seqNum -> apply error
 	pendingTxnResults map[string]*kvstore.TxnResponse // seqNum -> txn result
 	seqNum            atomic.Int64                    // Atomic counter for sequence numbers
 
@@ -98,7 +99,7 @@ type watchSubscription struct {
 
 // RaftOperation represents an operation to be committed through Raft
 type RaftOperation struct {
-	Type     string `json:"type"` // "PUT", "DELETE", "LEASE_GRANT", "LEASE_REVOKE", "TXN"
+	Type     string `json:"type"` // "PUT", "DELETE", "LEASE_GRANT", "LEASE_REVOKE", "LEASE_RENEW", "TXN"
 	Key      string `json:"key"`
 	Value    string `json:"value"`
 	LeaseID  int64  `json:"lease_id"`
@@ -134,6 +135,7 @@ func NewPebbleDB(
 		snapshotter:       snapshotter,
 		wo:                wo,
 		pendingOps:        make(map[string]chan struct{}),
+		pendingOpErrors:   make(map[string]error),
 		pendingTxnResults: make(map[string]*kvstore.TxnResponse),
 		watches:           make(map[int64]*watchSubscription),
 	}
@@ -270,6 +272,19 @@ func (r *PebbleDB) applyOperation(op RaftOperation) {
 				zap.String("component", "storage-pebble"))
 		}
 
+	case "LEASE_RENEW":
+		if err := r.leaseRenewUnlockedWithTime(op.LeaseID, op.GrantTime); err != nil {
+			if op.SeqNum != "" {
+				r.pendingMu.Lock()
+				r.pendingOpErrors[op.SeqNum] = err
+				r.pendingMu.Unlock()
+			}
+			log.Error("Failed to apply LEASE_RENEW operation",
+				zap.Error(err),
+				zap.Int64("leaseID", op.LeaseID),
+				zap.String("component", "storage-pebble"))
+		}
+
 	case "TXN":
 		// Apply Transaction
 		txnResp, err := r.txnUnlocked(op.Compares, op.ThenOps, op.ElseOps)
@@ -385,6 +400,21 @@ func (r *PebbleDB) applyOperationsBatch(ops []*RaftOperation) {
 				continue
 			}
 			watchEvents = append(watchEvents, events...)
+			batchDirty = true
+
+		case "LEASE_RENEW":
+			if err := r.prepareLeaseRenewBatchWithTime(batch, op.LeaseID, op.GrantTime); err != nil {
+				if op.SeqNum != "" {
+					r.pendingMu.Lock()
+					r.pendingOpErrors[op.SeqNum] = err
+					r.pendingMu.Unlock()
+				}
+				log.Error("Failed to prepare LEASE_RENEW in batch",
+					zap.Error(err),
+					zap.Int64("leaseID", op.LeaseID),
+					zap.String("component", "storage-pebble"))
+				continue
+			}
 			batchDirty = true
 
 		case "TXN":
@@ -705,6 +735,7 @@ func (r *PebbleDB) PutWithLease(ctx context.Context, key, value string, leaseID 
 	cleanup := func() {
 		r.pendingMu.Lock()
 		delete(r.pendingOps, seqNum)
+		delete(r.pendingOpErrors, seqNum)
 		r.pendingMu.Unlock()
 	}
 
@@ -939,6 +970,30 @@ func (r *PebbleDB) prepareLeaseGrantBatchWithTime(batch *pebble.Batch, leaseID, 
 	batch.Set(leaseKey, data, nil)
 
 	return nil
+}
+
+func (r *PebbleDB) prepareLeaseRenewBatchWithTime(batch *pebble.Batch, leaseID int64, grantTimeNano int64) error {
+	lease, err := r.getLeaseFromReader(batch, leaseID)
+	if err != nil {
+		return err
+	}
+	if lease == nil {
+		return fmt.Errorf("lease not found: %d", leaseID)
+	}
+
+	if grantTimeNano > 0 {
+		lease.GrantTime = time.Unix(0, grantTimeNano)
+	} else {
+		lease.GrantTime = timeNow()
+	}
+
+	data, err := common.SerializeLease(lease)
+	if err != nil {
+		return err
+	}
+
+	dbKey := []byte(fmt.Sprintf("%s%d", leasePrefix, leaseID))
+	return batch.Set(dbKey, data, nil)
 }
 
 // prepareLeaseRevokeBatch prepares a LEASE_REVOKE operation to be added to a WriteBatch
@@ -1372,6 +1427,30 @@ func (r *PebbleDB) leaseGrantUnlockedWithTime(id int64, ttl int64, grantTimeNano
 	return r.db.Set(dbKey, data, r.wo)
 }
 
+func (r *PebbleDB) leaseRenewUnlockedWithTime(id int64, grantTimeNano int64) error {
+	lease, err := r.getLease(id)
+	if err != nil {
+		return err
+	}
+	if lease == nil {
+		return fmt.Errorf("lease not found: %d", id)
+	}
+
+	if grantTimeNano > 0 {
+		lease.GrantTime = time.Unix(0, grantTimeNano)
+	} else {
+		lease.GrantTime = timeNow()
+	}
+
+	data, err := common.SerializeLease(lease)
+	if err != nil {
+		return err
+	}
+
+	dbKey := []byte(fmt.Sprintf("%s%d", leasePrefix, id))
+	return r.db.Set(dbKey, data, r.wo)
+}
+
 // LeaseRevoke revokeds a lease
 func (r *PebbleDB) LeaseRevoke(ctx context.Context, id int64) error {
 	// Generate sequence number (lock-free atomic operation)
@@ -1718,30 +1797,55 @@ func (r *PebbleDB) cleanupExpiredLeasesUnlocked() int {
 
 // LeaseRenew renews a lease
 func (r *PebbleDB) LeaseRenew(ctx context.Context, id int64) (*kvstore.Lease, error) {
-	// Get current lease
-	lease, err := r.getLease(id)
+	seq := r.seqNum.Add(1)
+	seqNum := fmt.Sprintf("seq-%d", seq)
+
+	waitCh := make(chan struct{})
+	r.pendingMu.Lock()
+	r.pendingOps[seqNum] = waitCh
+	r.pendingMu.Unlock()
+
+	cleanup := func() {
+		r.pendingMu.Lock()
+		delete(r.pendingOps, seqNum)
+		r.pendingMu.Unlock()
+	}
+
+	op := RaftOperation{
+		Type:      "LEASE_RENEW",
+		LeaseID:   id,
+		GrantTime: timeNow().UnixNano(),
+		SeqNum:    seqNum,
+	}
+
+	data, err := marshalRaftOperation(&op)
 	if err != nil {
-		return nil, err
-	}
-	if lease == nil {
-		return nil, fmt.Errorf("lease not found: %d", id)
-	}
-
-	// Update grant time
-	lease.GrantTime = time.Now()
-
-	// Save updated lease - use Protobuf serialize(20x performance)
-	data, err := common.SerializeLease(lease)
-	if err != nil {
+		cleanup()
 		return nil, err
 	}
 
-	dbKey := []byte(fmt.Sprintf("%s%d", leasePrefix, id))
-	if err := r.db.Set(dbKey, data, r.wo); err != nil {
+	if err := r.propose(ctx, data); err != nil {
+		cleanup()
 		return nil, err
 	}
 
-	return lease, nil
+	select {
+	case <-waitCh:
+		r.pendingMu.Lock()
+		applyErr := r.pendingOpErrors[seqNum]
+		delete(r.pendingOpErrors, seqNum)
+		r.pendingMu.Unlock()
+		if applyErr != nil {
+			return nil, applyErr
+		}
+		return r.getLease(id)
+	case <-ctx.Done():
+		cleanup()
+		return nil, ctx.Err()
+	case <-time.After(30 * time.Second):
+		cleanup()
+		return nil, fmt.Errorf("timeout waiting for Raft commit")
+	}
 }
 
 // LeaseTimeToLive gets remaining time of a lease

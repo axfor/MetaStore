@@ -16,6 +16,7 @@ package pebbledb
 
 import (
 	"testing"
+	"time"
 
 	"metaStore/internal/kvstore"
 
@@ -90,4 +91,42 @@ func TestPebbleDB_ApplyOperationsBatch_LeaseGrantThenTxnPut(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, kv)
 	assert.Equal(t, int64(303), kv.Lease)
+}
+
+func TestPebbleDB_ApplyOperationsBatch_LeaseGrantRenewThenPut(t *testing.T) {
+	store, cleanup := createTestStore(t, "test-batch-lease-grant-renew-put")
+	defer cleanup()
+
+	renewedAt := time.Unix(1_700_000_000, 123).UnixNano()
+	store.applyOperationsBatch([]*RaftOperation{
+		{Type: "LEASE_GRANT", LeaseID: 404, TTL: 30},
+		{Type: "LEASE_RENEW", LeaseID: 404, GrantTime: renewedAt},
+		{Type: "PUT", Key: "batch/renew", Value: "value", LeaseID: 404},
+	})
+
+	lease, err := store.getLease(404)
+	require.NoError(t, err)
+	require.NotNil(t, lease)
+	assert.Equal(t, time.Unix(0, renewedAt), lease.GrantTime)
+	assert.True(t, lease.Keys["batch/renew"])
+
+	kv, err := store.getKeyValue("batch/renew")
+	require.NoError(t, err)
+	require.NotNil(t, kv)
+	assert.Equal(t, int64(404), kv.Lease)
+}
+
+func TestPebbleDB_ApplyOperationsBatch_LeaseGrantRevokeThenRenewKeepsLeaseDeleted(t *testing.T) {
+	store, cleanup := createTestStore(t, "test-batch-lease-grant-revoke-renew")
+	defer cleanup()
+
+	store.applyOperationsBatch([]*RaftOperation{
+		{Type: "LEASE_GRANT", LeaseID: 405, TTL: 30},
+		{Type: "LEASE_REVOKE", LeaseID: 405},
+		{Type: "LEASE_RENEW", LeaseID: 405, GrantTime: time.Unix(1_700_000_010, 0).UnixNano()},
+	})
+
+	lease, err := store.getLease(405)
+	assert.Error(t, err)
+	assert.Nil(t, lease)
 }

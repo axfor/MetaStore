@@ -127,3 +127,38 @@ func TestHTTPWatchCreateResponseIncludesRevision(t *testing.T) {
 	require.True(t, ok)
 	require.NotEmpty(t, header["revision"])
 }
+
+func TestHTTPLeaseTimeToLiveMissingLeaseCompatibleResponse(t *testing.T) {
+	_, httpSrv := newGatewayTestServer(t)
+
+	body := postJSON(t, httpSrv.URL+"/v3/lease/timetolive", `{"ID":"999999"}`)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(body, &resp), string(body))
+	require.Equal(t, "999999", resp["ID"])
+	require.Equal(t, "-1", resp["TTL"])
+	require.Equal(t, "0", resp["grantedTTL"])
+}
+
+func TestHTTPLeaseKeepAliveMissingLeaseReturnsCompatibleError(t *testing.T) {
+	_, httpSrv := newGatewayTestServer(t)
+
+	req, err := http.NewRequest(http.MethodPost, httpSrv.URL+"/v3/lease/keepalive", bytes.NewBufferString(`{"ID":"999999"}`))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+
+	payload, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Contains(t, string(payload), "lease not found")
+
+	var errResp map[string]any
+	require.NoError(t, json.Unmarshal(payload, &errResp), string(payload))
+	if message, ok := errResp["message"].(string); ok {
+		require.Equal(t, "lease not found", message)
+	}
+}
