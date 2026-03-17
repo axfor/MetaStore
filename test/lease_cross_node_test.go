@@ -32,14 +32,14 @@ func TestLeaseOperationsAcrossNodes_PebbleCluster(t *testing.T) {
 	ctx := context.Background()
 	leaderIdx, followerIdx := findLeaderFollower(t, clus)
 
-	resp, err := clus.clients[leaderIdx].Grant(ctx, 30)
+	resp, err := clus.clients[leaderIdx].Grant(ctx, 5)
 	require.NoError(t, err)
 	leaseID := resp.ID
 
 	_, err = clus.clients[leaderIdx].Put(ctx, "cross-node/lease", "value", clientv3.WithLease(leaseID))
 	require.NoError(t, err)
 
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	keepAliveResp, err := clus.clients[followerIdx].KeepAliveOnce(ctx, leaseID)
 	require.NoError(t, err)
@@ -49,14 +49,24 @@ func TestLeaseOperationsAcrossNodes_PebbleCluster(t *testing.T) {
 	ttlResp, err := clus.clients[followerIdx].TimeToLive(ctx, leaseID, clientv3.WithAttachedKeys())
 	require.NoError(t, err)
 	assert.Greater(t, ttlResp.TTL, int64(0))
-	assert.Equal(t, int64(30), ttlResp.GrantedTTL)
+	assert.Equal(t, int64(5), ttlResp.GrantedTTL)
 	require.Len(t, ttlResp.Keys, 1)
 	assert.Equal(t, []byte("cross-node/lease"), ttlResp.Keys[0])
+
+	time.Sleep(4 * time.Second)
+
+	getResp, err := clus.clients[leaderIdx].Get(ctx, "cross-node/lease")
+	require.NoError(t, err)
+	assert.Len(t, getResp.Kvs, 1)
+
+	keepAliveResp, err = clus.clients[leaderIdx].KeepAliveOnce(ctx, leaseID)
+	require.NoError(t, err)
+	assert.Equal(t, leaseID, keepAliveResp.ID)
 
 	_, err = clus.clients[followerIdx].Revoke(ctx, leaseID)
 	require.NoError(t, err)
 
-	getResp, err := clus.clients[leaderIdx].Get(ctx, "cross-node/lease")
+	getResp, err = clus.clients[leaderIdx].Get(ctx, "cross-node/lease")
 	require.NoError(t, err)
 	assert.Len(t, getResp.Kvs, 0)
 }
