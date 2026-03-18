@@ -66,21 +66,25 @@ Initial exclusions:
 
 ## 如何运行定向兼容性测试
 
-手动运行 upstream-style suite：
+当前仓库已经提供 `make test-compat`，作为 upstream-style compatibility suite 的统一入口：
+
+```bash
+make test-compat
+```
+
+它实际执行的是：
 
 ```bash
 go test -v -timeout=20m ./test -run '^TestEtcdUpstream'
 ```
 
-手动运行 HTTP gateway 覆盖：
+HTTP gateway 覆盖仍然单独运行：
 
 ```bash
 go test -v -timeout=10m ./api/etcdgateway -run '^TestHTTP'
 ```
 
-如果后续 **Task 10** 确实决定新增名为 `test-compat` 的聚合 target，并且该 target 在仓库中实际落地，那么届时可以改为使用它作为统一入口。**在那之前，不要把 `make test-compat` 视为当前可用命令。**
-
-在 Task 10 落地前，应以上述两个 `go test` 命令作为当前仓库的实际运行方式。
+也就是说，`make test-compat` 现在是“官方客户端黑盒兼容性 suite”的现成入口；而 HTTP gateway 相关验证继续保持独立，不与该 target 混合。
 
 ## Known differences / failure classification
 
