@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
 func TestEtcdUpstreamKVPutGet(t *testing.T) {
@@ -31,5 +32,49 @@ func TestEtcdUpstreamKVPutGet(t *testing.T) {
 		resp, err := tc.Client.Get(ctx, "compat/kv/basic")
 		require.NoError(t, err)
 		require.Len(t, resp.Kvs, 1)
+
+		t.Run("Delete", func(t *testing.T) {
+			_, err := tc.Client.Put(ctx, "compat/kv/delete", "value")
+			require.NoError(t, err)
+
+			delResp, err := tc.Client.Delete(ctx, "compat/kv/delete")
+			require.NoError(t, err)
+			require.Equal(t, int64(1), delResp.Deleted)
+		})
+
+		t.Run("PrefixRange", func(t *testing.T) {
+			_, err := tc.Client.Put(ctx, "compat/kv/prefix/1", "one")
+			require.NoError(t, err)
+			_, err = tc.Client.Put(ctx, "compat/kv/prefix/2", "two")
+			require.NoError(t, err)
+
+			resp, err := tc.Client.Get(ctx, "compat/kv/prefix/", clientv3.WithPrefix())
+			require.NoError(t, err)
+			require.Len(t, resp.Kvs, 2)
+		})
+
+		t.Run("TxnSuccess", func(t *testing.T) {
+			_, err := tc.Client.Put(ctx, "compat/kv/txn", "old")
+			require.NoError(t, err)
+
+			txnResp, err := tc.Client.Txn(ctx).
+				If(clientv3.Compare(clientv3.Value("compat/kv/txn"), "=", "old")).
+				Then(clientv3.OpPut("compat/kv/txn", "new")).
+				Else(clientv3.OpGet("compat/kv/txn")).
+				Commit()
+			require.NoError(t, err)
+			require.True(t, txnResp.Succeeded)
+		})
+
+		t.Run("TxnFailure", func(t *testing.T) {
+			txnResp, err := tc.Client.Txn(ctx).
+				If(clientv3.Compare(clientv3.Value("compat/kv/txn"), "=", "missing")).
+				Then(clientv3.OpPut("compat/kv/txn", "should-not-happen")).
+				Else(clientv3.OpGet("compat/kv/txn")).
+				Commit()
+			require.NoError(t, err)
+			require.False(t, txnResp.Succeeded)
+			require.NotEmpty(t, txnResp.Responses)
+		})
 	})
 }
