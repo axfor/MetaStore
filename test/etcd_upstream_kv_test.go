@@ -40,6 +40,10 @@ func TestEtcdUpstreamKVPutGet(t *testing.T) {
 			delResp, err := tc.Client.Delete(ctx, "compat/kv/delete")
 			require.NoError(t, err)
 			require.Equal(t, int64(1), delResp.Deleted)
+
+			resp, err := tc.Client.Get(ctx, "compat/kv/delete")
+			require.NoError(t, err)
+			require.Empty(t, resp.Kvs)
 		})
 
 		t.Run("PrefixRange", func(t *testing.T) {
@@ -64,6 +68,11 @@ func TestEtcdUpstreamKVPutGet(t *testing.T) {
 				Commit()
 			require.NoError(t, err)
 			require.True(t, txnResp.Succeeded)
+
+			resp, err := tc.Client.Get(ctx, "compat/kv/txn")
+			require.NoError(t, err)
+			require.Len(t, resp.Kvs, 1)
+			require.Equal(t, "new", string(resp.Kvs[0].Value))
 		})
 
 		t.Run("TxnFailure", func(t *testing.T) {
@@ -75,6 +84,14 @@ func TestEtcdUpstreamKVPutGet(t *testing.T) {
 			require.NoError(t, err)
 			require.False(t, txnResp.Succeeded)
 			require.NotEmpty(t, txnResp.Responses)
+			require.Len(t, txnResp.Responses, 1)
+			require.Len(t, txnResp.Responses[0].GetResponseRange().Kvs, 1)
+			require.Equal(t, "new", string(txnResp.Responses[0].GetResponseRange().Kvs[0].Value))
+
+			resp, err := tc.Client.Get(ctx, "compat/kv/txn")
+			require.NoError(t, err)
+			require.Len(t, resp.Kvs, 1)
+			require.Equal(t, "new", string(resp.Kvs[0].Value))
 		})
 	})
 }
