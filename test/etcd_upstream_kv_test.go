@@ -55,6 +55,10 @@ func TestEtcdUpstreamKVPutGet(t *testing.T) {
 			resp, err := tc.Client.Get(ctx, "compat/kv/prefix/", clientv3.WithPrefix())
 			require.NoError(t, err)
 			require.Len(t, resp.Kvs, 2)
+			require.Equal(t, "compat/kv/prefix/1", string(resp.Kvs[0].Key))
+			require.Equal(t, "one", string(resp.Kvs[0].Value))
+			require.Equal(t, "compat/kv/prefix/2", string(resp.Kvs[1].Key))
+			require.Equal(t, "two", string(resp.Kvs[1].Value))
 		})
 
 		t.Run("TxnSuccess", func(t *testing.T) {
@@ -76,6 +80,9 @@ func TestEtcdUpstreamKVPutGet(t *testing.T) {
 		})
 
 		t.Run("TxnFailure", func(t *testing.T) {
+			_, err := tc.Client.Put(ctx, "compat/kv/txn", "new")
+			require.NoError(t, err)
+
 			txnResp, err := tc.Client.Txn(ctx).
 				If(clientv3.Compare(clientv3.Value("compat/kv/txn"), "=", "missing")).
 				Then(clientv3.OpPut("compat/kv/txn", "should-not-happen")).
