@@ -128,6 +128,42 @@ func TestHTTPWatchCreateResponseIncludesRevision(t *testing.T) {
 	require.NotEmpty(t, header["revision"])
 }
 
+func TestHTTPLeaseGrantResponseIncludesHeaderAndID(t *testing.T) {
+	_, httpSrv := newGatewayTestServer(t)
+
+	body := postJSON(t, httpSrv.URL+"/v3/lease/grant", `{"TTL":30}`)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(body, &resp), string(body))
+	require.NotEmpty(t, resp["ID"])
+	require.NotEmpty(t, resp["TTL"])
+
+	header, ok := resp["header"].(map[string]any)
+	require.True(t, ok, string(body))
+	require.NotEmpty(t, header["revision"])
+}
+
+func TestHTTPLeaseTimeToLiveSuccessResponseIncludesGrantedTTL(t *testing.T) {
+	_, httpSrv := newGatewayTestServer(t)
+
+	grantBody := postJSON(t, httpSrv.URL+"/v3/lease/grant", `{"TTL":30}`)
+	var grantResp struct {
+		ID string `json:"ID"`
+	}
+	require.NoError(t, json.Unmarshal(grantBody, &grantResp), string(grantBody))
+
+	body := postJSON(t, httpSrv.URL+"/v3/lease/timetolive", `{"ID":"`+grantResp.ID+`"}`)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(body, &resp), string(body))
+	require.Equal(t, grantResp.ID, resp["ID"])
+	require.NotEmpty(t, resp["TTL"])
+	require.NotEmpty(t, resp["grantedTTL"])
+	header, ok := resp["header"].(map[string]any)
+	require.True(t, ok, string(body))
+	require.NotEmpty(t, header["revision"])
+}
+
 func TestHTTPLeaseTimeToLiveMissingLeaseCompatibleResponse(t *testing.T) {
 	_, httpSrv := newGatewayTestServer(t)
 
