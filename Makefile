@@ -24,7 +24,7 @@ YELLOW=\033[0;33m
 CYAN=\033[0;36m
 RED=\033[0;31m
 
-.PHONY: all build clean test help deps tidy run-memory run-pebble cluster-memory cluster-pebble install test-perf test-perf-memory test-perf-pebble benchmark
+.PHONY: all build clean test help deps tidy run-memory run-pebble cluster-memory cluster-pebble install test-compat test-perf test-perf-memory test-perf-pebble benchmark
 
 ## all: Default target - build the binary
 all: build
@@ -110,6 +110,11 @@ test-maintenance:
 	@echo "$(CYAN)Running Maintenance Service tests...$(NO_COLOR)"
 	@$(GOTEST) -v -timeout=10m -run="TestMaintenance_" ./test/
 	@echo "$(GREEN)Maintenance tests passed!$(NO_COLOR)"
+
+## test-compat: Run upstream-style etcd compatibility tests
+test-compat:
+	@echo "$(CYAN)Running upstream-style etcd compatibility tests...$(NO_COLOR)"
+	@$(GOTEST) -v -timeout=20m ./test -run '^TestEtcdUpstream'
 
 ## test-quick: Run quick tests (Maintenance only, for rapid verification)
 test-quick:
