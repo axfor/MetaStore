@@ -17,6 +17,7 @@ package test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	etcdconcurrency "go.etcd.io/etcd/client/v3/concurrency"
@@ -24,6 +25,21 @@ import (
 
 func TestEtcdUpstreamOfficialConcurrency(t *testing.T) {
 	forEachEtcdUpstreamSingleNodeBackend(t, func(t *testing.T, tc etcdUpstreamSingleNodeCase) {
+		lockCtx, lockCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer lockCancel()
+
+		tryLockCtx1, tryLockCancel1 := context.WithTimeout(context.Background(), 5*time.Second)
+		defer tryLockCancel1()
+
+		unlockCtx1, unlockCancel1 := context.WithTimeout(context.Background(), 5*time.Second)
+		defer unlockCancel1()
+
+		tryLockCtx2, tryLockCancel2 := context.WithTimeout(context.Background(), 5*time.Second)
+		defer tryLockCancel2()
+
+		unlockCtx2, unlockCancel2 := context.WithTimeout(context.Background(), 5*time.Second)
+		defer unlockCancel2()
+
 		session1, err := etcdconcurrency.NewSession(tc.Client, etcdconcurrency.WithTTL(10))
 		require.NoError(t, err)
 		defer session1.Close()
@@ -35,10 +51,10 @@ func TestEtcdUpstreamOfficialConcurrency(t *testing.T) {
 		mutex1 := etcdconcurrency.NewMutex(session1, "/compat-lock")
 		mutex2 := etcdconcurrency.NewMutex(session2, "/compat-lock")
 
-		require.NoError(t, mutex1.Lock(context.Background()))
-		require.ErrorIs(t, mutex2.TryLock(context.Background()), etcdconcurrency.ErrLocked)
-		require.NoError(t, mutex1.Unlock(context.Background()))
-		require.NoError(t, mutex2.TryLock(context.Background()))
-		require.NoError(t, mutex2.Unlock(context.Background()))
+		require.NoError(t, mutex1.Lock(lockCtx))
+		require.ErrorIs(t, mutex2.TryLock(tryLockCtx1), etcdconcurrency.ErrLocked)
+		require.NoError(t, mutex1.Unlock(unlockCtx1))
+		require.NoError(t, mutex2.TryLock(tryLockCtx2))
+		require.NoError(t, mutex2.Unlock(unlockCtx2))
 	})
 }
