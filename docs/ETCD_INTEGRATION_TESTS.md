@@ -78,11 +78,7 @@ go test -v -timeout=20m ./test -run '^TestEtcdUpstream'
 go test -v -timeout=10m ./api/etcdgateway -run '^TestHTTP'
 ```
 
-如果后续 **Task 10** 在运行时长和稳定性达标后新增聚合 target，也可以使用：
-
-```bash
-make test-compat
-```
+如果后续 **Task 10** 确实决定新增名为 `test-compat` 的聚合 target，并且该 target 在仓库中实际落地，那么届时可以改为使用它作为统一入口。**在那之前，不要把 `make test-compat` 视为当前可用命令。**
 
 在 Task 10 落地前，应以上述两个 `go test` 命令作为当前仓库的实际运行方式。
 
