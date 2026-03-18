@@ -63,16 +63,15 @@ func getClusterValue(t *testing.T, ctx context.Context, client *clientv3.Client,
 	t.Helper()
 
 	var (
-		resp *clientv3.GetResponse
-		err  error
+		resp    *clientv3.GetResponse
+		err     error
+		lastErr error
 	)
 
 	for attempt := 0; attempt < 20; attempt++ {
 		resp, err = client.Get(ctx, key)
 		if err != nil {
-			if attempt == 19 {
-				require.NoError(t, err)
-			}
+			lastErr = err
 			time.Sleep(250 * time.Millisecond)
 			continue
 		}
@@ -83,7 +82,8 @@ func getClusterValue(t *testing.T, ctx context.Context, client *clientv3.Client,
 	}
 
 	if resp == nil {
-		t.Fatalf("expected key %q after 20 attempts but received no successful response", key)
+		t.Fatalf("replication failed after 20 attempts for key %q: last get error: %v", key, lastErr)
 	}
+	t.Fatalf("replication failed after 20 attempts for key %q: expected 1 kv, got %d", key, len(resp.Kvs))
 	return resp
 }
