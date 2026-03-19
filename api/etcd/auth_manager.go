@@ -86,6 +86,29 @@ func NewAuthManager(store kvstore.Store, cfg ...*config.AuthConfig) *AuthManager
 	return am
 }
 
+// clone returns a deep copy of UserInfo, safe for mutation.
+func (u *UserInfo) clone() *UserInfo {
+	c := &UserInfo{
+		Name:         u.Name,
+		PasswordHash: u.PasswordHash,
+		Roles:        make([]string, len(u.Roles)),
+		CreatedAt:    u.CreatedAt,
+	}
+	copy(c.Roles, u.Roles)
+	return c
+}
+
+// clone returns a deep copy of RoleInfo, safe for mutation.
+func (r *RoleInfo) clone() *RoleInfo {
+	c := &RoleInfo{
+		Name:        r.Name,
+		Permissions: make([]Permission, len(r.Permissions)),
+		CreatedAt:   r.CreatedAt,
+	}
+	copy(c.Permissions, r.Permissions)
+	return c
+}
+
 // loadState loads authentication state from storage
 func (am *AuthManager) loadState() error {
 	// 1. Read /__auth/enabled
@@ -155,23 +178,25 @@ func (am *AuthManager) Enable() error {
 		return nil
 	}
 
-	// 3. Set enabled = true (atomic operation)
-	am.enabled.Store(true)
+	// 3. Persist first (store is source of truth)
+	if _, _, err := am.store.PutWithLease(context.Background(), authEnabledKey, "true", 0); err != nil {
+		return err
+	}
 
-	// 4. Persist to storage
-	_, _, err := am.store.PutWithLease(context.Background(), authEnabledKey, "true", 0)
-	return err
+	// 4. Update cache on success
+	am.enabled.Store(true)
+	return nil
 }
 
 // Disable disables authentication
 func (am *AuthManager) Disable() error {
-	// 1. Set enabled = false (atomic operation)
-	am.enabled.Store(false)
-
-	// 2. Persist to storage
+	// 1. Persist first (store is source of truth)
 	if _, _, err := am.store.PutWithLease(context.Background(), authEnabledKey, "false", 0); err != nil {
 		return err
 	}
+
+	// 2. Update cache on success
+	am.enabled.Store(false)
 
 	// 3. Clear all tokens from cache
 	am.tokens.Clear()
@@ -437,8 +462,12 @@ func (am *AuthManager) ChangePassword(name, newPassword string) error {
 		return fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	// 3. Update user info
+	// 3. Clone and update (copy-on-write for concurrent safety)
+	user = user.clone()
 	user.PasswordHash = passwordHash
+
+	// Update cache with cloned copy
+	am.users.Store(name, user)
 
 	// 4. Persist
 	key := authUserPrefix + name
@@ -483,8 +512,12 @@ func (am *AuthManager) GrantRole(username, rolename string) error {
 		}
 	}
 
-	// 2. Add role to user's role list
+	// 2. Clone and add role (copy-on-write for concurrent safety)
+	user = user.clone()
 	user.Roles = append(user.Roles, rolename)
+
+	// Update cache with cloned copy
+	am.users.Store(username, user)
 
 	// 3. Persist
 	key := authUserPrefix + username
@@ -522,7 +555,12 @@ func (am *AuthManager) RevokeRole(username, rolename string) error {
 		return fmt.Errorf("user %s does not have role %s", username, rolename)
 	}
 
+	// Clone and update (copy-on-write for concurrent safety)
+	user = user.clone()
 	user.Roles = newRoles
+
+	// Update cache with cloned copy
+	am.users.Store(username, user)
 
 	// Persist
 	key := authUserPrefix + username
@@ -593,10 +631,13 @@ func (am *AuthManager) DeleteRole(name string) error {
 			}
 		}
 		if hasRole {
-			user.Roles = newRoles
+			// Clone and update (copy-on-write for concurrent safety)
+			updated := user.clone()
+			updated.Roles = newRoles
+			am.users.Store(username, updated)
 			// Persist user info
 			key := authUserPrefix + username
-			data, _ := json.Marshal(user)
+			data, _ := json.Marshal(updated)
 			_, _, _ = am.store.PutWithLease(context.Background(), key, string(data), 0)
 		}
 		return true
@@ -660,8 +701,12 @@ func (am *AuthManager) GrantPermission(rolename string, perm Permission) error {
 		return fmt.Errorf("role not found: %s", rolename)
 	}
 
-	// Add permission
+	// Clone and add permission (copy-on-write for concurrent safety)
+	role = role.clone()
 	role.Permissions = append(role.Permissions, perm)
+
+	// Update cache with cloned copy
+	am.roles.Store(rolename, role)
 
 	// Persist
 	key := authRolePrefix + rolename
@@ -701,7 +746,12 @@ func (am *AuthManager) RevokePermission(rolename string, key, rangeEnd []byte) e
 		return fmt.Errorf("permission not found for role %s", rolename)
 	}
 
+	// Clone and update (copy-on-write for concurrent safety)
+	role = role.clone()
 	role.Permissions = newPerms
+
+	// Update cache with cloned copy
+	am.roles.Store(rolename, role)
 
 	// Persist
 	roleKey := authRolePrefix + rolename

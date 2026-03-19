@@ -16,14 +16,16 @@ package etcd
 
 import (
 	"context"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
 	"metaStore/internal/memory"
 	"metaStore/pkg/config"
 
-	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/authpb"
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 )
 
 // setupAuthTest creates test environment
@@ -61,7 +63,7 @@ func createAuthTestConfig() *config.Config {
 	cfg := config.DefaultConfig(1, 1, ":2379")
 
 	// Test environment optimization: use lower bcrypt cost to speed up tests
-	cfg.Server.Auth.BcryptCost = 4  // default 10, use 4 for testing
+	cfg.Server.Auth.BcryptCost = 4 // default 10, use 4 for testing
 	cfg.Server.Auth.TokenTTL = 10 * time.Minute
 	cfg.Server.Auth.TokenCleanupInterval = 1 * time.Minute
 	cfg.Server.Auth.EnableAudit = false // test environment doesn't need audit logs
@@ -515,4 +517,86 @@ func BenchmarkValidateToken(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, _ = srv.authMgr.ValidateToken(token)
 	}
+}
+
+// TestAuthConcurrentChangePasswordAndCheck verifies that changing a password
+// while CheckPermission reads user.Roles does not cause a data race.
+func TestAuthConcurrentChangePasswordAndCheck(t *testing.T) {
+	store := memory.NewMemoryEtcd()
+	cfg := &config.AuthConfig{
+		TokenTTL:             5 * time.Minute,
+		TokenCleanupInterval: 1 * time.Minute,
+		BcryptCost:           4, // low cost for fast tests
+		EnableAudit:          false,
+	}
+	am := NewAuthManager(store, cfg)
+
+	// Setup: create user with a role and permission
+	if err := am.AddUser("testuser", "pass123"); err != nil {
+		t.Fatal(err)
+	}
+	if err := am.AddRole("testrole"); err != nil {
+		t.Fatal(err)
+	}
+	if err := am.GrantRole("testuser", "testrole"); err != nil {
+		t.Fatal(err)
+	}
+	if err := am.GrantPermission("testrole", Permission{
+		Type: PermissionRead, Key: []byte("/"), RangeEnd: []byte("\x00"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Concurrent: ChangePassword vs CheckPermission
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(2)
+		go func(n int) {
+			defer wg.Done()
+			_ = am.ChangePassword("testuser", fmt.Sprintf("newpass%d", n))
+		}(i)
+		go func() {
+			defer wg.Done()
+			// Must not panic or observe inconsistent state
+			_ = am.CheckPermission("testuser", []byte("/foo"), PermissionRead)
+		}()
+	}
+	wg.Wait()
+}
+
+// TestAuthConcurrentGrantRoleAndCheck verifies that GrantRole does not
+// cause a data race with concurrent CheckPermission.
+func TestAuthConcurrentGrantRoleAndCheck(t *testing.T) {
+	store := memory.NewMemoryEtcd()
+	cfg := &config.AuthConfig{
+		TokenTTL:             5 * time.Minute,
+		TokenCleanupInterval: 1 * time.Minute,
+		BcryptCost:           4,
+		EnableAudit:          false,
+	}
+	am := NewAuthManager(store, cfg)
+
+	if err := am.AddUser("testuser", "pass123"); err != nil {
+		t.Fatal(err)
+	}
+	// Pre-create many roles
+	for i := 0; i < 20; i++ {
+		if err := am.AddRole(fmt.Sprintf("role-%d", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(2)
+		go func(n int) {
+			defer wg.Done()
+			_ = am.GrantRole("testuser", fmt.Sprintf("role-%d", n))
+		}(i)
+		go func() {
+			defer wg.Done()
+			_ = am.CheckPermission("testuser", []byte("/foo"), PermissionRead)
+		}()
+	}
+	wg.Wait()
 }
