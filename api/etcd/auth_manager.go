@@ -418,15 +418,7 @@ func (am *AuthManager) GetUser(name string) (*UserInfo, error) {
 	}
 
 	// Return copy to avoid external modification
-	userCopy := &UserInfo{
-		Name:         user.Name,
-		PasswordHash: user.PasswordHash,
-		Roles:        make([]string, len(user.Roles)),
-		CreatedAt:    user.CreatedAt,
-	}
-	copy(userCopy.Roles, user.Roles)
-
-	return userCopy, nil
+	return user.clone(), nil
 }
 
 // ListUsers lists all users
@@ -434,14 +426,7 @@ func (am *AuthManager) ListUsers() ([]*UserInfo, error) {
 	var users []*UserInfo
 	am.users.Range(func(name string, user *UserInfo) bool {
 		// Return copy to avoid external modification
-		userCopy := &UserInfo{
-			Name:         user.Name,
-			PasswordHash: user.PasswordHash,
-			Roles:        make([]string, len(user.Roles)),
-			CreatedAt:    user.CreatedAt,
-		}
-		copy(userCopy.Roles, user.Roles)
-		users = append(users, userCopy)
+		users = append(users, user.clone())
 		return true
 	})
 
@@ -466,10 +451,7 @@ func (am *AuthManager) ChangePassword(name, newPassword string) error {
 	user = user.clone()
 	user.PasswordHash = passwordHash
 
-	// Update cache with cloned copy
-	am.users.Store(name, user)
-
-	// 4. Persist
+	// 4. Persist first (store is source of truth)
 	key := authUserPrefix + name
 	data, err := json.Marshal(user)
 	if err != nil {
@@ -479,7 +461,10 @@ func (am *AuthManager) ChangePassword(name, newPassword string) error {
 		return fmt.Errorf("failed to persist user: %w", err)
 	}
 
-	// 5. Clean up all tokens for this user (force re-login)
+	// 5. Update cache on success
+	am.users.Store(name, user)
+
+	// 6. Clean up all tokens for this user (force re-login)
 	am.tokens.Range(func(token string, info *TokenInfo) bool {
 		if info.Username == name {
 			am.tokens.Delete(token)
@@ -516,10 +501,7 @@ func (am *AuthManager) GrantRole(username, rolename string) error {
 	user = user.clone()
 	user.Roles = append(user.Roles, rolename)
 
-	// Update cache with cloned copy
-	am.users.Store(username, user)
-
-	// 3. Persist
+	// 3. Persist first (store is source of truth)
 	key := authUserPrefix + username
 	data, err := json.Marshal(user)
 	if err != nil {
@@ -528,6 +510,9 @@ func (am *AuthManager) GrantRole(username, rolename string) error {
 	if _, _, err := am.store.PutWithLease(context.Background(), key, string(data), 0); err != nil {
 		return fmt.Errorf("failed to persist user: %w", err)
 	}
+
+	// 4. Update cache on success
+	am.users.Store(username, user)
 
 	return nil
 }
@@ -559,10 +544,7 @@ func (am *AuthManager) RevokeRole(username, rolename string) error {
 	user = user.clone()
 	user.Roles = newRoles
 
-	// Update cache with cloned copy
-	am.users.Store(username, user)
-
-	// Persist
+	// Persist first (store is source of truth)
 	key := authUserPrefix + username
 	data, err := json.Marshal(user)
 	if err != nil {
@@ -571,6 +553,9 @@ func (am *AuthManager) RevokeRole(username, rolename string) error {
 	if _, _, err := am.store.PutWithLease(context.Background(), key, string(data), 0); err != nil {
 		return fmt.Errorf("failed to persist user: %w", err)
 	}
+
+	// Update cache on success
+	am.users.Store(username, user)
 
 	return nil
 }
@@ -634,11 +619,12 @@ func (am *AuthManager) DeleteRole(name string) error {
 			// Clone and update (copy-on-write for concurrent safety)
 			updated := user.clone()
 			updated.Roles = newRoles
-			am.users.Store(username, updated)
-			// Persist user info
+			// Persist user info first
 			key := authUserPrefix + username
 			data, _ := json.Marshal(updated)
 			_, _, _ = am.store.PutWithLease(context.Background(), key, string(data), 0)
+			// Update cache after persist
+			am.users.Store(username, updated)
 		}
 		return true
 	})
@@ -664,14 +650,7 @@ func (am *AuthManager) GetRole(name string) (*RoleInfo, error) {
 	}
 
 	// Return copy to avoid external modification
-	roleCopy := &RoleInfo{
-		Name:        role.Name,
-		Permissions: make([]Permission, len(role.Permissions)),
-		CreatedAt:   role.CreatedAt,
-	}
-	copy(roleCopy.Permissions, role.Permissions)
-
-	return roleCopy, nil
+	return role.clone(), nil
 }
 
 // ListRoles lists all roles
@@ -679,13 +658,7 @@ func (am *AuthManager) ListRoles() ([]*RoleInfo, error) {
 	var roles []*RoleInfo
 	am.roles.Range(func(name string, role *RoleInfo) bool {
 		// Return copy to avoid external modification
-		roleCopy := &RoleInfo{
-			Name:        role.Name,
-			Permissions: make([]Permission, len(role.Permissions)),
-			CreatedAt:   role.CreatedAt,
-		}
-		copy(roleCopy.Permissions, role.Permissions)
-		roles = append(roles, roleCopy)
+		roles = append(roles, role.clone())
 		return true
 	})
 
@@ -705,10 +678,7 @@ func (am *AuthManager) GrantPermission(rolename string, perm Permission) error {
 	role = role.clone()
 	role.Permissions = append(role.Permissions, perm)
 
-	// Update cache with cloned copy
-	am.roles.Store(rolename, role)
-
-	// Persist
+	// Persist first (store is source of truth)
 	key := authRolePrefix + rolename
 	data, err := json.Marshal(role)
 	if err != nil {
@@ -717,6 +687,9 @@ func (am *AuthManager) GrantPermission(rolename string, perm Permission) error {
 	if _, _, err := am.store.PutWithLease(context.Background(), key, string(data), 0); err != nil {
 		return fmt.Errorf("failed to persist role: %w", err)
 	}
+
+	// Update cache on success
+	am.roles.Store(rolename, role)
 
 	return nil
 }
@@ -750,10 +723,7 @@ func (am *AuthManager) RevokePermission(rolename string, key, rangeEnd []byte) e
 	role = role.clone()
 	role.Permissions = newPerms
 
-	// Update cache with cloned copy
-	am.roles.Store(rolename, role)
-
-	// Persist
+	// Persist first (store is source of truth)
 	roleKey := authRolePrefix + rolename
 	data, err := json.Marshal(role)
 	if err != nil {
@@ -762,6 +732,9 @@ func (am *AuthManager) RevokePermission(rolename string, key, rangeEnd []byte) e
 	if _, _, err := am.store.PutWithLease(context.Background(), roleKey, string(data), 0); err != nil {
 		return fmt.Errorf("failed to persist role: %w", err)
 	}
+
+	// Update cache on success
+	am.roles.Store(rolename, role)
 
 	return nil
 }
