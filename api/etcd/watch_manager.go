@@ -113,6 +113,12 @@ func (wm *WatchManager) CreateWithID(watchID int64, key, rangeEnd string, startR
 	}
 
 	wm.mu.Lock()
+	if wm.stopped.Load() {
+		delete(wm.watches, watchID)
+		wm.mu.Unlock()
+		wm.store.CancelWatch(watchID)
+		return -1
+	}
 	wm.watches[watchID] = ws
 	wm.mu.Unlock()
 
@@ -122,8 +128,8 @@ func (wm *WatchManager) CreateWithID(watchID int64, key, rangeEnd string, startR
 // Cancel cancels a watch
 func (wm *WatchManager) Cancel(watchID int64) error {
 	wm.mu.Lock()
-	_, ok := wm.watches[watchID]
-	if !ok {
+	ws, ok := wm.watches[watchID]
+	if !ok || ws == nil {
 		wm.mu.Unlock()
 		return ErrWatchCanceled
 	}
@@ -155,9 +161,11 @@ func (wm *WatchManager) Stop() {
 	wm.mu.Lock()
 	defer wm.mu.Unlock()
 
-	// Cancel all watches
-	for watchID := range wm.watches {
-		wm.store.CancelWatch(watchID)
+	// Cancel all watches (skip nil placeholders from in-flight CreateWithID)
+	for watchID, ws := range wm.watches {
+		if ws != nil {
+			wm.store.CancelWatch(watchID)
+		}
 	}
 	wm.watches = make(map[int64]*watchStream)
 }
