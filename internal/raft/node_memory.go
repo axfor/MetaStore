@@ -803,9 +803,17 @@ func (rc *raftNode) serveChannels() {
 			// Must save the snapshot file and WAL snapshot entry before saving any other entries
 			// or hardstate to ensure that recovery after a snapshot restore is possible.
 			if !raft.IsEmptySnap(rd.Snapshot) {
-				rc.saveSnap(rd.Snapshot)
+				if err := rc.saveSnap(rd.Snapshot); err != nil {
+					log.Fatal("failed to save snapshot",
+						zap.Error(err),
+						zap.String("component", "raft-memory"))
+				}
 			}
-			rc.wal.Save(rd.HardState, rd.Entries)
+			if err := rc.wal.Save(rd.HardState, rd.Entries); err != nil {
+				log.Fatal("failed to save WAL",
+					zap.Error(err),
+					zap.String("component", "raft-memory"))
+			}
 			if !raft.IsEmptySnap(rd.Snapshot) {
 				rc.raftStorage.ApplySnapshot(rd.Snapshot)
 				rc.publishSnapshot(rd.Snapshot)
