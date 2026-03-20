@@ -459,8 +459,8 @@ go test -v -run="TestMaintenance_" ./test
 # Fault injection tests (requires time)
 go test -v -run="TestMaintenance_FaultInjection" ./test -timeout=10m
 
-# etcd compatibility tests
-go test -v -run="TestEtcd" ./test
+# Upstream-style etcd compatibility tests
+go test -v -timeout=20m ./test -run '^TestEtcdUpstream'
 
 # Integration tests
 go test -v -run="TestCrossProtocol" ./test

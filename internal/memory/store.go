@@ -15,8 +15,8 @@
 package memory
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"fmt"
 	"metaStore/internal/kvstore"
 	"strings"
@@ -28,26 +28,27 @@ import (
 // Note: Write serialization is handled by Raft, not by storage layer locks.
 // This is consistent with etcd's design where writes are serialized through Raft consensus.
 type MemoryEtcd struct {
-	kvData       *ShardedMap                  // shard map，supportedhighconcurrency
-	revision     int64                        // global revision count (protected by revMu)
-	revMu        sync.RWMutex                 // protects revision reads/writes (like etcd)
-	leases       map[int64]*kvstore.Lease     // leaseID -> Lease
-	leaseMu      sync.RWMutex                 // protected leases map
-	watches      map[int64]*watchSubscription // watchID -> subscription
-	watchMu      sync.RWMutex                 // protected watches map
-	nextWatchID  atomic.Int64
+	kvData      *ShardedMap                  // shard map，supportedhighconcurrency
+	revision    int64                        // global revision count (protected by revMu)
+	revMu       sync.RWMutex                 // protects revision reads/writes (like etcd)
+	leases      map[int64]*kvstore.Lease     // leaseID -> Lease
+	leaseMu     sync.RWMutex                 // protected leases map
+	watches     map[int64]*watchSubscription // watchID -> subscription
+	watchMu     sync.RWMutex                 // protected watches map
+	nextWatchID atomic.Int64
 }
 
 // watchSubscription indicatesfirst  watch subscribe
 type watchSubscription struct {
-	watchID      int64
-	key          string
-	rangeEnd     string
-	startRev     int64
-	eventCh      chan kvstore.WatchEvent
-	cancel       chan struct{}
-	closed       atomic.Bool  // duplicateclose
-	closeOnce    sync.Once    // close first time
+	watchID     int64
+	key         string
+	rangeEnd    string
+	startRev    int64
+	eventCh     chan kvstore.WatchEvent
+	cancel      chan struct{}
+	closed      atomic.Bool   // duplicateclose
+	closeOnce   sync.Once     // close first time
+	slowSendSem chan struct{} // bounds concurrent slowSendEvent goroutines
 
 	// Options
 	prevKV         bool

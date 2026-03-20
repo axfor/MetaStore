@@ -101,10 +101,7 @@ func (cm *ClusterManager) AddMember(peerURLs []string, isLearner bool) (*MemberI
 		}
 	}
 
-	// 5. addto members map
-	cm.members[memberID] = member
-
-	// 6. returnmemberinfo
+	// 5. returnmemberinfo (map is updated only via ApplyConfChange)
 	return member, nil
 }
 
@@ -152,10 +149,7 @@ func (cm *ClusterManager) AddWitnessMember(peerURLs []string) (*MemberInfo, erro
 		}
 	}
 
-	// 5. Add to members map
-	cm.members[memberID] = member
-
-	// 6. Return member info
+	// 5. Return member info (map is updated only via ApplyConfChange)
 	return member, nil
 }
 
@@ -185,9 +179,7 @@ func (cm *ClusterManager) RemoveMember(id uint64) error {
 		}
 	}
 
-	// 4. from members map delete
-	delete(cm.members, id)
-
+	// 4. map is updated only via ApplyConfChange
 	return nil
 }
 
@@ -275,9 +267,7 @@ func (cm *ClusterManager) PromoteMember(id uint64) error {
 		}
 	}
 
-	// 4. updatememberstatus
-	member.IsLearner = false
-
+	// 4. member status is updated only via ApplyConfChange
 	return nil
 }
 

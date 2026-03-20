@@ -39,7 +39,7 @@ type watchStream struct {
 	rangeEnd      string
 	startRevision int64
 	eventCh       <-chan kvstore.WatchEvent // receives events from store
-	cancel        func()                     // cancel function
+	cancel        func()                    // cancel function
 }
 
 // NewWatchManager creates a new Watch manager
@@ -69,25 +69,20 @@ func (wm *WatchManager) CreateWithID(watchID int64, key, rangeEnd string, startR
 		return -1
 	}
 
-	// Check watch count limit
-	wm.mu.RLock()
-	currentCount := len(wm.watches)
-	wm.mu.RUnlock()
-
-	if wm.maxWatchCount > 0 && currentCount >= wm.maxWatchCount {
-		// Watch limit exceeded
+	// Single lock: capacity check + ID uniqueness + placeholder insert
+	wm.mu.Lock()
+	if wm.maxWatchCount > 0 && len(wm.watches) >= wm.maxWatchCount {
+		wm.mu.Unlock()
 		return -1
 	}
-
-	// Check if watchID already exists
-	wm.mu.Lock()
 	if _, exists := wm.watches[watchID]; exists {
 		wm.mu.Unlock()
-		return -1 // WatchID already in use
+		return -1
 	}
+	wm.watches[watchID] = nil // placeholder prevents concurrent duplicate
 	wm.mu.Unlock()
 
-	// Create watch from store
+	// Create watch from store (outside lock — may be slow)
 	var eventCh <-chan kvstore.WatchEvent
 	var err error
 
@@ -103,6 +98,9 @@ func (wm *WatchManager) CreateWithID(watchID int64, key, rangeEnd string, startR
 	}
 
 	if err != nil {
+		wm.mu.Lock()
+		delete(wm.watches, watchID) // rollback placeholder
+		wm.mu.Unlock()
 		return -1
 	}
 
@@ -115,6 +113,12 @@ func (wm *WatchManager) CreateWithID(watchID int64, key, rangeEnd string, startR
 	}
 
 	wm.mu.Lock()
+	if wm.stopped.Load() {
+		delete(wm.watches, watchID)
+		wm.mu.Unlock()
+		wm.store.CancelWatch(watchID)
+		return -1
+	}
 	wm.watches[watchID] = ws
 	wm.mu.Unlock()
 
@@ -124,8 +128,8 @@ func (wm *WatchManager) CreateWithID(watchID int64, key, rangeEnd string, startR
 // Cancel cancels a watch
 func (wm *WatchManager) Cancel(watchID int64) error {
 	wm.mu.Lock()
-	_, ok := wm.watches[watchID]
-	if !ok {
+	ws, ok := wm.watches[watchID]
+	if !ok || ws == nil {
 		wm.mu.Unlock()
 		return ErrWatchCanceled
 	}
@@ -142,7 +146,7 @@ func (wm *WatchManager) GetEventChan(watchID int64) (<-chan kvstore.WatchEvent, 
 	defer wm.mu.RUnlock()
 
 	ws, ok := wm.watches[watchID]
-	if !ok {
+	if !ok || ws == nil {
 		return nil, false
 	}
 	return ws.eventCh, true
@@ -157,9 +161,11 @@ func (wm *WatchManager) Stop() {
 	wm.mu.Lock()
 	defer wm.mu.Unlock()
 
-	// Cancel all watches
-	for watchID := range wm.watches {
-		wm.store.CancelWatch(watchID)
+	// Cancel all watches (skip nil placeholders from in-flight CreateWithID)
+	for watchID, ws := range wm.watches {
+		if ws != nil {
+			wm.store.CancelWatch(watchID)
+		}
 	}
 	wm.watches = make(map[int64]*watchStream)
 }

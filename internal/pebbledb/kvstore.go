@@ -81,14 +81,15 @@ type PebbleDB struct {
 
 // watchSubscription represents a watch subscription
 type watchSubscription struct {
-	watchID   int64
-	key       string
-	rangeEnd  string
-	startRev  int64
-	eventCh   chan kvstore.WatchEvent
-	cancel    chan struct{}
-	closed    atomic.Bool // duplicateclose
-	closeOnce sync.Once   // close first time
+	watchID     int64
+	key         string
+	rangeEnd    string
+	startRev    int64
+	eventCh     chan kvstore.WatchEvent
+	cancel      chan struct{}
+	closed      atomic.Bool   // duplicateclose
+	closeOnce   sync.Once     // close first time
+	slowSendSem chan struct{} // bounds concurrent slowSendEvent goroutines
 
 	// Options
 	prevKV         bool
@@ -1566,6 +1567,7 @@ func (r *PebbleDB) WatchWithOptions(key, rangeEnd string, startRevision int64, w
 		startRev:       startRevision,
 		eventCh:        eventCh,
 		cancel:         make(chan struct{}),
+		slowSendSem:    make(chan struct{}, 8), // cap concurrent slowSend goroutines per watcher
 		prevKV:         prevKV,
 		progressNotify: progressNotify,
 		filters:        filters,
@@ -1645,7 +1647,15 @@ func (r *PebbleDB) CancelWatch(watchID int64) error {
 
 	// Close channels only once using sync.Once
 	sub.closeOnce.Do(func() {
+		// Close cancel first to unblock in-flight slowSendEvent goroutines
 		close(sub.cancel)
+		// Drain semaphore to wait for all slowSendEvent goroutines to finish
+		if sub.slowSendSem != nil {
+			for i := 0; i < cap(sub.slowSendSem); i++ {
+				sub.slowSendSem <- struct{}{}
+			}
+		}
+		// Now safe to close eventCh — no goroutines are sending to it
 		close(sub.eventCh)
 	})
 
@@ -2118,6 +2128,11 @@ func (r *PebbleDB) notifyWatches(event kvstore.WatchEvent) {
 
 	// Send events outside of lock
 	for _, sub := range matchingSubs {
+		// Re-check closed flag — CancelWatch may have fired between calls
+		if sub.closed.Load() {
+			continue
+		}
+
 		// Apply filters
 		if r.shouldFilter(event.Type, sub.filters) {
 			continue
@@ -2134,10 +2149,42 @@ func (r *PebbleDB) notifyWatches(event kvstore.WatchEvent) {
 		case sub.eventCh <- eventToSend:
 			// Success
 		case <-sub.cancel:
-			// Watchalready cancel
+			// Watch already cancelled
 		default:
-			// Channelfull，asynchronoussend(slowclient)
-			go r.slowSendEvent(sub, eventToSend)
+			// Channel full — use semaphore to bound goroutines
+			select {
+			case sub.slowSendSem <- struct{}{}:
+				go func() {
+					defer func() { <-sub.slowSendSem }()
+					r.slowSendEvent(sub, eventToSend)
+				}()
+			default:
+				// Semaphore full — watcher is severely behind, force cancel.
+				// Mark closed immediately so subsequent notifyWatches calls
+				// on the same goroutine skip this watcher (prevents send-on-closed race).
+				if sub.closed.CompareAndSwap(false, true) {
+					log.Warn("Watch severely behind, force cancelling",
+						zap.Int64("watch_id", sub.watchID),
+						zap.String("component", "pebble-watch"))
+					go func(id int64, s *watchSubscription) {
+						// Remove from watches map first
+						r.watchMu.Lock()
+						delete(r.watches, id)
+						r.watchMu.Unlock()
+
+						s.closeOnce.Do(func() {
+							// Close cancel first to unblock in-flight slowSendEvent goroutines
+							close(s.cancel)
+							// Drain semaphore to wait for all slowSendEvent goroutines to finish
+							for i := 0; i < cap(s.slowSendSem); i++ {
+								s.slowSendSem <- struct{}{}
+							}
+							// Now safe to close eventCh — no goroutines are sending to it
+							close(s.eventCh)
+						})
+					}(sub.watchID, sub)
+				}
+			}
 		}
 	}
 }
@@ -2161,6 +2208,18 @@ func (r *PebbleDB) shouldFilter(eventType kvstore.EventType, filters []kvstore.W
 
 // slowSendEvent handles slow clients with timeout
 func (r *PebbleDB) slowSendEvent(sub *watchSubscription, event kvstore.WatchEvent) {
+	// Check if already closed before attempting to send
+	if sub.closed.Load() {
+		return
+	}
+
+	// Recover from panic if eventCh is closed during send (safety net)
+	defer func() {
+		if r := recover(); r != nil {
+			// Channel was closed, watch was cancelled - this is normal during cleanup
+		}
+	}()
+
 	timer := time.NewTimer(5 * time.Second)
 	defer timer.Stop()
 
@@ -2172,8 +2231,8 @@ func (r *PebbleDB) slowSendEvent(sub *watchSubscription, event kvstore.WatchEven
 	case <-timer.C:
 		// Timeout - force cancel this slow watch
 		log.Warn("Watch is too slow, force cancelling",
-			zap.Int64("watchID", sub.watchID),
-			zap.String("component", "storage-pebble"))
+			zap.Int64("watch_id", sub.watchID),
+			zap.String("component", "pebble-watch"))
 		r.CancelWatch(sub.watchID)
 	}
 }

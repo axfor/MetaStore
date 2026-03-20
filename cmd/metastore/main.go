@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/soheilhy/cmux"
@@ -33,18 +34,18 @@ import (
 	"metaStore/api/mysql"
 	"metaStore/internal/kvstore"
 	"metaStore/internal/memory"
-	"metaStore/internal/raft"
 	"metaStore/internal/pebbledb"
+	"metaStore/internal/raft"
 	"metaStore/pkg/config"
 	"metaStore/pkg/log"
 	"metaStore/pkg/metrics"
+	"metaStore/pkg/reliability"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"go.etcd.io/raft/v3/raftpb"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	// "time" // disabled BatchProposer，no longer needed
 )
 
 const (
@@ -340,9 +341,11 @@ func main() {
 			log.Fatal("Failed to build store", zap.Error(err), zap.String("component", "main"))
 		}
 	}
-	defer closeStore()
+	// Create process-level graceful shutdown manager
+	gs := reliability.NewGracefulShutdown(30 * time.Second)
 
-	if _, err := starter.startMySQL(store); err != nil {
+	mysqlServer, err := starter.startMySQL(store)
+	if err != nil {
 		log.Fatal("Failed to create MySQL server", zap.Error(err), zap.String("component", "main"))
 	}
 
@@ -353,17 +356,42 @@ func main() {
 			zap.Error(err),
 			zap.String("component", "main"))
 	}
-	defer closeListener()
 
 	_ = starter.startGateway(m, mux)
-	if _, err := starter.startEtcd(store, raftNode, m); err != nil {
+	etcdServer, err := starter.startEtcd(store, raftNode, m)
+	if err != nil {
 		log.Fatal("Failed to create etcd server", zap.Error(err), zap.String("component", "main"))
 	}
 
-	log.Info("Starting cmux multiplexing", zap.String("address", cfg.Server.Etcd.Address), zap.String("component", "main"))
-	if err := m.Serve(); err != nil {
-		log.Fatal("cmux failed", zap.Error(err), zap.String("component", "main"))
-	}
+	// Phase 1: Stop accepting new requests
+	gs.RegisterHook(reliability.PhaseStopAccepting, func(ctx context.Context) error {
+		etcdServer.Stop() // triggers etcd's internal graceful shutdown
+		return nil
+	})
+	gs.RegisterHook(reliability.PhaseStopAccepting, func(ctx context.Context) error {
+		return mysqlServer.Stop()
+	})
+
+	// Phase 4: Close resources
+	gs.RegisterHook(reliability.PhaseCloseResources, func(ctx context.Context) error {
+		closeStore()
+		return nil
+	})
+	gs.RegisterHook(reliability.PhaseCloseResources, func(ctx context.Context) error {
+		closeListener()
+		return nil
+	})
+
+	// Run cmux non-blocking
+	go func() {
+		log.Info("Starting cmux multiplexing", zap.String("address", cfg.Server.Etcd.Address), zap.String("component", "main"))
+		if err := m.Serve(); err != nil && !gs.IsShuttingDown() {
+			log.Fatal("cmux failed", zap.Error(err), zap.String("component", "main"))
+		}
+	}()
+
+	// Block until shutdown signal (SIGTERM/SIGINT)
+	gs.Wait()
 }
 
 func createMux(gwmux *runtime.ServeMux, handler http.Handler) *http.ServeMux {

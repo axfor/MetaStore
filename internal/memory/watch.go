@@ -60,6 +60,7 @@ func (m *MemoryEtcd) WatchWithOptions(key, rangeEnd string, startRevision int64,
 		startRev:       startRevision,
 		eventCh:        eventCh,
 		cancel:         make(chan struct{}),
+		slowSendSem:    make(chan struct{}, 8), // cap concurrent slowSend goroutines per watcher
 		prevKV:         prevKV,
 		progressNotify: progressNotify,
 		filters:        filters,
@@ -183,7 +184,15 @@ func (m *MemoryEtcd) CancelWatch(watchID int64) error {
 
 	// Close channels only once using sync.Once
 	sub.closeOnce.Do(func() {
+		// Close cancel first to unblock in-flight slowSendEvent goroutines
 		close(sub.cancel)
+		// Drain semaphore to wait for all slowSendEvent goroutines to finish
+		if sub.slowSendSem != nil {
+			for i := 0; i < cap(sub.slowSendSem); i++ {
+				sub.slowSendSem <- struct{}{}
+			}
+		}
+		// Now safe to close eventCh — no goroutines are sending to it
 		close(sub.eventCh)
 	})
 
@@ -222,6 +231,11 @@ func (m *MemoryEtcd) notifyWatches(event kvstore.WatchEvent) {
 
 	// Send events outside of lock
 	for _, sub := range matchingSubs {
+		// Re-check closed flag — CancelWatch may have fired between calls
+		if sub.closed.Load() {
+			continue
+		}
+
 		// Apply filters
 		if m.shouldFilter(event.Type, sub.filters) {
 			continue
@@ -240,8 +254,40 @@ func (m *MemoryEtcd) notifyWatches(event kvstore.WatchEvent) {
 		case <-sub.cancel:
 			// Watch already cancelled
 		default:
-			// Channel full, send asynchronously (slow client)
-			go m.slowSendEvent(sub, eventToSend)
+			// Channel full — use semaphore to bound goroutines
+			select {
+			case sub.slowSendSem <- struct{}{}:
+				go func() {
+					defer func() { <-sub.slowSendSem }()
+					m.slowSendEvent(sub, eventToSend)
+				}()
+			default:
+				// Semaphore full — watcher is severely behind, force cancel.
+				// Mark closed immediately so subsequent notifyWatches calls
+				// on the same goroutine skip this watcher (prevents send-on-closed race).
+				if sub.closed.CompareAndSwap(false, true) {
+					log.Warn("Watch severely behind, force cancelling",
+						zap.Int64("watch_id", sub.watchID),
+						zap.String("component", "memory-watch"))
+					go func(id int64, s *watchSubscription) {
+						// Remove from watches map first
+						m.watchMu.Lock()
+						delete(m.watches, id)
+						m.watchMu.Unlock()
+
+						s.closeOnce.Do(func() {
+							// Close cancel first to unblock in-flight slowSendEvent goroutines
+							close(s.cancel)
+							// Drain semaphore to wait for all slowSendEvent goroutines to finish
+							for i := 0; i < cap(s.slowSendSem); i++ {
+								s.slowSendSem <- struct{}{}
+							}
+							// Now safe to close eventCh — no goroutines are sending to it
+							close(s.eventCh)
+						})
+					}(sub.watchID, sub)
+				}
+			}
 		}
 	}
 }
@@ -265,12 +311,18 @@ func (m *MemoryEtcd) shouldFilter(eventType kvstore.EventType, filters []kvstore
 
 // slowSendEvent handles slow clients with timeout
 func (m *MemoryEtcd) slowSendEvent(sub *watchSubscription, event kvstore.WatchEvent) {
-	// Recover from panic if eventCh is closed during send
+	// Check if already closed before attempting to send
+	if sub.closed.Load() {
+		return
+	}
+
+	// Recover from panic if eventCh is closed during send (safety net)
 	defer func() {
 		if r := recover(); r != nil {
 			// Channel was closed, watch was cancelled - this is normal during cleanup
 		}
 	}()
+
 	timer := time.NewTimer(5 * time.Second)
 	defer timer.Stop()
 
